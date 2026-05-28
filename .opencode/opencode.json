@@ -1,0 +1,44 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "skill": "allow",
+    "read": "allow",
+    "edit": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "bash": "ask",
+    "task": "allow",
+    "webfetch": "allow"
+  },
+  "agent": {
+    "plan": {
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "npx @opensassi/opencode *": "allow"
+        }
+      }
+    }
+  },
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "@playwright/mcp@latest",
+        "--headless"
+      ],
+      "enabled": true
+    },
+    "debugger": {
+      "type": "local",
+      "command": [
+        "gdb-mcp-server"
+      ],
+      "enabled": true
+    }
+  }
+}
