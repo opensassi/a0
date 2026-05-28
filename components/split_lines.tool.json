@@ -1,0 +1,6 @@
+{
+    "name": "split_lines",
+    "description": "Split a multi-line string into an array of individual lines",
+    "command": "split",
+    "inputMode": "args"
+}

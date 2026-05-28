@@ -1,0 +1,10 @@
+{
+    "id": "mock-completion-1",
+    "choices": [{
+        "index": 0,
+        "message": {
+            "role": "assistant",
+            "content": "{\"name\":\"count_lines\",\"description\":\"Count lines in a file\",\"command\":\"wc -l\",\"inputMode\":\"args\"}"
+        }
+    }]
+}

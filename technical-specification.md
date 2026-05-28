@@ -315,13 +315,13 @@ Follow these steps **in order**:
 ## 7. CLI Entry Point
 
 ```bash
-agent --components-dir <path> [--resume <session-id>] [--threshold <KBps>] [--api-key <key>] [--mock-api <url>]
+agent --components-dir <path> [--env-file <path>] [--resume <session-id>] [--api-key <key>] [--mock-api <url>]
 ```
 
 - `--components-dir` : Root directory for components (default `./components`).
+- `--env-file` : Path to `.env` file to load (default `./.env`). Each line is `KEY=VALUE`; `#` comments and blank lines are skipped. Loaded before CLI args so `--api-key` overrides.
 - `--resume` : Session ID to replay from `./logs/`.
-- `--threshold` : Throughput threshold for optimization (optional).
-- `--api-key` : DeepSeek API key; if not provided, read from `DEEPSEEK_API_KEY` env var.
+- `--api-key` : DeepSeek API key; if not provided, read from `DEEPSEEK_API_KEY` env var (which can come from `--env-file`).
 - `--mock-api` : Override the API URL (for testing, e.g., `http://localhost:8080`).
 
 **Environment**:

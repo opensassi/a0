@@ -1,0 +1,10 @@
+{
+    "id": "mock-completion-3",
+    "choices": [{
+        "index": 0,
+        "message": {
+            "role": "assistant",
+            "content": "[\"file1.txt\",\"file3.txt\"]"
+        }
+    }]
+}

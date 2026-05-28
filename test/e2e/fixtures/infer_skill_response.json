@@ -1,0 +1,10 @@
+{
+    "id": "mock-completion-2",
+    "choices": [{
+        "index": 0,
+        "message": {
+            "role": "assistant",
+            "content": "{\"name\":\"file_finder\",\"description\":\"Find files containing a pattern\",\"prompt\":\"Search for files matching {{tool:bash input='find {{path}} -type f -name \\\"{{pattern}}\\\"'}}\",\"dependencies\":[\"bash\"],\"validators\":[]}"
+        }
+    }]
+}
