@@ -40,7 +40,7 @@ protected:
         logger = new JsonLinesLogger(m_testLogs);
         depResolver = new DefaultDependencyResolver(&registry);
         inferenceEngine = new DefaultSchemaInferenceEngine(provider);
-        skillRunner = new DefaultSkillRunner(&toolRunner, provider, &registry);
+        skillRunner = new DefaultSkillRunner(&toolRunner, provider, &registry, depResolver);
         core = new DefaultAgentCore(&registry, &toolRunner, skillRunner,
                                      provider, &context, logger,
                                      depResolver, inferenceEngine);
@@ -114,4 +114,19 @@ TEST_F(AgentCoreTest, ProcessGoalMultipleCalls) {
 
 TEST_F(AgentCoreTest, ProcessGoalBeforeInitThrows) {
     EXPECT_THROW(core->processGoal("test"), std::logic_error);
+}
+
+TEST_F(AgentCoreTest, ExactSkillMatchOnly) {
+    {
+        std::ofstream f(m_testComponents + "/hello_skill.skill.json");
+        f << R"({"name":"hello","description":"says hello","prompt":"say hello","dependencies":[],"validators":[]})";
+    }
+    ASSERT_TRUE(core->init(m_testComponents));
+    // "hello" matches exactly
+    json result = core->processGoal("hello");
+    EXPECT_TRUE(result.is_string());
+    // "hello_world" does NOT match exactly (substring but not exact)
+    json result2 = core->processGoal("hello_world");
+    ASSERT_TRUE(result2.is_string());
+    EXPECT_NE(result2.get<std::string>().find("failed to infer skill"), std::string::npos);
 }

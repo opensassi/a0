@@ -51,32 +51,46 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
 
     m_context->push({"user", goal});
 
-    // look for a matching skill by name
-    std::string goalLower = goal;
+    // look for a matching skill by exact name (case-sensitive)
     std::string matchedSkillName;
     for (const auto& name : m_registry->listSkills()) {
-        if (goal.find(name) != std::string::npos) {
+        if (goal == name) {
             matchedSkillName = name;
             break;
         }
     }
 
-    json result;
+    Skill skill;
+    bool foundExact = false;
     if (!matchedSkillName.empty()) {
         auto skillOpt = m_registry->getSkill(matchedSkillName);
         if (skillOpt.has_value()) {
-            result = m_skillRunner->execute(*skillOpt, {{"goal", goal}});
-        } else {
-            result = "no matching skill found";
+            skill = *skillOpt;
+            foundExact = true;
         }
-    } else {
-        Skill skill;
+    }
+
+    json result;
+    if (!foundExact) {
         try {
             skill = m_inferenceEngine->inferSkill(goal);
             m_registry->addSkill(skill);
-            result = m_skillRunner->execute(skill, {{"goal", goal}});
         } catch (const std::exception& e) {
             result = "failed to infer skill: " + std::string(e.what());
+        }
+    }
+
+    if (result.is_null()) {
+        auto missing = m_depResolver->missingDependencies(skill);
+        if (!missing.empty()) {
+            std::string err = "Missing dependencies: ";
+            for (size_t i = 0; i < missing.size(); ++i) {
+                if (i > 0) err += ", ";
+                err += missing[i];
+            }
+            result = err;
+        } else {
+            result = m_skillRunner->execute(skill, {{"goal", goal}});
         }
     }
 

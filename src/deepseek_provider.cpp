@@ -17,6 +17,7 @@ DeepSeekProvider::DeepSeekProvider(const std::string& apiKey, const std::string&
 std::string DeepSeekProvider::complete(const std::string& systemPrompt,
                                         const std::string& userPrompt) {
     TRACE_LOG("complete(system=" << systemPrompt.size() << " user=" << userPrompt.size() << ")");
+    TRACE_LOG("userPrompt=" << userPrompt);
     CURL* curl = curl_easy_init();
     if (!curl) return {};
 

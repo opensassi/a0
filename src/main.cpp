@@ -21,7 +21,7 @@ static void loadEnvFile(const std::string& path) {
         if (eq == std::string::npos) continue;
         std::string key = line.substr(0, eq);
         std::string val = line.substr(eq + 1);
-        setenv(key.c_str(), val.c_str(), 0);
+        setenv(key.c_str(), val.c_str(), 1);
     }
 }
 
@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
     JsonLinesLogger logger;
     DefaultDependencyResolver depResolver(&registry);
     DefaultSchemaInferenceEngine inferenceEngine(&provider);
-    DefaultSkillRunner skillRunner(&toolRunner, &provider, &registry);
+    DefaultSkillRunner skillRunner(&toolRunner, &provider, &registry, &depResolver);
     DefaultAgentCore core(&registry, &toolRunner, &skillRunner,
                           &provider, &context, &logger,
                           &depResolver, &inferenceEngine);

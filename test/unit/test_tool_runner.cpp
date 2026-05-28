@@ -1,4 +1,5 @@
 #include "tool_runner.h"
+#include <chrono>
 #include <gtest/gtest.h>
 #include <fstream>
 #include <cstdio>
@@ -66,8 +67,30 @@ TEST_F(ToolRunnerTest, NonObjectParams) {
     ASSERT_TRUE(result.is_string());
 }
 
-TEST_F(ToolRunnerTest, ToolWithArgsMode) {
-    Tool tool = {"wc_test", "word count", "wc -l", "args"};
-    json result = runner.run(tool, {{"input", "a\nb\nc"}});
+TEST_F(ToolRunnerTest, ArgsModeWithPositionalArg) {
+    Tool tool = {"echo_arg", "echo first arg", "sh -c 'echo $1' _", "args"};
+    json params = {{"_", "hello"}};
+    json result = runner.run(tool, params);
     ASSERT_TRUE(result.is_string());
+    EXPECT_EQ(result.get<std::string>(), "hello\n");
+}
+
+TEST_F(ToolRunnerTest, ArgsModeWithNamedArgs) {
+    Tool tool = {"echo_named", "echo named args", "sh -c 'echo \"$@\"' _", "args"};
+    json params = {{"file", "test.txt"}, {"verbose", "true"}};
+    json result = runner.run(tool, params);
+    ASSERT_TRUE(result.is_string());
+    EXPECT_EQ(result.get<std::string>(), "--file=test.txt --verbose=true\n");
+}
+
+TEST_F(ToolRunnerTest, TimeoutEnforced) {
+    Tool tool = makeBashTool();
+    auto start = std::chrono::steady_clock::now();
+    json result = runner.run(tool, {{"input", "sleep 31"}});
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - start).count();
+    ASSERT_TRUE(result.is_string());
+    std::string output = result.get<std::string>();
+    EXPECT_TRUE(output.find("ERROR: timeout") == 0);
+    EXPECT_LE(elapsed, 32);
 }

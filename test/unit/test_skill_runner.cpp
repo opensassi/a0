@@ -1,4 +1,5 @@
 #include "skill_runner.h"
+#include "dependency_resolver.h"
 #include "tool_runner.h"
 #include "component_registry.h"
 #include <gtest/gtest.h>
@@ -8,6 +9,7 @@ protected:
     SubprocessToolRunner toolRunner;
     FileSystemComponentRegistry registry;
     DefaultSkillRunner* runner;
+    DefaultDependencyResolver* depResolver;
 
     class MockProvider : public InferenceProvider {
     public:
@@ -30,11 +32,13 @@ protected:
         provider->response = "mock response";
         registry.addTool(Tool{"list_files", "list", "ls", "stdin"});
         registry.addTool(Tool{"grep_tool", "grep", "grep", "stdin"});
-        runner = new DefaultSkillRunner(&toolRunner, provider, &registry);
+        depResolver = new DefaultDependencyResolver(&registry);
+        runner = new DefaultSkillRunner(&toolRunner, provider, &registry, depResolver);
     }
 
     void TearDown() override {
         delete runner;
+        delete depResolver;
         delete provider;
     }
 };
@@ -111,4 +115,28 @@ TEST_F(SkillRunnerTest, ExecuteWithValidators) {
         {"list_files"}, {ValidatorBinding{"extract_json", std::nullopt}}};
     json result = runner->execute(s, json::object());
     EXPECT_TRUE(result.is_string());
+}
+
+TEST_F(SkillRunnerTest, ParameterSubstitution) {
+    Skill s{"params", "desc", "Goal: {{goal}} and {{name}}", {}, {}};
+    json params = {{"goal", "test"}, {"name", "agent"}};
+    std::string expanded = runner->expandPrompt(s, params);
+    EXPECT_EQ(expanded, "Goal: test and agent");
+}
+
+TEST_F(SkillRunnerTest, ExecuteWithMissingDependency) {
+    Skill s{"broken", "desc", "prompt", {"nonexistent_tool"}, {}};
+    json result = runner->execute(s, json::object());
+    ASSERT_TRUE(result.is_string());
+    EXPECT_TRUE(result.get<std::string>().find("Missing dependencies") != std::string::npos);
+}
+
+TEST_F(SkillRunnerTest, ValidatorErrorPrefix) {
+    registry.addTool(Tool{"fail_tool", "always fails",
+        "sh -c 'echo \"ERROR: something wrong\"'", "stdin"});
+    Skill s{"test", "desc", "prompt", {},
+        {ValidatorBinding{"fail_tool", std::nullopt}}};
+    json result = runner->runValidators(s, json("input"));
+    ASSERT_TRUE(result.is_string());
+    EXPECT_TRUE(result.get<std::string>().find("VALIDATOR_ERROR:") == 0);
 }

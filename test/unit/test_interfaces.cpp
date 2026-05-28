@@ -9,6 +9,7 @@
 #include "schema_inference_engine.h"
 #include "skill_runner.h"
 #include "tool_runner.h"
+#include <chrono>
 #include <gtest/gtest.h>
 
 TEST(InterfaceTest, DeleteThroughBasePointer) {
@@ -65,4 +66,38 @@ TEST(InterfaceTest, SkillRunnerThroughInterface) {
     SkillRunner* iface = sr;
     EXPECT_NE(iface, nullptr);
     delete iface;
+}
+
+TEST(InterfaceTest, ToolRunnerArgsModeContract) {
+    SubprocessToolRunner runner;
+    Tool tool{"echo_test", "echo", "sh -c 'echo $1' _", "args"};
+    json params = {{"_", "hello_args"}};
+    json result = runner.run(tool, params);
+    EXPECT_TRUE(result.is_string());
+    std::string output = result.get<std::string>();
+    EXPECT_EQ(output, "hello_args\n");
+}
+
+TEST(InterfaceTest, ToolRunnerTimeoutContract) {
+    SubprocessToolRunner runner;
+    Tool tool{"sleep_test", "sleep", "sleep 31", "stdin"};
+    auto start = std::chrono::steady_clock::now();
+    json result = runner.run(tool, json::object());
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - start).count();
+    ASSERT_TRUE(result.is_string());
+    EXPECT_TRUE(result.get<std::string>().find("ERROR: timeout") == 0);
+    EXPECT_LE(elapsed, 32);
+}
+
+TEST(InterfaceTest, SkillRunnerParameterSubstitution) {
+    FileSystemComponentRegistry reg;
+    SubprocessToolRunner tr;
+    DeepSeekProvider ip("key");
+    DefaultSkillRunner sr(&tr, &ip, &reg);
+    Skill s{"test", "", "Goal: {{goal}}", {}, {}};
+    json params = {{"goal", "hello"}};
+    std::string expanded = sr.expandPrompt(s, params);
+    EXPECT_NE(expanded.find("hello"), std::string::npos)
+        << "Parameter substitution not implemented";
 }
