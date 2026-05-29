@@ -1,0 +1,8 @@
+{
+  "name": "docker_echo",
+  "description": "Echo a message inside an Ubuntu 22.04 container",
+  "command": "echo",
+  "inputMode": "args",
+  "dockerImage": "ubuntu:22.04",
+  "trustLevel": "HIGH"
+}

@@ -5,7 +5,7 @@
 #include <sstream>
 #include <stdexcept>
 
-DefaultAgentCore::DefaultAgentCore(ComponentRegistry* registry,
+DefaultAgentCore::DefaultAgentCore(SkillRegistry* registry,
                                     ToolRunner* toolRunner,
                                     SkillRunner* skillRunner,
                                     InferenceProvider* provider,
@@ -27,9 +27,9 @@ DefaultAgentCore::DefaultAgentCore(ComponentRegistry* registry,
     , m_inferenceEngine(inferenceEngine)
     , m_initialized(false) {}
 
-bool DefaultAgentCore::init(const std::string& componentsDir) {
-    TRACE_LOG("init(" << componentsDir << ")");
-    if (!m_registry->loadFromDirectory(componentsDir)) {
+bool DefaultAgentCore::init(const std::string& skillsDir) {
+    TRACE_LOG("init(" << skillsDir << ")");
+    if (!m_registry->loadFromDirectory(skillsDir)) {
         return false;
     }
 
@@ -55,21 +55,21 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
 
     m_context->push({"user", goal});
 
-    // look for a matching skill by exact name (case-sensitive)
-    std::string matchedSkillName;
-    for (const auto& name : m_registry->listSkills()) {
+    // look for a matching prompt by exact name (case-sensitive)
+    std::string matchedPromptName;
+    for (const auto& name : m_registry->listPrompts()) {
         if (goal == name) {
-            matchedSkillName = name;
+            matchedPromptName = name;
             break;
         }
     }
 
-    Skill skill;
+    Prompt prompt;
     bool foundExact = false;
-    if (!matchedSkillName.empty()) {
-        auto skillOpt = m_registry->getSkill(matchedSkillName);
-        if (skillOpt.has_value()) {
-            skill = *skillOpt;
+    if (!matchedPromptName.empty()) {
+        auto promptOpt = m_registry->getPrompt(matchedPromptName);
+        if (promptOpt.has_value()) {
+            prompt = *promptOpt;
             foundExact = true;
         }
     }
@@ -77,15 +77,15 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
     json result;
     if (!foundExact) {
         try {
-            skill = m_inferenceEngine->inferSkill(goal);
-            m_registry->addSkill(skill);
+            prompt = m_inferenceEngine->inferPrompt(goal);
+            m_registry->addPrompt(prompt);
         } catch (const std::exception& e) {
-            result = "failed to infer skill: " + std::string(e.what());
+            result = "failed to infer prompt: " + std::string(e.what());
         }
     }
 
     if (result.is_null()) {
-        auto missing = m_depResolver->missingDependencies(skill);
+        auto missing = m_depResolver->missingDependencies(prompt);
         if (!missing.empty()) {
             std::string err = "Missing dependencies: ";
             for (size_t i = 0; i < missing.size(); ++i) {
@@ -94,7 +94,7 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
             }
             result = err;
         } else {
-            result = m_skillRunner->execute(skill, {{"goal", goal}});
+            result = m_skillRunner->execute(prompt, {{"goal", goal}});
         }
     }
 
@@ -109,6 +109,46 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
     m_logger->log(entry);
 
     return result;
+}
+
+json DefaultAgentCore::runSkill(const std::string& skillName, const json& params) {
+    TRACE_LOG("runSkill(" << skillName << ")");
+    if (!m_initialized) {
+        throw std::logic_error("AgentCore not initialized");
+    }
+
+    auto promptOpt = m_registry->getPrompt(skillName);
+    if (!promptOpt.has_value()) {
+        return json("prompt not found: " + skillName);
+    }
+
+    Prompt prompt = *promptOpt;
+    auto missing = m_depResolver->missingDependencies(prompt);
+    if (!missing.empty()) {
+        std::string err = "Missing dependencies: ";
+        for (size_t i = 0; i < missing.size(); ++i) {
+            if (i > 0) err += ", ";
+            err += missing[i];
+        }
+        return json(err);
+    }
+
+    json execParams = params;
+    json result = m_skillRunner->execute(prompt, execParams);
+
+    LogEntry entry;
+    entry.sessionId = m_sessionId;
+    entry.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    entry.eventType = "run_skill";
+    entry.data = json{{"skill", skillName}, {"params", params}, {"result", result}}.dump();
+    m_logger->log(entry);
+
+    return result;
+}
+
+std::string DefaultAgentCore::currentSessionId() const {
+    return m_sessionId;
 }
 
 bool DefaultAgentCore::resumeSession(const std::string& sessionId) {
@@ -130,10 +170,6 @@ bool DefaultAgentCore::resumeSession(const std::string& sessionId) {
     });
     m_initialized = true;
     return found;
-}
-
-std::string DefaultAgentCore::currentSessionId() const {
-    return m_sessionId;
 }
 
 void DefaultAgentCore::run() {

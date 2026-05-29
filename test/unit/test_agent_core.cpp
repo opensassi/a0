@@ -1,5 +1,5 @@
 #include "agent_core.h"
-#include "component_registry.h"
+#include "skill_registry.h"
 #include "context_manager.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
@@ -13,7 +13,7 @@
 
 class AgentCoreTest : public ::testing::Test {
 protected:
-    FileSystemComponentRegistry registry;
+    FileSystemSkillRegistry registry;
     SubprocessToolRunner toolRunner;
     DeepSeekProvider* provider;
     DefaultContextManager context;
@@ -28,10 +28,10 @@ protected:
 
     void SetUp() override {
         std::string cmd = "rm -rf " + m_testComponents + " " + m_testLogs
-            + " && mkdir -p " + m_testComponents + " " + m_testLogs;
+            + " && mkdir -p " + m_testComponents + "/system/bash " + m_testLogs;
         system(cmd.c_str());
         {
-            std::ofstream f(m_testComponents + "/bash.tool.json");
+            std::ofstream f(m_testComponents + "/system/bash/bash.tool.json");
             f << "{\"name\":\"bash\",\"description\":\"bash\",\"command\":\"bash\",\"inputMode\":\"stdin\"}";
         }
 
@@ -118,7 +118,10 @@ TEST_F(AgentCoreTest, ProcessGoalBeforeInitThrows) {
 
 TEST_F(AgentCoreTest, ExactSkillMatchOnly) {
     {
-        std::ofstream f(m_testComponents + "/hello_skill.skill.json");
+        std::string pkgDir = m_testComponents + "/system/hello";
+        std::string mkdir = "mkdir -p " + pkgDir;
+        system(mkdir.c_str());
+        std::ofstream f(pkgDir + "/hello.prompt.json");
         f << R"({"name":"hello","description":"says hello","prompt":"say hello","dependencies":[],"validators":[]})";
     }
     ASSERT_TRUE(core->init(m_testComponents));
@@ -128,5 +131,5 @@ TEST_F(AgentCoreTest, ExactSkillMatchOnly) {
     // "hello_world" does NOT match exactly (substring but not exact)
     json result2 = core->processGoal("hello_world");
     ASSERT_TRUE(result2.is_string());
-    EXPECT_NE(result2.get<std::string>().find("failed to infer skill"), std::string::npos);
+    EXPECT_NE(result2.get<std::string>().find("failed to infer prompt"), std::string::npos);
 }

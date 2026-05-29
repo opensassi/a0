@@ -1,7 +1,7 @@
 // Tests that exercise virtual destructors in abstract interfaces
 #include "agent_interfaces.h"
 #include "agent_core.h"
-#include "component_registry.h"
+#include "skill_registry.h"
 #include "context_manager.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 
 TEST(InterfaceTest, DeleteThroughBasePointer) {
-    ComponentRegistry* reg = new FileSystemComponentRegistry();
+    SkillRegistry* reg = new FileSystemSkillRegistry();
     delete reg;
 
     ToolRunner* tr = new SubprocessToolRunner();
@@ -29,13 +29,15 @@ TEST(InterfaceTest, DeleteThroughBasePointer) {
     delete il;
 
     DependencyResolver* dr = new DefaultDependencyResolver(
-        new FileSystemComponentRegistry());
+        new FileSystemSkillRegistry());
     delete dr;
 
-    ComponentRegistry* r2 = new FileSystemComponentRegistry();
+    SkillRegistry* r2 = new FileSystemSkillRegistry();
+    DependencyResolver* dr2 = new DefaultDependencyResolver(r2);
     SkillRunner* sr = new DefaultSkillRunner(
-        new SubprocessToolRunner(), new DeepSeekProvider("k"), r2);
+        new SubprocessToolRunner(), new DeepSeekProvider("k"), r2, dr2);
     delete sr;
+    delete dr2;
     delete r2;
 
     InferenceProvider* ip2 = new DeepSeekProvider("k2");
@@ -47,22 +49,23 @@ TEST(InterfaceTest, DeleteThroughBasePointer) {
 TEST(InterfaceTest, VirtualDestructors) {
     // Just instantiate and destroy through concrete types
     // to verify vtable linkage is correct
-    FileSystemComponentRegistry reg;
+    FileSystemSkillRegistry reg;
     SubprocessToolRunner tr;
     DeepSeekProvider ip("test");
     DefaultContextManager cm;
     JsonLinesLogger il("/tmp/logs");
-    FileSystemComponentRegistry reg2;
+    FileSystemSkillRegistry reg2;
     DefaultDependencyResolver dr(&reg2);
     DefaultSchemaInferenceEngine sie(&ip);
-    DefaultSkillRunner sr(&tr, &ip, &reg2);
+    DefaultSkillRunner sr(&tr, &ip, &reg2, &dr);
 }
 
 TEST(InterfaceTest, SkillRunnerThroughInterface) {
-    FileSystemComponentRegistry reg;
+    FileSystemSkillRegistry reg;
     SubprocessToolRunner tr;
     DeepSeekProvider ip("key");
-    DefaultSkillRunner* sr = new DefaultSkillRunner(&tr, &ip, &reg);
+    DefaultDependencyResolver dr(&reg);
+    DefaultSkillRunner* sr = new DefaultSkillRunner(&tr, &ip, &reg, &dr);
     SkillRunner* iface = sr;
     EXPECT_NE(iface, nullptr);
     delete iface;
@@ -91,13 +94,14 @@ TEST(InterfaceTest, ToolRunnerTimeoutContract) {
 }
 
 TEST(InterfaceTest, SkillRunnerParameterSubstitution) {
-    FileSystemComponentRegistry reg;
+    FileSystemSkillRegistry reg;
     SubprocessToolRunner tr;
     DeepSeekProvider ip("key");
-    DefaultSkillRunner sr(&tr, &ip, &reg);
-    Skill s{"test", "", "Goal: {{goal}}", {}, {}};
+    DefaultDependencyResolver dr(&reg);
+    DefaultSkillRunner sr(&tr, &ip, &reg, &dr);
+    Prompt p{"test", "", "Goal: {{goal}}", {}, {}};
     json params = {{"goal", "hello"}};
-    std::string expanded = sr.expandPrompt(s, params);
+    std::string expanded = sr.expandPrompt(p, params);
     EXPECT_NE(expanded.find("hello"), std::string::npos)
         << "Parameter substitution not implemented";
 }

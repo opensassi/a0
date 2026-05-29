@@ -1,0 +1,6 @@
+{
+  "name": "docker_greeting",
+  "description": "Echo a greeting using a tool inside a Docker container",
+  "prompt": "You are a greeting service. Respond with a single line: Hello from Docker: {{tool:docker_echo _='{{prompt}}'}}",
+  "dependencies": ["docker_echo"]
+}

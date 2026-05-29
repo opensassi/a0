@@ -28,65 +28,65 @@ protected:
         delete mgr;
     }
 
-    Skill makeSkill(const std::string& name,
+    Prompt makePrompt(const std::string& name,
                     const std::string& composeFile = "") {
-        Skill s;
-        s.name = name;
-        s.composeFile = composeFile;
-        return s;
+        Prompt p;
+        p.name = name;
+        p.composeFile = composeFile;
+        return p;
     }
 };
 
 TEST_F(ComposeManagerTest, StartWithNoComposeFileReturnsEmpty) {
-    Skill s = makeSkill("simple");
-    std::string network = mgr->startEnvironment(s, "/tmp");
+    Prompt p = makePrompt("simple");
+    std::string network = mgr->startEnvironment(p, "/tmp");
     EXPECT_TRUE(network.empty());
 }
 
 TEST_F(ComposeManagerTest, StartEnvironmentReturnsNetworkName) {
-    Skill s = makeSkill("db_skill", "docker-compose.yml");
-    std::string network = mgr->startEnvironment(s, "/tmp/test_project");
+    Prompt p = makePrompt("db_skill", "docker-compose.yml");
+    std::string network = mgr->startEnvironment(p, "/tmp/test_project");
     EXPECT_FALSE(network.empty());
     EXPECT_EQ(network, "test_project_default");
 }
 
 TEST_F(ComposeManagerTest, StartEnvironmentIsIdempotent) {
-    Skill s = makeSkill("idempotent", "docker-compose.yml");
-    std::string net1 = mgr->startEnvironment(s, "/tmp/proj");
-    std::string net2 = mgr->startEnvironment(s, "/tmp/proj");
+    Prompt p = makePrompt("idempotent", "docker-compose.yml");
+    std::string net1 = mgr->startEnvironment(p, "/tmp/proj");
+    std::string net2 = mgr->startEnvironment(p, "/tmp/proj");
     EXPECT_EQ(net1, net2);
 }
 
 TEST_F(ComposeManagerTest, StopEnvironmentDoesNotThrow) {
-    Skill s = makeSkill("stoppable", "docker-compose.yml");
-    mgr->startEnvironment(s, "/tmp/proj");
-    EXPECT_NO_THROW(mgr->stopEnvironment(s));
+    Prompt p = makePrompt("stoppable", "docker-compose.yml");
+    mgr->startEnvironment(p, "/tmp/proj");
+    EXPECT_NO_THROW(mgr->stopEnvironment(p));
 }
 
 TEST_F(ComposeManagerTest, MarkUsedDoesNotThrow) {
-    Skill s = makeSkill("tracked", "docker-compose.yml");
-    mgr->startEnvironment(s, "/tmp/proj");
-    EXPECT_NO_THROW(mgr->markUsed(s));
+    Prompt p = makePrompt("tracked", "docker-compose.yml");
+    mgr->startEnvironment(p, "/tmp/proj");
+    EXPECT_NO_THROW(mgr->markUsed(p));
 }
 
-TEST_F(ComposeManagerTest, NetworkForCurrentSkill) {
-    Skill s = makeSkill("current_test", "docker-compose.yml");
-    mgr->startEnvironment(s, "/tmp/myapp");
-    mgr->setCurrentSkill(s);
+TEST_F(ComposeManagerTest, NetworkForCurrentPrompt) {
+    Prompt p = makePrompt("current_test", "docker-compose.yml");
+    mgr->startEnvironment(p, "/tmp/myapp");
+    mgr->setCurrentPrompt(p);
 
     std::string network = mgr->getCurrentNetwork();
     EXPECT_EQ(network, "myapp_default");
 
-    mgr->clearCurrentSkill();
+    mgr->clearCurrentPrompt();
     EXPECT_TRUE(mgr->getCurrentNetwork().empty());
 }
 
 TEST_F(ComposeManagerTest, MultipleSkillsDifferentNetworks) {
-    Skill s1 = makeSkill("app1", "docker-compose.yml");
-    Skill s2 = makeSkill("app2", "other-compose.yml");
+    Prompt p1 = makePrompt("app1", "docker-compose.yml");
+    Prompt p2 = makePrompt("app2", "other-compose.yml");
 
-    std::string net1 = mgr->startEnvironment(s1, "/projects/app1");
-    std::string net2 = mgr->startEnvironment(s2, "/projects/app2");
+    std::string net1 = mgr->startEnvironment(p1, "/projects/app1");
+    std::string net2 = mgr->startEnvironment(p2, "/projects/app2");
 
     EXPECT_EQ(net1, "app1_default");
     EXPECT_EQ(net2, "app2_default");

@@ -82,7 +82,7 @@ cat > "${PROJECT_DIR}/test_docker_e2e/echo_docker.tool.json" <<'EOF'
     "useContainerPool": true
 }
 EOF
-RESULTS=$("$A0" --components-dir "${PROJECT_DIR}/test_docker_e2e" \
+RESULTS=$("$A0" --skills-dir "${PROJECT_DIR}/test_docker_e2e" \
     --mock-api "http://localhost:18081/v1/chat/completions" \
     --no-docker=false \
     --container-idle-timeout 5 2>/dev/null <<< "echo_docker" || true)
@@ -111,7 +111,7 @@ cat > "${PROJECT_DIR}/test_docker_e2e/curl_test.tool.json" <<'EOF'
     "aptDependencies": ["curl"]
 }
 EOF
-RESULTS=$("$A0" --components-dir "${PROJECT_DIR}/test_docker_e2e" \
+RESULTS=$("$A0" --skills-dir "${PROJECT_DIR}/test_docker_e2e" \
     --mock-api "http://localhost:18081/v1/chat/completions" \
     --container-idle-timeout 5 2>/dev/null <<< "curl_test" || true)
 if echo "$RESULTS" | grep -qi "curl"; then
@@ -149,7 +149,7 @@ cat > "${PROJECT_DIR}/test_docker_e2e/tool_b.tool.json" <<'EOF'
 EOF
 # Both tools share the "high_pool" container
 CID_BEFORE=$(docker ps --filter "name=high_pool" --format '{{.ID}}' 2>/dev/null || true)
-"$A0" --components-dir "${PROJECT_DIR}/test_docker_e2e" \
+"$A0" --skills-dir "${PROJECT_DIR}/test_docker_e2e" \
     --mock-api "http://localhost:18081/v1/chat/completions" \
     --container-idle-timeout 30 2>/dev/null <<< "tool_a" || true
 CID_AFTER=$(docker ps --filter "name=high_pool" --format '{{.ID}}' 2>/dev/null || true)
@@ -187,11 +187,11 @@ cat > "${PROJECT_DIR}/test_docker_e2e/iso_b.tool.json" <<'EOF'
 }
 EOF
 # Both tools run, should create separate containers
-"$A0" --components-dir "${PROJECT_DIR}/test_docker_e2e" \
+"$A0" --skills-dir "${PROJECT_DIR}/test_docker_e2e" \
     --mock-api "http://localhost:18081/v1/chat/completions" \
     --container-idle-timeout 30 2>/dev/null <<< "iso_a" || true
 CID_A=$(docker ps --filter "name=low_iso_a" --format '{{.ID}}' 2>/dev/null || true)
-"$A0" --components-dir "${PROJECT_DIR}/test_docker_e2e" \
+"$A0" --skills-dir "${PROJECT_DIR}/test_docker_e2e" \
     --mock-api "http://localhost:18081/v1/chat/completions" \
     --container-idle-timeout 30 2>/dev/null <<< "iso_b" || true
 CID_B=$(docker ps --filter "name=low_iso_b" --format '{{.ID}}' 2>/dev/null || true)
@@ -228,7 +228,7 @@ cat > "${PROJECT_DIR}/test_docker_e2e/redis_skill.skill.json" <<'EOF'
 }
 EOF
 # Run compose stack via skill
-"$A0" --components-dir "${PROJECT_DIR}/test_docker_e2e" \
+"$A0" --skills-dir "${PROJECT_DIR}/test_docker_e2e" \
     --mock-api "http://localhost:18081/v1/chat/completions" \
     --container-idle-timeout 30 2>/dev/null <<< "redis_skill" || true
 # Check that the compose stack is up
@@ -257,12 +257,12 @@ cat > "${PROJECT_DIR}/test_docker_e2e/prune_test.tool.json" <<'EOF'
 }
 EOF
 # Run tool with 2-second idle timeout
-"$A0" --components-dir "${PROJECT_DIR}/test_docker_e2e" \
+"$A0" --skills-dir "${PROJECT_DIR}/test_docker_e2e" \
     --mock-api "http://localhost:18081/v1/chat/completions" \
     --container-idle-timeout 2 2>/dev/null <<< "prune_test" || true
 sleep 3
 # Run again; the first container should be pruned (idle > 2s)
-"$A0" --components-dir "${PROJECT_DIR}/test_docker_e2e" \
+"$A0" --skills-dir "${PROJECT_DIR}/test_docker_e2e" \
     --mock-api "http://localhost:18081/v1/chat/completions" \
     --container-idle-timeout 2 2>/dev/null <<< "prune_test" || true
 # Check that only one container exists (the new one)

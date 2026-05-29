@@ -1,13 +1,13 @@
 #include "skill_runner.h"
 #include "dependency_resolver.h"
 #include "tool_runner.h"
-#include "component_registry.h"
+#include "skill_registry.h"
 #include <gtest/gtest.h>
 
 class SkillRunnerTest : public ::testing::Test {
 protected:
     SubprocessToolRunner toolRunner;
-    FileSystemComponentRegistry registry;
+    FileSystemSkillRegistry registry;
     DefaultSkillRunner* runner;
     DefaultDependencyResolver* depResolver;
 
@@ -44,89 +44,89 @@ protected:
 };
 
 TEST_F(SkillRunnerTest, NoPlaceholdersPassThrough) {
-    Skill s{"simple", "desc", "just a prompt", {}, {}};
-    std::string expanded = runner->expandPrompt(s, json::object());
+    Prompt p{"simple", "desc", "just a prompt", {}, {}};
+    std::string expanded = runner->expandPrompt(p, json::object());
     EXPECT_EQ(expanded, "just a prompt");
 }
 
 TEST_F(SkillRunnerTest, EagerToolCallSubstituted) {
-    Skill s{"finder", "desc",
+    Prompt p{"finder", "desc",
         "Files: {{tool:list_files path=\"/tmp\"}} end.",
         {"list_files"}, {}};
-    std::string expanded = runner->expandPrompt(s, json::object());
+    std::string expanded = runner->expandPrompt(p, json::object());
     EXPECT_NE(expanded.find("Files:"), std::string::npos);
 }
 
 TEST_F(SkillRunnerTest, UnknownToolPlaceholder) {
-    Skill s{"broken", "desc",
+    Prompt p{"broken", "desc",
         "{{tool:nonexistent_tool path=\"/\"}}",
         {}, {}};
-    std::string expanded = runner->expandPrompt(s, json::object());
+    std::string expanded = runner->expandPrompt(p, json::object());
     EXPECT_TRUE(expanded.find("nonexistent_tool") != std::string::npos
                 || expanded.find("{{tool:") != std::string::npos);
 }
 
 TEST_F(SkillRunnerTest, NoValidators) {
-    Skill s{"noval", "desc", "prompt", {}, {}};
+    Prompt p{"noval", "desc", "prompt", {}, {}};
     json input = "raw llm output";
-    json result = runner->runValidators(s, input);
+    json result = runner->runValidators(p, input);
     EXPECT_EQ(result, input);
 }
 
 TEST_F(SkillRunnerTest, ExecuteRunsFullPipeline) {
-    Skill s{"pipeline", "desc",
+    Prompt p{"pipeline", "desc",
         "prompt {{tool:list_files path=\"/\"}}",
         {"list_files"}, {}};
-    json result = runner->execute(s, json::object());
+    json result = runner->execute(p, json::object());
     EXPECT_TRUE(result.is_string());
 }
 
 TEST_F(SkillRunnerTest, MultipleEagerCalls) {
-    Skill s{"multi", "desc",
+    Prompt p{"multi", "desc",
         "A: {{tool:list_files path=\"/a\"}} B: {{tool:list_files path=\"/b\"}}",
         {"list_files"}, {}};
-    std::string expanded = runner->expandPrompt(s, json::object());
+    std::string expanded = runner->expandPrompt(p, json::object());
     EXPECT_NE(expanded.find("A:"), std::string::npos);
     EXPECT_NE(expanded.find("B:"), std::string::npos);
 }
 
 TEST_F(SkillRunnerTest, NestedPlaceholdersNotSupported) {
-    Skill s{"nested", "desc",
+    Prompt p{"nested", "desc",
         "{{tool:list_files path=\"{{tool:list_files path=\"/\"}}\"}}",
         {"list_files"}, {}};
-    std::string expanded = runner->expandPrompt(s, json::object());
+    std::string expanded = runner->expandPrompt(p, json::object());
     EXPECT_TRUE(!expanded.empty());
 }
 
 TEST_F(SkillRunnerTest, ValidatorChainRuns) {
     registry.addTool(Tool{"extract_json", "extract", "cat", "stdin"});
-    registry.addSkill(Skill{"filter_skill", "desc", "prompt", {},
+    registry.addPrompt(Prompt{"filter_skill", "desc", "prompt", {},
         {ValidatorBinding{"extract_json", std::nullopt}}});
-    Skill s{"filter", "desc", "raw text", {}, {ValidatorBinding{"extract_json", std::nullopt}}};
-    json result = runner->runValidators(s, json("test data"));
+    Prompt p{"filter", "desc", "raw text", {}, {ValidatorBinding{"extract_json", std::nullopt}}};
+    json result = runner->runValidators(p, json("test data"));
     EXPECT_TRUE(result.is_string());
     EXPECT_EQ(result.get<std::string>(), "test data");
 }
 
 TEST_F(SkillRunnerTest, ExecuteWithValidators) {
     registry.addTool(Tool{"extract_json", "extract", "cat", "stdin"});
-    Skill s{"pipe", "desc",
+    Prompt p{"pipe", "desc",
         "prefix {{tool:list_files path=\"/tmp\"}}",
         {"list_files"}, {ValidatorBinding{"extract_json", std::nullopt}}};
-    json result = runner->execute(s, json::object());
+    json result = runner->execute(p, json::object());
     EXPECT_TRUE(result.is_string());
 }
 
 TEST_F(SkillRunnerTest, ParameterSubstitution) {
-    Skill s{"params", "desc", "Goal: {{goal}} and {{name}}", {}, {}};
+    Prompt p{"params", "desc", "Goal: {{goal}} and {{name}}", {}, {}};
     json params = {{"goal", "test"}, {"name", "agent"}};
-    std::string expanded = runner->expandPrompt(s, params);
+    std::string expanded = runner->expandPrompt(p, params);
     EXPECT_EQ(expanded, "Goal: test and agent");
 }
 
 TEST_F(SkillRunnerTest, ExecuteWithMissingDependency) {
-    Skill s{"broken", "desc", "prompt", {"nonexistent_tool"}, {}};
-    json result = runner->execute(s, json::object());
+    Prompt p{"broken", "desc", "prompt", {"nonexistent_tool"}, {}};
+    json result = runner->execute(p, json::object());
     ASSERT_TRUE(result.is_string());
     EXPECT_TRUE(result.get<std::string>().find("Missing dependencies") != std::string::npos);
 }
@@ -134,9 +134,9 @@ TEST_F(SkillRunnerTest, ExecuteWithMissingDependency) {
 TEST_F(SkillRunnerTest, ValidatorErrorPrefix) {
     registry.addTool(Tool{"fail_tool", "always fails",
         "sh -c 'echo \"ERROR: something wrong\"'", "stdin"});
-    Skill s{"test", "desc", "prompt", {},
+    Prompt p{"test", "desc", "prompt", {},
         {ValidatorBinding{"fail_tool", std::nullopt}}};
-    json result = runner->runValidators(s, json("input"));
+    json result = runner->runValidators(p, json("input"));
     ASSERT_TRUE(result.is_string());
     EXPECT_TRUE(result.get<std::string>().find("VALIDATOR_ERROR:") == 0);
 }

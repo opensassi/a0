@@ -9,7 +9,8 @@ namespace docker {
 class DockerToolRunnerImpl : public DockerToolRunner {
 public:
     DockerToolRunnerImpl(ContainerManager* containerManager,
-                         ComposeManager* composeManager);
+                         ComposeManager* composeManager,
+                         bool poolEnabled = true);
 
     json run(const Tool& tool, const json& params) override;
 
@@ -23,6 +24,7 @@ private:
 
     ContainerManager* m_containerManager;
     ComposeManager* m_composeManager;
+    bool m_poolEnabled;
 };
 
 } // namespace docker

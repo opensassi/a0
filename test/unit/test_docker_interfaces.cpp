@@ -34,12 +34,11 @@ TEST(DockerInterfaceTest, ToolDockerFieldsDefault) {
     Tool t;
     EXPECT_TRUE(t.dockerImage.empty());
     EXPECT_EQ(t.trustLevel, TrustLevel::MEDIUM);
-    EXPECT_TRUE(t.useContainerPool);
     EXPECT_TRUE(t.aptDependencies.empty());
 }
 
 TEST(DockerInterfaceTest, SkillDockerFieldsDefault) {
-    Skill s;
-    EXPECT_TRUE(s.composeFile.empty());
-    EXPECT_TRUE(s.aptDependencies.empty());
+    Prompt p;
+    EXPECT_TRUE(p.composeFile.empty());
+    EXPECT_TRUE(p.aptDependencies.empty());
 }

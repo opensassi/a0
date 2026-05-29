@@ -12,7 +12,7 @@ cleanup() {
         kill "$MOCK_PID" 2>/dev/null || true
         wait "$MOCK_PID" 2>/dev/null || true
     fi
-    rm -rf "${PROJECT_DIR}/test_e2e_components" "${PROJECT_DIR}/test_e2e_logs"
+    rm -rf "${PROJECT_DIR}/test_e2e_skills" "${PROJECT_DIR}/test_e2e_logs"
 }
 trap cleanup EXIT
 
@@ -39,12 +39,12 @@ A0="$BUILD_DIR/a0"
 
 run_agent() {
     local input="$1"
-    local components_dir="${PROJECT_DIR}/test_e2e_components"
+    local components_dir="${PROJECT_DIR}/test_e2e_skills"
     local logs_dir="${PROJECT_DIR}/test_e2e_logs"
     rm -rf "$components_dir" "$logs_dir" 2>/dev/null
     mkdir -p "$components_dir" "$logs_dir"
     echo "$input" | timeout 5 "$A0" \
-        --components-dir "$components_dir" \
+        --skills-dir "$components_dir" \
         --mock-api "$MOCK_URL" \
         2>/dev/null || true
 }
@@ -63,7 +63,7 @@ fi
 # E2E-02: Infer a tool
 echo ""
 echo "=== E2E-02: Goal triggers skill inference ==="
-COMPONENTS_DIR="${PROJECT_DIR}/test_e2e_components"
+COMPONENTS_DIR="${PROJECT_DIR}/test_e2e_skills"
 LOGS_DIR="${PROJECT_DIR}/test_e2e_logs"
 rm -rf "$COMPONENTS_DIR" "$LOGS_DIR"
 mkdir -p "$COMPONENTS_DIR" "$LOGS_DIR"
@@ -72,7 +72,7 @@ cat > "$COMPONENTS_DIR/bash.tool.json" <<'EOF'
 {"name":"bash","description":"bash","command":"bash","inputMode":"stdin"}
 EOF
 echo "count lines in file" | timeout 5 "$A0" \
-    --components-dir "$COMPONENTS_DIR" \
+    --skills-dir "$COMPONENTS_DIR" \
     --mock-api "$MOCK_URL" \
     2>/dev/null > /tmp/e2e_out.txt || true
 output=$(cat /tmp/e2e_out.txt)
@@ -87,7 +87,7 @@ fi
 echo ""
 echo "=== E2E-03: Components directory has new files ==="
 # run_agent already ran above, check for created skill files
-comp_count=$(ls "${PROJECT_DIR}/test_e2e_components"/*.skill.json 2>/dev/null | wc -l)
+comp_count=$(ls "${PROJECT_DIR}/test_e2e_skills"/*.skill.json 2>/dev/null | wc -l)
 if [ "$comp_count" -ge 0 ]; then
     echo "PASS: E2E-03 (${comp_count} skills created)"
 else
@@ -101,7 +101,7 @@ echo "=== E2E-04: Session log created ==="
 COMP4="${PROJECT_DIR}/test_e2e_logs_check"
 mkdir -p "$COMP4"
 echo "find files" | timeout 5 "$A0" \
-    --components-dir "$COMP4" \
+    --skills-dir "$COMP4" \
     --mock-api "$MOCK_URL" \
     2>/dev/null > /dev/null || true
 # logs are written to ./logs/ (default in main.cpp)
@@ -132,7 +132,7 @@ cat > "$N1_DIR/bad_skill.skill.json" <<'EOF'
 }
 EOF
 echo "bad_skill" | timeout 5 "$A0" \
-    --components-dir "$N1_DIR" \
+    --skills-dir "$N1_DIR" \
     --mock-api "$MOCK_URL" \
     2>/dev/null > /tmp/e2e_n1.out || true
 rm -rf "$N1_DIR"
@@ -168,7 +168,7 @@ cat > "$N2_DIR/sleep_skill.skill.json" <<'EOF'
 EOF
 start=$(date +%s)
 echo "sleep_skill" | timeout 40 "$A0" \
-    --components-dir "$N2_DIR" \
+    --skills-dir "$N2_DIR" \
     --mock-api "$MOCK_URL" \
     2>/tmp/e2e_n2_stderr.txt > /tmp/e2e_n2.out || true
 end=$(date +%s)
@@ -199,7 +199,7 @@ cat > "$N3_DIR/param_skill.skill.json" <<'EOF'
 }
 EOF
 echo "param_skill" | timeout 10 "$A0" \
-    --components-dir "$N3_DIR" \
+    --skills-dir "$N3_DIR" \
     --mock-api "$MOCK_URL" \
     2>/tmp/e2e_n3_stderr.txt > /tmp/e2e_n3_out.txt || true
 rm -rf "$N3_DIR"
@@ -235,7 +235,7 @@ cat > "$N4_DIR/args_skill.skill.json" <<'EOF'
 }
 EOF
 echo "args_skill" | timeout 5 "$A0" \
-    --components-dir "$N4_DIR" \
+    --skills-dir "$N4_DIR" \
     --mock-api "$MOCK_URL" \
     2>/tmp/e2e_n4_stderr.txt > /tmp/e2e_n4.out || true
 rm -rf "$N4_DIR"

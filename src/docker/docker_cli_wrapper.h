@@ -17,6 +17,8 @@ public:
                                         int timeoutSecs = 30);
     static void stopAndRemove(const std::string& containerId);
     static void pullImage(const std::string& image);
+    static std::string getContainerId(const std::string& name);
+    static void startContainer(const std::string& name);
     static void composeUp(const std::string& composeFile,
                           const std::string& projectDir);
     static void composeDown(const std::string& composeFile,

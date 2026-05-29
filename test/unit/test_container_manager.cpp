@@ -36,7 +36,6 @@ protected:
         t.command = "echo hello";
         t.dockerImage = "ubuntu:22.04";
         t.trustLevel = trust;
-        t.useContainerPool = true;
         return t;
     }
 };

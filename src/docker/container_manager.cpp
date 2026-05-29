@@ -34,6 +34,14 @@ std::string DockerContainerManager::createContainer(const std::string& poolKey,
     std::string image = tool.dockerImage.empty() ? m_defaultImage : tool.dockerImage;
     TRACE_LOG("Creating container poolKey=" << poolKey << " image=" << image);
 
+    // Check if container with this name already exists (from a previous session)
+    std::string existingId = DockerCLIWrapper::getContainerId(poolKey);
+    if (!existingId.empty()) {
+        TRACE_LOG("Reusing existing container: " << poolKey << " (" << existingId << ")");
+        DockerCLIWrapper::startContainer(poolKey);
+        return existingId;
+    }
+
     try {
         DockerCLIWrapper::pullImage(image);
     } catch (const std::exception& e) {

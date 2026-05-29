@@ -1,5 +1,5 @@
 #include "agent_core.h"
-#include "component_registry.h"
+#include "skill_registry.h"
 #include "context_manager.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
@@ -10,9 +10,15 @@
 #include "docker/container_manager.h"
 #include "docker/compose_manager.h"
 #include "docker/docker_tool_runner.h"
+#include "unix_socket.h"
+#include "ipc_protocol.h"
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <csignal>
+#include <unistd.h>
+#include <sys/types.h>
+#include <fcntl.h>
 
 static void loadEnvFile(const std::string& path) {
     std::ifstream file(path);
@@ -47,14 +53,31 @@ static std::string getFlag(int argc, char* argv[],
     return defaultVal;
 }
 
+static void killByPidFile(const std::string& path) {
+    std::ifstream f(path);
+    if (!f) return;
+    int pid;
+    f >> pid;
+    if (pid > 0) {
+        kill(pid, SIGTERM);
+        usleep(200000);
+        kill(pid, SIGKILL);
+    }
+    std::remove(path.c_str());
+}
+
+static std::string getC2PidPath() {
+    const char* xdg = std::getenv("XDG_RUNTIME_DIR");
+    return xdg ? std::string(xdg) + "/a0-c2.pid" : "/tmp/a0-c2.pid";
+}
+
 int main(int argc, char* argv[]) {
     std::string envFilePath = ".env";
-    std::string componentsDir = "./components";
+    std::string skillsDir = "./skills";
     std::string apiKey;
     std::string mockUrl;
     std::string resumeSessionId;
 
-    // first pass: find --env-file before env vars are needed
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--env-file" && i + 1 < argc) {
@@ -63,26 +86,45 @@ int main(int argc, char* argv[]) {
     }
     loadEnvFile(envFilePath);
 
-    // second pass: all other flags
+    std::string runPrompt;
+    std::string runSkillName;
+    std::string runParamsStr = "{}";
+    bool noB1 = false;
+    bool noContainerPool = false;
+    bool killAll = false;
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--env-file" && i + 1 < argc) {
-            ++i; // already consumed
-        } else if (arg == "--components-dir" && i + 1 < argc)
-            componentsDir = argv[++i];
+            ++i;
+        } else if (arg == "--skills-dir" && i + 1 < argc)
+            skillsDir = argv[++i];
         else if (arg == "--api-key" && i + 1 < argc)
             apiKey = argv[++i];
         else if (arg == "--mock-api" && i + 1 < argc)
             mockUrl = argv[++i];
         else if (arg == "--resume" && i + 1 < argc)
             resumeSessionId = argv[++i];
+        else if (arg == "--run" && i + 1 < argc)
+            runPrompt = argv[++i];
+        else if (arg == "--prompt" && i + 1 < argc)
+            runParamsStr = json{{"prompt", std::string(argv[++i])}}.dump();
+        else if (arg == "--params" && i + 1 < argc)
+            runParamsStr = argv[++i];
+        else if (arg == "--skill" && i + 1 < argc)
+            runSkillName = argv[++i];
+        else if (arg == "--no-b1")
+            noB1 = true;
+        else if (arg == "--no-container-pool")
+            noContainerPool = true;
+        else if (arg == "--kill-all")
+            killAll = true;
     }
 
     if (apiKey.empty()) {
         const char* envKey = std::getenv("DEEPSEEK_API_KEY");
         if (envKey) apiKey = envKey;
     }
-
     if (apiKey.empty()) {
         const char* home = std::getenv("HOME");
         if (home) {
@@ -92,7 +134,17 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    FileSystemComponentRegistry registry;
+    if (killAll) {
+        std::string workdir = skillsDir.substr(0, skillsDir.find("/skills"));
+        if (workdir.empty()) workdir = ".";
+        killByPidFile(workdir + "/.a0/b1.pid");
+        killByPidFile(getC2PidPath());
+        a0::ipc::UnixSocket::unlinkPath(workdir + "/.a0/b1.sock");
+        a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
+        return 0;
+    }
+
+    FileSystemSkillRegistry registry;
     SubprocessToolRunner toolRunner;
     DeepSeekProvider provider(apiKey);
     if (!mockUrl.empty())
@@ -103,7 +155,6 @@ int main(int argc, char* argv[]) {
     DefaultDependencyResolver depResolver(&registry);
     DefaultSchemaInferenceEngine inferenceEngine(&provider);
 
-    // Docker initialization
     a0::docker::DockerContainerManager* containerMgr = nullptr;
     a0::docker::DockerComposeManager* composeMgr = nullptr;
     a0::docker::DockerToolRunnerImpl* dockerRunner = nullptr;
@@ -123,12 +174,12 @@ int main(int argc, char* argv[]) {
 
         containerMgr = new a0::docker::DockerContainerManager(idleTimeout, maxIdle, defaultImage);
         composeMgr = new a0::docker::DockerComposeManager(idleTimeout);
-        dockerRunner = new a0::docker::DockerToolRunnerImpl(containerMgr, composeMgr);
+        dockerRunner = new a0::docker::DockerToolRunnerImpl(containerMgr, composeMgr, !noContainerPool);
     }
 
     DefaultSkillRunner skillRunner(&toolRunner, &provider, &registry, &depResolver,
                                     dockerRunner, composeMgr);
-    skillRunner.setComponentsDir(componentsDir);
+    skillRunner.setSkillsDir(skillsDir);
 
     DefaultAgentCore core(&registry, &toolRunner, &skillRunner,
                           &provider, &context, &logger,
@@ -139,12 +190,96 @@ int main(int argc, char* argv[]) {
         core.resumeSession(resumeSessionId);
     }
 
-    if (!core.init(componentsDir)) {
-        std::cerr << "Failed to initialize components from: " << componentsDir << std::endl;
+    if (!core.init(skillsDir)) {
+        std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
         return 1;
     }
 
+    // ---- b1 auto-launch ----
+    int b1Fd = -1;
+    if (!noB1 && runPrompt.empty() && runSkillName.empty()) {
+        std::string cwd = ".";
+        std::string b1SockPath = cwd + "/.a0/b1.sock";
+        std::string b1PidPath = cwd + "/.a0/b1.pid";
+
+        int existingPid = -1;
+        std::ifstream pf(b1PidPath);
+        if (pf) pf >> existingPid;
+        bool alive = (existingPid > 0 && kill(existingPid, 0) == 0);
+
+        if (!alive) {
+            std::remove(b1SockPath.c_str());
+            pid_t pid = fork();
+            if (pid == 0) {
+                execlp("b1", "b1", "--workdir", cwd.c_str(), nullptr);
+                _exit(127);
+            }
+            for (int i = 0; i < 50; ++i) {
+                if (access(b1SockPath.c_str(), F_OK) == 0) break;
+                usleep(100000);
+            }
+        }
+
+        a0::ipc::UnixSocket sock;
+        if (sock.connect(b1SockPath, 2000) == 0) {
+            a0::ipc::Message reg;
+            reg.type = a0::ipc::MessageType::REGISTER;
+            reg.pid = getpid();
+            reg.sessionUuid = core.currentSessionId();
+            if (a0::ipc::sendMessage(sock, reg) == 0) {
+                b1Fd = sock.release();
+                std::cerr << "a0: registered with b1" << std::endl;
+            }
+        }
+    }
+
+    // ---- --run mode (non-interactive) ----
+    if (!runPrompt.empty() || !runSkillName.empty()) {
+        json params;
+        try { params = json::parse(runParamsStr); } catch (...) { params = json::object(); }
+        if (!params.contains("prompt") && !runPrompt.empty()) {
+            params["prompt"] = runPrompt;
+        }
+
+        std::string skillName = runSkillName;
+        if (skillName.empty()) {
+            for (const auto& name : registry.listPrompts()) {
+                if (runPrompt == name) {
+                    skillName = name;
+                    break;
+                }
+            }
+        }
+
+        json result;
+        if (!skillName.empty()) {
+            result = core.runSkill(skillName, params);
+        } else {
+            result = core.processGoal(runPrompt);
+        }
+        std::cout << result.dump() << std::endl;
+
+        if (killAll) {
+            std::string cwd = ".";
+            killByPidFile(cwd + "/.a0/b1.pid");
+            killByPidFile(getC2PidPath());
+            a0::ipc::UnixSocket::unlinkPath(cwd + "/.a0/b1.sock");
+        }
+        delete dockerRunner;
+        delete composeMgr;
+        delete containerMgr;
+        return 0;
+    }
+
+    // ---- interactive REPL ----
     core.run();
+
+    if (killAll) {
+        std::string cwd = ".";
+        killByPidFile(cwd + "/.a0/b1.pid");
+        killByPidFile(getC2PidPath());
+        a0::ipc::UnixSocket::unlinkPath(cwd + "/.a0/b1.sock");
+    }
 
     delete dockerRunner;
     delete composeMgr;

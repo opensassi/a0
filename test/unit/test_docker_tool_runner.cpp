@@ -38,14 +38,12 @@ protected:
 
     Tool makeDockerTool(const std::string& name,
                          const std::string& command = "echo hello",
-                         const std::string& inputMode = "stdin",
-                         bool usePool = true) {
+                         const std::string& inputMode = "stdin") {
         Tool t;
         t.name = name;
         t.command = command;
         t.inputMode = inputMode;
         t.dockerImage = "ubuntu:22.04";
-        t.useContainerPool = usePool;
         return t;
     }
 };
@@ -90,26 +88,27 @@ TEST_F(DockerToolRunnerTest, RunArgsModeWithNamed) {
 }
 
 TEST_F(DockerToolRunnerTest, RunEphemeralMode) {
-    Tool t = makeDockerTool("ephem_test", "echo ephemeral", "stdin", false);
-    json result = runner->run(t, json::object());
+    Tool t = makeDockerTool("ephem_test", "echo ephemeral", "stdin");
+    a0::docker::DockerToolRunnerImpl ephemRunner(cm, compMgr, false);
+    json result = ephemRunner.run(t, json::object());
     ASSERT_TRUE(result.is_string());
 }
 
 TEST_F(DockerToolRunnerTest, RunWithComposeNetwork) {
     // Simulate a compose environment
-    Skill skill;
-    skill.name = "compose_skill";
-    skill.composeFile = "docker-compose.yml";
+    Prompt prompt;
+    prompt.name = "compose_skill";
+    prompt.composeFile = "docker-compose.yml";
 
-    compMgr->startEnvironment(skill, "/tmp/compose_proj");
-    compMgr->setCurrentSkill(skill);
+    compMgr->startEnvironment(prompt, "/tmp/compose_proj");
+    compMgr->setCurrentPrompt(prompt);
 
     Tool t = makeDockerTool("net_test", "echo networked");
     json result = runner->run(t, json::object());
     ASSERT_TRUE(result.is_string());
 
-    compMgr->clearCurrentSkill();
-    compMgr->stopEnvironment(skill);
+    compMgr->clearCurrentPrompt();
+    compMgr->stopEnvironment(prompt);
 }
 
 TEST_F(DockerToolRunnerTest, RunWithObjectParams) {

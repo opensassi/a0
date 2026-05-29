@@ -2,21 +2,18 @@
 #include "trace.h"
 #include <regex>
 #include <sstream>
+#include <iostream>
 
-static json parsePlaceholderArgs(const std::string& argsStr) {
-    json args = json::object();
-    std::regex argRe(R"((\w+)=["']([^"']*)["'])");
-    auto begin = std::sregex_iterator(argsStr.begin(), argsStr.end(), argRe);
-    auto end = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) {
-        args[(*it)[1].str()] = (*it)[2].str();
+static ToolRunner* selectRunner(const Tool& tool, ToolRunner* host, DockerToolRunner* docker) {
+    if (!tool.dockerImage.empty() && docker) {
+        return docker;
     }
-    return args;
+    return host;
 }
 
 DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
                                         InferenceProvider* provider,
-                                        ComponentRegistry* registry,
+                                        SkillRegistry* registry,
                                         DependencyResolver* depResolver,
                                         DockerToolRunner* dockerRunner,
                                         ComposeManager* composeMgr)
@@ -25,84 +22,83 @@ DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
     , m_composeMgr(composeMgr)
     , m_provider(provider)
     , m_registry(registry)
-    , m_depResolver(depResolver) {}
-
-void DefaultSkillRunner::setComponentsDir(const std::string& path) {
-    m_componentsDir = path;
+    , m_depResolver(depResolver)
+{
 }
 
-static ToolRunner* selectRunner(const Tool& tool,
-                                 ToolRunner* host,
-                                 DockerToolRunner* docker) {
-    if (!tool.dockerImage.empty() && docker) {
-        return docker;
-    }
-    return host;
+void DefaultSkillRunner::setSkillsDir(const std::string& path) {
+    m_skillsDir = path;
 }
 
-std::string DefaultSkillRunner::expandPrompt(const Skill& skill, const json& params) {
-    TRACE_LOG("expandPrompt(" << skill.name << ")");
-    std::string result = skill.prompt;
-    std::regex simplePlaceholder(R"(\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\})");
-    std::string substituted;
-    auto begin = std::sregex_iterator(result.begin(), result.end(), simplePlaceholder);
-    auto end = std::sregex_iterator();
-    size_t lastPos = 0;
-    for (auto it = begin; it != end; ++it) {
-        substituted += result.substr(lastPos, it->position() - lastPos);
-        std::string key = (*it)[1].str();
-        if (params.contains(key)) {
-            const json& value = params[key];
-            if (value.is_string()) {
-                substituted += value.get<std::string>();
-            } else {
-                substituted += value.dump();
-            }
+std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& params) {
+    TRACE_LOG("expandPrompt(" << prompt.name << ")");
+    std::string result = prompt.prompt;
+
+    // Pass 1: replace {{key}} simple placeholders
+    for (auto it = params.begin(); it != params.end(); ++it) {
+        std::string key = "{{" + it.key() + "}}";
+        std::string val;
+        if (it->is_string()) {
+            val = it->get<std::string>();
         } else {
-            substituted += it->str();
+            val = it->dump();
         }
-        lastPos = it->position() + it->length();
-    }
-    substituted += result.substr(lastPos);
-    result = substituted;
-    std::regex placeholderRe(R"(\{\{tool:(\w+)([^}]*)\}\})");
-    std::string output;
-    auto toolBegin = std::sregex_iterator(result.begin(), result.end(), placeholderRe);
-    auto toolEnd = std::sregex_iterator();
-    size_t toolLastPos = 0;
 
-    for (auto it = toolBegin; it != toolEnd; ++it) {
-        output += result.substr(toolLastPos, it->position() - toolLastPos);
-        std::string toolName = (*it)[1].str();
-        std::string argsStr = (*it)[2].str();
-        json toolArgs = parsePlaceholderArgs(argsStr);
+        size_t pos = 0;
+        while ((pos = result.find(key, pos)) != std::string::npos) {
+            result.replace(pos, key.length(), val);
+            pos += val.length();
+        }
+    }
+
+    // Pass 2: replace {{tool:name key="value" ...}} eager tool calls
+    std::regex toolRe(R"(\{\{tool:(\w+)\s+([^}]+)\}\})");
+    std::smatch match;
+    while (std::regex_search(result, match, toolRe)) {
+        std::string toolName = match[1];
+        std::string argsStr = match[2];
+
+        // Parse key="value" pairs
+        json toolParams;
+        std::regex argRe(R"((\w+)=["']([^"']*)["'])");
+        std::smatch argMatch;
+        std::string::const_iterator searchStart = argsStr.cbegin();
+        while (std::regex_search(searchStart, argsStr.cend(), argMatch, argRe)) {
+            toolParams[argMatch[1]] = argMatch[2];
+            searchStart = argMatch.suffix().first;
+        }
 
         auto toolOpt = m_registry->getTool(toolName);
-        if (toolOpt.has_value()) {
-            ToolRunner* runner = selectRunner(*toolOpt, m_toolRunner, m_dockerRunner);
-            json toolResult = runner->run(*toolOpt, toolArgs);
-            if (toolResult.is_string()) {
-                output += toolResult.get<std::string>();
-            } else {
-                output += toolResult.dump();
-            }
-        } else {
-            output += it->str();
+        if (!toolOpt.has_value()) {
+            result.replace(match.position(), match.length(), "ERROR: tool not found: " + toolName);
+            continue;
         }
 
-        toolLastPos = it->position() + it->length();
+        ToolRunner* runner = selectRunner(*toolOpt, m_toolRunner, m_dockerRunner);
+        json toolResult = runner->run(*toolOpt, toolParams);
+
+        std::string replacement;
+        if (toolResult.is_string()) {
+            replacement = toolResult.get<std::string>();
+        } else {
+            replacement = toolResult.dump();
+        }
+
+        result.replace(match.position(), match.length(), replacement);
     }
-    output += result.substr(toolLastPos);
-    TRACE_LOG("expandPrompt result=" << output);
-    return output;
+
+    return result;
 }
 
-json DefaultSkillRunner::runValidators(const Skill& skill, const json& input) {
-    TRACE_LOG("runValidators(" << skill.name << ")");
+json DefaultSkillRunner::runValidators(const Prompt& prompt, const json& input) {
+    TRACE_LOG("runValidators(" << prompt.name << ")");
     json current = input;
-    for (const auto& vb : skill.validators) {
+    for (const auto& vb : prompt.validators) {
         auto toolOpt = m_registry->getTool(vb.toolName);
-        if (!toolOpt.has_value()) continue;
+        if (!toolOpt.has_value()) {
+            current = "VALIDATOR_ERROR: tool not found: " + vb.toolName;
+            break;
+        }
 
         json params;
         if (current.is_string()) {
@@ -110,49 +106,48 @@ json DefaultSkillRunner::runValidators(const Skill& skill, const json& input) {
         } else {
             params["input"] = current.dump();
         }
+
         ToolRunner* runner = selectRunner(*toolOpt, m_toolRunner, m_dockerRunner);
-        current = runner->run(*toolOpt, params);
-        if (current.is_string()) {
-            std::string strResult = current.get<std::string>();
-            if (strResult.rfind("ERROR:", 0) == 0) {
-                return "VALIDATOR_ERROR: " + strResult;
+        json validatorResult = runner->run(*toolOpt, params);
+
+        if (validatorResult.is_string()) {
+            std::string out = validatorResult.get<std::string>();
+            if (out.find("ERROR:") == 0) {
+                current = "VALIDATOR_ERROR: " + out;
+                break;
             }
         }
+        current = validatorResult;
     }
     return current;
 }
 
-json DefaultSkillRunner::execute(const Skill& skill, const json& params) {
-    TRACE_LOG("execute(" << skill.name << ")");
-    if (m_depResolver) {
-        auto missing = m_depResolver->missingDependencies(skill);
-        if (!missing.empty()) {
-            std::string err = "Missing dependencies: ";
-            for (size_t i = 0; i < missing.size(); ++i) {
-                if (i > 0) err += ", ";
-                err += missing[i];
-            }
-            return err;
+json DefaultSkillRunner::execute(const Prompt& prompt, const json& params) {
+    TRACE_LOG("execute(" << prompt.name << ")");
+    auto missing = m_depResolver->missingDependencies(prompt);
+    if (!missing.empty()) {
+        std::string err = "Missing dependencies: ";
+        for (size_t i = 0; i < missing.size(); ++i) {
+            if (i > 0) err += ", ";
+            err += missing[i];
         }
+        return json(err);
     }
 
-    bool hasCompose = !skill.composeFile.empty() && m_composeMgr;
-    if (hasCompose) {
-        m_composeMgr->startEnvironment(skill, m_componentsDir);
-        m_composeMgr->setCurrentSkill(skill);
+    // Start compose environment if needed
+    if (!prompt.composeFile.empty() && m_composeMgr) {
+        m_composeMgr->startEnvironment(prompt, m_skillsDir);
     }
 
-    std::string expanded = expandPrompt(skill, params);
-    std::string llmResponse = m_provider->complete(skill.description, expanded);
-    json result = llmResponse;
-    if (!skill.validators.empty()) {
-        result = runValidators(skill, result);
+    std::string expanded = expandPrompt(prompt, params);
+    std::string llmResult = m_provider->complete(prompt.description, expanded);
+
+    json finalResult = runValidators(prompt, llmResult);
+
+    // Stop compose if needed
+    if (!prompt.composeFile.empty() && m_composeMgr) {
+        m_composeMgr->stopEnvironment(prompt);
     }
 
-    if (hasCompose) {
-        m_composeMgr->clearCurrentSkill();
-        m_composeMgr->markUsed(skill);
-    }
-
-    return result;
+    return finalResult;
 }

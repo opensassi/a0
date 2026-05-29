@@ -62,8 +62,8 @@ Tool DefaultSchemaInferenceEngine::inferTool(const std::string& naturalLanguageD
     return t;
 }
 
-Skill DefaultSchemaInferenceEngine::inferSkill(const std::string& naturalLanguageDescription) {
-    TRACE_LOG("inferSkill(" << naturalLanguageDescription << ")");
+Prompt DefaultSchemaInferenceEngine::inferPrompt(const std::string& naturalLanguageDescription) {
+    TRACE_LOG("inferPrompt(" << naturalLanguageDescription << ")");
     std::string response = m_provider->complete(SKILL_INFERENCE_PROMPT, naturalLanguageDescription);
     if (response.empty()) {
         throw std::runtime_error("empty response from inference provider");
@@ -80,17 +80,17 @@ Skill DefaultSchemaInferenceEngine::inferSkill(const std::string& naturalLanguag
     fillDefaults(j, "name");
     fillDefaults(j, "prompt");
 
-    Skill s;
-    s.name = j.value("name", "inferred");
-    s.description = j.value("description", "");
-    s.prompt = j.value("prompt", "");
+    Prompt p;
+    p.name = j.value("name", "inferred");
+    p.description = j.value("description", "");
+    p.prompt = j.value("prompt", "");
     for (const auto& dep : j["dependencies"]) {
-        s.dependencies.push_back(dep.get<std::string>());
+        p.dependencies.push_back(dep.get<std::string>());
     }
     for (const auto& v : j["validators"]) {
         ValidatorBinding vb;
         vb.toolName = v.value("toolName", "");
-        s.validators.push_back(std::move(vb));
+        p.validators.push_back(std::move(vb));
     }
-    return s;
+    return p;
 }

@@ -27,9 +27,11 @@ static std::string execDockerRun(const std::string& image,
 
 DockerToolRunnerImpl::DockerToolRunnerImpl(
     ContainerManager* containerManager,
-    ComposeManager* composeManager)
+    ComposeManager* composeManager,
+    bool poolEnabled)
     : m_containerManager(containerManager)
-    , m_composeManager(composeManager) {}
+    , m_composeManager(composeManager)
+    , m_poolEnabled(poolEnabled) {}
 
 std::string DockerToolRunnerImpl::buildCommand(
     const Tool& tool,
@@ -106,7 +108,7 @@ json DockerToolRunnerImpl::run(const Tool& tool, const json& params)
     std::string stdinData;
     std::string command = buildCommand(tool, params, stdinData);
 
-    if (tool.useContainerPool) {
+    if (m_poolEnabled) {
         std::string containerId = m_containerManager->acquireContainer(tool);
 
         std::string networkFlag;

@@ -57,6 +57,22 @@ void DockerCLIWrapper::stopAndRemove(const std::string& containerId)
     try { execSimple("docker rm " + containerId + " 2>/dev/null"); } catch (...) {}
 }
 
+std::string DockerCLIWrapper::getContainerId(const std::string& name) {
+    try {
+        std::string cmd = "docker ps -aq --filter name=^/" + name + "$";
+        std::string result = execSimple(cmd);
+        return result;
+    } catch (...) {
+        return "";
+    }
+}
+
+void DockerCLIWrapper::startContainer(const std::string& name) {
+    try {
+        execSimple("docker start " + name + " 2>/dev/null");
+    } catch (...) {}
+}
+
 void DockerCLIWrapper::pullImage(const std::string& image)
 {
     execSimple("docker pull " + image);

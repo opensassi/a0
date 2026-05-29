@@ -4,7 +4,7 @@
 
 class DefaultAgentCore : public AgentCore {
 public:
-    DefaultAgentCore(ComponentRegistry* registry,
+    DefaultAgentCore(SkillRegistry* registry,
                      ToolRunner* toolRunner,
                      SkillRunner* skillRunner,
                      InferenceProvider* provider,
@@ -15,14 +15,15 @@ public:
                      DockerToolRunner* dockerRunner = nullptr,
                      ComposeManager* composeMgr = nullptr);
 
-    bool init(const std::string& componentsDir) override;
+    bool init(const std::string& skillsDir) override;
     json processGoal(const std::string& goal) override;
+    json runSkill(const std::string& skillName, const json& params);
     bool resumeSession(const std::string& sessionId) override;
     std::string currentSessionId() const override;
     void run() override;
 
 private:
-    ComponentRegistry* m_registry;
+    SkillRegistry* m_registry;
     ToolRunner* m_toolRunner;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;

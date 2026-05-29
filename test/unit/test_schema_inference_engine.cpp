@@ -47,7 +47,7 @@ TEST_F(SchemaInferenceTest, InferToolNameMatchesResponse) {
     EXPECT_FALSE(t.command.empty());
 }
 
-TEST_F(SchemaInferenceTest, InferSkillReturnsSkill) {
+TEST_F(SchemaInferenceTest, InferPromptReturnsPrompt) {
     provider->response = R"({
         "name": "file_finder",
         "description": "finds files",
@@ -55,9 +55,9 @@ TEST_F(SchemaInferenceTest, InferSkillReturnsSkill) {
         "dependencies": ["bash"],
         "validators": []
     })";
-    Skill s = engine->inferSkill("find files matching a pattern");
-    EXPECT_EQ(s.name, "file_finder");
-    EXPECT_EQ(s.prompt, "search for files");
+    Prompt p = engine->inferPrompt("find files matching a pattern");
+    EXPECT_EQ(p.name, "file_finder");
+    EXPECT_EQ(p.prompt, "search for files");
 }
 
 TEST_F(SchemaInferenceTest, InferSkillDependenciesParsed) {
@@ -68,10 +68,10 @@ TEST_F(SchemaInferenceTest, InferSkillDependenciesParsed) {
         "dependencies": ["bash", "grep"],
         "validators": [{"toolName": "extract_json"}]
     })";
-    Skill s = engine->inferSkill("process some data");
-    ASSERT_EQ(s.dependencies.size(), 2u);
-    EXPECT_EQ(s.dependencies[0], "bash");
-    EXPECT_EQ(s.dependencies[1], "grep");
+    Prompt p2 = engine->inferPrompt("process some data");
+    ASSERT_EQ(p2.dependencies.size(), 2u);
+    EXPECT_EQ(p2.dependencies[0], "bash");
+    EXPECT_EQ(p2.dependencies[1], "grep");
 }
 
 TEST_F(SchemaInferenceTest, InvalidJsonResponse) {

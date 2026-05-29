@@ -20,43 +20,39 @@ struct Tool {
     std::string name;
     std::string description;
     std::string command;
-    // "stdin" = pipe input via stdin, "args" = pass as CLI arguments
     std::string inputMode = "stdin";
 
-    // Docker execution (optional – if dockerImage empty, run on host)
     std::string dockerImage;
     TrustLevel trustLevel = TrustLevel::MEDIUM;
-    bool useContainerPool = true;
     std::vector<std::string> aptDependencies;
 };
 
 struct ValidatorBinding {
     std::string toolName;
-    std::optional<std::string> transform; // future: JSONPath binding
+    std::optional<std::string> transform;
 };
 
-struct Skill {
+struct Prompt {
     std::string name;
     std::string description;
     std::string prompt;
-    std::vector<std::string> dependencies;    // tool and skill names required
-    std::vector<ValidatorBinding> validators; // post-LLM processing chain
+    std::vector<std::string> dependencies;
+    std::vector<ValidatorBinding> validators;
 
-    // Docker compose support
     std::string composeFile;
     std::vector<std::string> aptDependencies;
 };
 
-class ComponentRegistry {
+class SkillRegistry {
 public:
-    virtual ~ComponentRegistry() = default;
+    virtual ~SkillRegistry() = default;
     virtual bool loadFromDirectory(const std::string& path) = 0;
     virtual std::optional<Tool> getTool(const std::string& name) const = 0;
-    virtual std::optional<Skill> getSkill(const std::string& name) const = 0;
+    virtual std::optional<Prompt> getPrompt(const std::string& name) const = 0;
     virtual std::vector<std::string> listTools() const = 0;
-    virtual std::vector<std::string> listSkills() const = 0;
+    virtual std::vector<std::string> listPrompts() const = 0;
     virtual bool addTool(const Tool& tool) = 0;
-    virtual bool addSkill(const Skill& skill) = 0;
+    virtual bool addPrompt(const Prompt& prompt) = 0;
 };
 
 class ToolRunner {
@@ -109,29 +105,29 @@ class DependencyResolver {
 public:
     virtual ~DependencyResolver() = default;
     virtual bool checkToolDependencies(const Tool& tool) const = 0;
-    virtual bool checkSkillDependencies(const Skill& skill) const = 0;
-    virtual std::vector<std::string> missingDependencies(const Skill& skill) const = 0;
+    virtual bool checkPromptDependencies(const Prompt& prompt) const = 0;
+    virtual std::vector<std::string> missingDependencies(const Prompt& prompt) const = 0;
 };
 
 class SkillRunner {
 public:
     virtual ~SkillRunner() = default;
-    virtual std::string expandPrompt(const Skill& skill, const json& params) = 0;
-    virtual json runValidators(const Skill& skill, const json& input) = 0;
-    virtual json execute(const Skill& skill, const json& params) = 0;
+    virtual std::string expandPrompt(const Prompt& prompt, const json& params) = 0;
+    virtual json runValidators(const Prompt& prompt, const json& input) = 0;
+    virtual json execute(const Prompt& prompt, const json& params) = 0;
 };
 
 class SchemaInferenceEngine {
 public:
     virtual ~SchemaInferenceEngine() = default;
     virtual Tool inferTool(const std::string& naturalLanguageDescription) = 0;
-    virtual Skill inferSkill(const std::string& naturalLanguageDescription) = 0;
+    virtual Prompt inferPrompt(const std::string& naturalLanguageDescription) = 0;
 };
 
 class AgentCore {
 public:
     virtual ~AgentCore() = default;
-    virtual bool init(const std::string& componentsDir) = 0;
+    virtual bool init(const std::string& skillsDir) = 0;
     virtual json processGoal(const std::string& goal) = 0;
     virtual bool resumeSession(const std::string& sessionId) = 0;
     virtual std::string currentSessionId() const = 0;
@@ -153,13 +149,12 @@ public:
 class ComposeManager {
 public:
     virtual ~ComposeManager() = default;
-    virtual std::string startEnvironment(const Skill& skill,
-                                         const std::string& skillDirectory) = 0;
-    virtual void stopEnvironment(const Skill& skill) = 0;
-    virtual void markUsed(const Skill& skill) = 0;
-    virtual void setCurrentSkill(const Skill& skill) = 0;
+    virtual std::string startEnvironment(const Prompt& prompt, const std::string& skillDirectory) = 0;
+    virtual void stopEnvironment(const Prompt& prompt) = 0;
+    virtual void markUsed(const Prompt& prompt) = 0;
+    virtual void setCurrentPrompt(const Prompt& prompt) = 0;
     virtual std::string getCurrentNetwork() const = 0;
-    virtual void clearCurrentSkill() = 0;
+    virtual void clearCurrentPrompt() = 0;
 };
 
 class DockerToolRunner : public ToolRunner {

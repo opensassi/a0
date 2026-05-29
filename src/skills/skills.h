@@ -38,7 +38,6 @@ struct SkillTool {
     ToolSchema schema;
     std::string dockerImage;
     TrustLevel trustLevel = TrustLevel::MEDIUM;
-    bool useContainerPool = true;
     std::vector<std::string> aptDependencies;
 };
 
