@@ -1,0 +1,4 @@
+#!/bin/bash
+# Mock docker-compose CLI for unit testing
+# Consumes all arguments, no output needed
+exit 0

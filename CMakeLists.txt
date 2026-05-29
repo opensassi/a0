@@ -22,7 +22,10 @@ set(LIB_SOURCES
 
 add_library(a0_lib STATIC ${LIB_SOURCES})
 target_include_directories(a0_lib PUBLIC src)
-target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json)
+
+add_subdirectory(src/docker)
+
+target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib)
 
 add_executable(a0 src/main.cpp)
 target_link_libraries(a0 PRIVATE a0_lib)
@@ -60,3 +63,21 @@ add_agent_test(test_context_manager test/unit/test_context_manager.cpp)
 add_agent_test(test_deepseek_provider test/unit/test_deepseek_provider.cpp)
 add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
 add_agent_test(test_interfaces test/unit/test_interfaces.cpp)
+
+add_agent_test(test_docker_interfaces test/unit/test_docker_interfaces.cpp)
+
+add_agent_test(test_container_manager test/unit/test_container_manager.cpp)
+target_compile_definitions(test_container_manager PRIVATE
+    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
+
+add_agent_test(test_dependency_installer test/unit/test_dependency_installer.cpp)
+target_compile_definitions(test_dependency_installer PRIVATE
+    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
+
+add_agent_test(test_compose_manager test/unit/test_compose_manager.cpp)
+target_compile_definitions(test_compose_manager PRIVATE
+    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
+
+add_agent_test(test_docker_tool_runner test/unit/test_docker_tool_runner.cpp)
+target_compile_definitions(test_docker_tool_runner PRIVATE
+    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")

@@ -6,15 +6,19 @@
 #include <stdexcept>
 
 DefaultAgentCore::DefaultAgentCore(ComponentRegistry* registry,
-                                   ToolRunner* toolRunner,
-                                   SkillRunner* skillRunner,
-                                   InferenceProvider* provider,
-                                   ContextManager* context,
-                                   InvocationLogger* logger,
-                                   DependencyResolver* depResolver,
-                                   SchemaInferenceEngine* inferenceEngine)
+                                    ToolRunner* toolRunner,
+                                    SkillRunner* skillRunner,
+                                    InferenceProvider* provider,
+                                    ContextManager* context,
+                                    InvocationLogger* logger,
+                                    DependencyResolver* depResolver,
+                                    SchemaInferenceEngine* inferenceEngine,
+                                    DockerToolRunner* dockerRunner,
+                                    ComposeManager* composeMgr)
     : m_registry(registry)
     , m_toolRunner(toolRunner)
+    , m_dockerRunner(dockerRunner)
+    , m_composeMgr(composeMgr)
     , m_skillRunner(skillRunner)
     , m_provider(provider)
     , m_context(context)

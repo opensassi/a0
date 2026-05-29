@@ -1,0 +1,46 @@
+#!/bin/bash
+# Mock docker CLI for unit testing
+
+case "$1" in
+    run)
+        if [ "$2" = "-d" ]; then
+            echo "cid_${4:-unknown}"
+            exit 0
+        elif [ "$2" = "--rm" ]; then
+            shift 2
+            [ "$1" = "-i" ] && shift
+            while [ $# -gt 0 ]; do
+                if [ "$1" = "sh" ] && [ "$2" = "-c" ]; then
+                    shift 2
+                    cat 2>/dev/null | sh -c "$*" || true
+                    exit 0
+                fi
+                shift
+            done
+            cat > /dev/null 2>/dev/null
+            exit 0
+        fi
+        ;;
+    exec)
+        # Find "sh -c" somewhere in the args and execute the rest
+        while [ $# -gt 0 ]; do
+            if [ "$1" = "sh" ] && [ "$2" = "-c" ]; then
+                shift 2
+                cat 2>/dev/null | sh -c "$*" || true
+                exit $?
+            fi
+            shift
+        done
+        cat 2>/dev/null || true
+        exit 0
+        ;;
+    stop|rm|pull)
+        exit 0
+        ;;
+    network)
+        exit 0
+        ;;
+esac
+
+echo "UNEXPECTED_DOCKER_CALL: $*" >&2
+exit 1

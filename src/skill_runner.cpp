@@ -15,13 +15,30 @@ static json parsePlaceholderArgs(const std::string& argsStr) {
 }
 
 DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
-                                       InferenceProvider* provider,
-                                       ComponentRegistry* registry,
-                                       DependencyResolver* depResolver)
+                                        InferenceProvider* provider,
+                                        ComponentRegistry* registry,
+                                        DependencyResolver* depResolver,
+                                        DockerToolRunner* dockerRunner,
+                                        ComposeManager* composeMgr)
     : m_toolRunner(toolRunner)
+    , m_dockerRunner(dockerRunner)
+    , m_composeMgr(composeMgr)
     , m_provider(provider)
     , m_registry(registry)
     , m_depResolver(depResolver) {}
+
+void DefaultSkillRunner::setComponentsDir(const std::string& path) {
+    m_componentsDir = path;
+}
+
+static ToolRunner* selectRunner(const Tool& tool,
+                                 ToolRunner* host,
+                                 DockerToolRunner* docker) {
+    if (!tool.dockerImage.empty() && docker) {
+        return docker;
+    }
+    return host;
+}
 
 std::string DefaultSkillRunner::expandPrompt(const Skill& skill, const json& params) {
     TRACE_LOG("expandPrompt(" << skill.name << ")");
@@ -62,7 +79,8 @@ std::string DefaultSkillRunner::expandPrompt(const Skill& skill, const json& par
 
         auto toolOpt = m_registry->getTool(toolName);
         if (toolOpt.has_value()) {
-            json toolResult = m_toolRunner->run(*toolOpt, toolArgs);
+            ToolRunner* runner = selectRunner(*toolOpt, m_toolRunner, m_dockerRunner);
+            json toolResult = runner->run(*toolOpt, toolArgs);
             if (toolResult.is_string()) {
                 output += toolResult.get<std::string>();
             } else {
@@ -92,7 +110,8 @@ json DefaultSkillRunner::runValidators(const Skill& skill, const json& input) {
         } else {
             params["input"] = current.dump();
         }
-        current = m_toolRunner->run(*toolOpt, params);
+        ToolRunner* runner = selectRunner(*toolOpt, m_toolRunner, m_dockerRunner);
+        current = runner->run(*toolOpt, params);
         if (current.is_string()) {
             std::string strResult = current.get<std::string>();
             if (strResult.rfind("ERROR:", 0) == 0) {
@@ -116,11 +135,24 @@ json DefaultSkillRunner::execute(const Skill& skill, const json& params) {
             return err;
         }
     }
+
+    bool hasCompose = !skill.composeFile.empty() && m_composeMgr;
+    if (hasCompose) {
+        m_composeMgr->startEnvironment(skill, m_componentsDir);
+        m_composeMgr->setCurrentSkill(skill);
+    }
+
     std::string expanded = expandPrompt(skill, params);
     std::string llmResponse = m_provider->complete(skill.description, expanded);
     json result = llmResponse;
     if (!skill.validators.empty()) {
         result = runValidators(skill, result);
     }
+
+    if (hasCompose) {
+        m_composeMgr->clearCurrentSkill();
+        m_composeMgr->markUsed(skill);
+    }
+
     return result;
 }

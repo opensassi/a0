@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nlohmann/json.hpp>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -9,12 +10,24 @@
 
 using json = nlohmann::json;
 
+enum class TrustLevel {
+    HIGH,
+    MEDIUM,
+    LOW
+};
+
 struct Tool {
     std::string name;
     std::string description;
     std::string command;
     // "stdin" = pipe input via stdin, "args" = pass as CLI arguments
     std::string inputMode = "stdin";
+
+    // Docker execution (optional – if dockerImage empty, run on host)
+    std::string dockerImage;
+    TrustLevel trustLevel = TrustLevel::MEDIUM;
+    bool useContainerPool = true;
+    std::vector<std::string> aptDependencies;
 };
 
 struct ValidatorBinding {
@@ -28,6 +41,10 @@ struct Skill {
     std::string prompt;
     std::vector<std::string> dependencies;    // tool and skill names required
     std::vector<ValidatorBinding> validators; // post-LLM processing chain
+
+    // Docker compose support
+    std::string composeFile;
+    std::vector<std::string> aptDependencies;
 };
 
 class ComponentRegistry {
@@ -119,4 +136,33 @@ public:
     virtual bool resumeSession(const std::string& sessionId) = 0;
     virtual std::string currentSessionId() const = 0;
     virtual void run() = 0;
+};
+
+// === Docker Integration Interfaces ===
+
+class ContainerManager {
+public:
+    virtual ~ContainerManager() = default;
+    virtual std::string acquireContainer(const Tool& tool) = 0;
+    virtual std::string execInContainer(const std::string& containerId,
+                                        const std::string& command,
+                                        const std::string& stdinData = "") = 0;
+    virtual void pruneIdleContainers() = 0;
+};
+
+class ComposeManager {
+public:
+    virtual ~ComposeManager() = default;
+    virtual std::string startEnvironment(const Skill& skill,
+                                         const std::string& skillDirectory) = 0;
+    virtual void stopEnvironment(const Skill& skill) = 0;
+    virtual void markUsed(const Skill& skill) = 0;
+    virtual void setCurrentSkill(const Skill& skill) = 0;
+    virtual std::string getCurrentNetwork() const = 0;
+    virtual void clearCurrentSkill() = 0;
+};
+
+class DockerToolRunner : public ToolRunner {
+public:
+    virtual ~DockerToolRunner() = default;
 };

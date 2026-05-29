@@ -1,0 +1,29 @@
+#pragma once
+
+#include "agent_interfaces.h"
+#include <string>
+
+namespace a0 {
+namespace docker {
+
+class DockerToolRunnerImpl : public DockerToolRunner {
+public:
+    DockerToolRunnerImpl(ContainerManager* containerManager,
+                         ComposeManager* composeManager);
+
+    json run(const Tool& tool, const json& params) override;
+
+private:
+    std::string buildCommand(const Tool& tool,
+                              const json& params,
+                              std::string& outStdin) const;
+    std::string runEphemeral(const Tool& tool,
+                              const std::string& command,
+                              const std::string& stdinData) const;
+
+    ContainerManager* m_containerManager;
+    ComposeManager* m_composeManager;
+};
+
+} // namespace docker
+} // namespace a0

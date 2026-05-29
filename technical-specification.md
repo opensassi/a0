@@ -1,6 +1,6 @@
 # Technical Paper: Minimal Component‑Based Agent (C++ Implementation)
 
-## Version 2.0 – Revised Specification with Architectural Guardrails
+## Version 2.1 – Docker Integration and Containerized Execution
 
 ---
 
@@ -16,10 +16,11 @@ This document provides the complete technical specification and development plan
 - **Validators** (optional chain of tools) process the LLM response; validators are simple tool names (future extension for transformation bindings).
 - **Dependencies** declared per skill (tools and other skills required) – **must be checked before execution**.
 - **Timeout enforcement** for all tool executions (30 seconds default).
+- **Docker execution mode**: Tools can run inside isolated containers (default Ubuntu 22.04) with configurable trust levels (HIGH/MEDIUM/LOW), shared container pools, custom images, and `apt` dependencies. Skills can bring up multi‑service environments using `docker-compose.yml`.
 - Performance monitoring (optional, for future C++ optimization).
 - Session replay via local JSON Lines logs.
 
-This specification includes **architectural and procedural guardrails** that would have prevented common implementation omissions, such as missing dependency checks, ignored parameter substitution, absent subprocess timeouts, and incomplete `args` mode handling.
+This specification includes **architectural and procedural guardrails** that would have prevented common implementation omissions, such as missing dependency checks, ignored parameter substitution, absent subprocess timeouts, and incomplete `args` mode handling. The Docker sub‑module is a **required** extension for containerized execution.
 
 ---
 
@@ -39,6 +40,12 @@ using JSONSchema = std::unordered_map<std::string, StructuredValue>;
 ### 2.1 Core Data Structures
 
 ```cpp
+enum class TrustLevel {
+    HIGH,      // shared container across all high-trust tools
+    MEDIUM,    // shared container across all medium-trust tools
+    LOW        // one container per (image, tool name) combination
+};
+
 struct Tool {
     std::string name;
     std::string description;
@@ -49,6 +56,12 @@ struct Tool {
     //          For a non-object params, the whole value is passed as a single argument.
     //          Arguments are shell-escaped.
     std::string inputMode = "stdin";
+
+    // Docker execution (optional – if dockerImage empty, run on host)
+    std::string dockerImage;                     // e.g., "ubuntu:22.04"
+    TrustLevel trustLevel = TrustLevel::MEDIUM;
+    bool useContainerPool = true;                // false = ephemeral docker run --rm
+    std::vector<std::string> aptDependencies;    // packages to install via apt
 };
 
 struct ValidatorBinding {
@@ -62,6 +75,10 @@ struct Skill {
     std::string prompt;                   // may contain {{tool:...}} and {{key}} placeholders
     std::vector<std::string> dependencies;    // tool and skill names required
     std::vector<ValidatorBinding> validators; // post-LLM processing chain
+
+    // Docker compose support
+    std::string composeFile;                     // path to docker-compose.yml (relative to skill dir)
+    std::vector<std::string> aptDependencies;    // rolled up into container(s) used by skill's tools
 };
 ```
 
@@ -172,13 +189,40 @@ public:
     virtual std::string currentSessionId() const = 0;
     virtual void run() = 0;
 };
+
+// === Docker Integration Interfaces ===
+// Full implementations reside in ./src/docker/
+
+class ContainerManager {
+public:
+    virtual ~ContainerManager() = default;
+    virtual std::string acquireContainer(const Tool& tool) = 0;
+    virtual std::string execInContainer(const std::string& containerId,
+                                        const std::string& command,
+                                        const std::string& stdinData = "") = 0;
+    virtual void pruneIdleContainers() = 0;
+};
+
+class ComposeManager {
+public:
+    virtual ~ComposeManager() = default;
+    virtual std::string startEnvironment(const Skill& skill, const std::string& skillDirectory) = 0;
+    virtual void stopEnvironment(const Skill& skill) = 0;
+    virtual void markUsed(const Skill& skill) = 0;
+};
+
+class DockerToolRunner : public ToolRunner {
+public:
+    virtual ~DockerToolRunner() = default;
+    // Constructor (in implementation) will take ContainerManager* and ComposeManager*.
+};
 ```
 
 ---
 
 ## 3. System Architecture
 
-The architecture includes a mandatory dependency check flow.
+The architecture includes both host and Docker execution paths, with mandatory dependency check and container pooling.
 
 ```mermaid
 graph TB
@@ -189,11 +233,14 @@ graph TB
         Core[AgentCore]
         Context[ContextManager]
         Reg[ComponentRegistry]
-        ToolRunner[ToolRunner]
+        HostRunner[HostToolRunner]
+        DockerRunner[DockerToolRunner]
         SkillRunner[SkillRunner]
         InfEngine[SchemaInferenceEngine]
         Logger[InvocationLogger]
         DepResolver[DependencyResolver]
+        ContainerMgr[ContainerManager]
+        ComposeMgr[ComposeManager]
     end
 
     subgraph "File System"
@@ -201,29 +248,43 @@ graph TB
         LogsDir[(logs/)]
     end
 
+    subgraph "Docker Engine"
+        Containers[(Containers)]
+        ComposeStacks[(Compose Stacks)]
+    end
+
     User --> Core
     Core --> Reg
     Core --> DepResolver
-    Core --> ToolRunner
+    Core --> HostRunner
+    Core --> DockerRunner
     Core --> SkillRunner
-    SkillRunner --> DepResolver   // dependency check before LLM call
+    SkillRunner --> DepResolver
     SkillRunner --> DeepSeek
-    SkillRunner --> ToolRunner
+    SkillRunner --> HostRunner
+    SkillRunner --> DockerRunner
     Core --> InfEngine
     InfEngine --> DeepSeek
     InfEngine --> Reg
     Core --> Logger
     Logger --> LogsDir
     Reg --> ComponentsDir
+
+    DockerRunner --> ContainerMgr
+    DockerRunner --> ComposeMgr
+    ContainerMgr --> Containers
+    ComposeMgr --> ComposeStacks
 ```
 
-**Caption**: The `DependencyResolver` is consulted before every skill execution (both pre‑existing and inferred). The `ToolRunner` enforces a 30‑second timeout. The `SkillRunner` implements parameter substitution (`{{key}}`) before eager tool calls.
+**Caption**: The agent supports two tool runners: `HostToolRunner` (for direct subprocess execution) and `DockerToolRunner` (for containerized execution with pooling and compose environments). `ContainerManager` and `ComposeManager` are implemented in the `./src/docker` sub‑directory.
 
 ---
 
-## 4. Detailed Data Flow (Skill with Eager Tool Call, Parameter Substitution, Validators, and Dependency Check)
+## 4. Detailed Data Flow
 
-The following sequence diagram incorporates the mandatory dependency check and shows the correct order of operations.
+The following sequence diagrams show the execution paths for skills and Docker‑based tools.
+
+### 4.1 Skill Execution with Dependency Check and Eager Tool Calls
 
 ```mermaid
 sequenceDiagram
@@ -266,12 +327,26 @@ sequenceDiagram
     end
 ```
 
-**Notes**:
+### 4.2 Docker Tool Execution (Containerized)
 
-- Parameter substitution (`{{goal}}`) occurs **before** eager tool calls.
-- Dependency check is mandatory before any LLM request or tool execution.
-- Validator errors are transformed to include `VALIDATOR_ERROR:` prefix.
-- The `ToolRunner` enforces a 30‑second timeout; a timeout returns `"ERROR: timeout"`.
+```mermaid
+sequenceDiagram
+    participant SkillRunner
+    participant DockerRunner
+    participant ContainerMgr
+    participant Docker
+
+    SkillRunner->>DockerRunner: run(tool, params)
+    DockerRunner->>ContainerMgr: acquireContainer(tool)
+    ContainerMgr->>ContainerMgr: lookup/start container (shared or per‑tool)
+    ContainerMgr-->>DockerRunner: containerId
+    DockerRunner->>DockerRunner: build command (args mode or stdin)
+    DockerRunner->>Docker: docker exec -i <containerId> sh -c '<command>'
+    Docker-->>DockerRunner: stdout/stderr
+    DockerRunner-->>SkillRunner: result
+```
+
+**Note**: When a skill declares a `composeFile`, the `SkillRunner` first calls `ComposeManager::startEnvironment` to bring up the compose stack; the tool container is then attached to the resulting network.
 
 ---
 
@@ -316,21 +391,38 @@ sequenceDiagram
 | E2E‑N3 | Skill using `{{goal}}`        | Create skill with prompt `"Process: {{goal}}"`, invoke with goal "test"             | LLM receives `"Process: test"`                                 |
 | E2E‑N4 | Tool with `args` mode         | Create tool with `inputMode: "args"`, command `wc -l`, params `{"input":"a\nb\nc"}` | Command receives arguments correctly (exact behaviour defined) |
 
-**End‑to‑end test runner**: A bash script or Python harness that:
+### 5.3 Docker‑Specific Tests
 
-1. Starts mock DeepSeek server (fixtures for inference responses).
-2. Launches agent process with `--mock-api`.
-3. Sends commands via `stdin`.
-4. Waits for outputs.
-5. Checks exit codes and log files.
-6. Verifies error messages for negative tests.
+#### Unit Tests (with mock Docker CLI)
+
+| Class                 | Test Case                          | Verification                                         |
+| --------------------- | ---------------------------------- | ---------------------------------------------------- |
+| `ContainerManager`    | `acquireContainer` with HIGH trust | Same container ID for two different high‑trust tools |
+| `ContainerManager`    | `acquireContainer` with LOW trust  | Different containers for different tool names        |
+| `ContainerManager`    | `pruneIdleContainers`              | Container idle > timeout removed                     |
+| `DependencyInstaller` | `installDependencies`              | Idempotent installation                              |
+| `ComposeManager`      | `startEnvironment`                 | `docker-compose up -d` called only once per skill    |
+
+#### End‑to‑End Tests (with real Docker daemon)
+
+| ID     | Scenario                                     | Expected                             |
+| ------ | -------------------------------------------- | ------------------------------------ |
+| E2E‑D1 | Basic tool in default image (`ubuntu:22.04`) | Output matches command               |
+| E2E‑D2 | `aptDependencies` installed correctly        | Tool can use installed package       |
+| E2E‑D3 | Trust level HIGH – container sharing         | Two tools run in same container      |
+| E2E‑D4 | Trust level LOW – isolation                  | Each tool gets its own container     |
+| E2E‑D5 | Skill with `docker-compose.yml`              | Services start, tool can connect     |
+| E2E‑D6 | Container pruning                            | Idle container removed after timeout |
 
 ---
 
 ## 6. CLI Entry Point
 
 ```bash
-agent --components-dir <path> [--env-file <path>] [--resume <session-id>] [--api-key <key>] [--mock-api <url>]
+agent --components-dir <path> [--env-file <path>] [--resume <session-id>]
+      [--api-key <key>] [--mock-api <url>]
+      [--docker-host <url>] [--container-idle-timeout <seconds>]
+      [--max-idle-containers <count>] [--default-docker-image <image>] [--no-docker]
 ```
 
 - `--components-dir` : Root directory for components (default `./components`).
@@ -339,6 +431,21 @@ agent --components-dir <path> [--env-file <path>] [--resume <session-id>] [--api
 - `--api-key` : DeepSeek API key; if not provided, read from environment (see precedence below).
 - `--mock-api` : Override the API URL (for testing, e.g., `http://localhost:8080`).
 
+**Docker‑specific flags**:
+
+- `--docker-host` : Docker daemon socket URL (default `unix:///var/run/docker.sock`).
+- `--container-idle-timeout` : Seconds after which an idle container is pruned (default `300`).
+- `--max-idle-containers` : Maximum number of idle containers allowed per pool (default `10`).
+- `--default-docker-image` : Default image when tool does not specify `dockerImage` (default `ubuntu:22.04`).
+- `--no-docker` : Disable Docker integration; fall back to host runner for all tools.
+
+**Environment variables** (override defaults):
+
+- `A0_DOCKER_HOST`
+- `A0_CONTAINER_IDLE_TIMEOUT`
+- `A0_MAX_IDLE_CONTAINERS`
+- `A0_DEFAULT_DOCKER_IMAGE`
+
 **API key precedence (highest to lowest)**:
 
 1. `--api-key` command line argument.
@@ -346,15 +453,11 @@ agent --components-dir <path> [--env-file <path>] [--resume <session-id>] [--api
 3. `DEEPSEEK_API_KEY` set in `--env-file` (default `.env`).
 4. `DEEPSEEK_API_KEY` set in `~/.deepseek.env`.
 
-**Environment**:
-
-- `DEEPSEEK_API_KEY` – required unless `--mock-api` is used (mock server does not need key).
-
 **Example**:
 
 ```bash
 export DEEPSEEK_API_KEY="sk-..."
-agent --components-dir ./my_components
+agent --components-dir ./my_components --container-idle-timeout 600 --max-idle-containers 5
 ```
 
 ---
@@ -370,8 +473,9 @@ agent --components-dir ./my_components
 - libcurl (for HTTP requests to DeepSeek API)
 - jsoncpp or nlohmann/json (JSON parsing)
 - (Optional) gcov/lcov for coverage, Google Test for unit tests
+- **Docker** (for containerized execution) – optional but required for Docker features
 
-**CMakeLists.txt** (as in original, plus `ENABLE_TRACE` and `ENABLE_COVERAGE` options).
+**CMakeLists.txt** (as in original, plus `ENABLE_TRACE` and `ENABLE_COVERAGE` options). The Docker sub‑module sources reside in `./src/docker/` and are compiled into the main library.
 
 ### 7.2 Implementation Plan (Test‑Driven, 90% Coverage)
 
@@ -381,7 +485,7 @@ Follow these steps **in order**:
 
 - For each `.cpp` file, create a `.spec.md` describing input/output contracts, error handling, and edge cases.
 
-#### Step 1b (New): Interface assertion tests
+#### Step 1b: Interface assertion tests
 
 - Before writing any implementation, create compile‑time or runtime assertions that verify each interface’s contract is internally consistent.
   - For `ToolRunner`: write a test that expects `run` to handle `inputMode == "args"` and enforce a timeout (even with a stub).
@@ -429,7 +533,7 @@ Follow these steps **in order**:
 - Create a mock HTTP server (e.g., using `cpp-httplib` or a simple Python script) that returns fixture data.
 - Fixtures stored in `test/fixtures/deepseek/`.
 
-#### Step 8a (New): Negative E2E tests
+#### Step 8a: Negative E2E tests
 
 - In addition to happy‑path tests, write end‑to‑end tests that deliberately trigger error conditions:
   - Missing dependency.
@@ -442,6 +546,19 @@ Follow these steps **in order**:
 
 - They must pass before merging.
 
+#### Step 10: Implement Docker sub‑module
+
+The Docker sub‑module is a **required** part of the agent for containerized tool execution. Its complete technical specification is located in `./src/docker/technical-specification.md` and the implementation source code resides in `./src/docker/`. The key implementation phases are:
+
+10.1 Implement `ContainerManager` and `DependencyInstaller` using Docker CLI calls (via `popen` or libcurl over the Docker socket).
+10.2 Implement `DockerToolRunner` and integrate into `AgentCore` (tool runner selection based on `dockerImage` presence).
+10.3 Implement `ComposeManager` for skill‑level compose environments.
+10.4 Add pruning logic and CLI flags as described in Section 6.
+10.5 Write unit tests with a mock Docker executable (e.g., a bash script that simulates `docker` commands).
+10.6 Run Docker‑specific E2E tests with a real Docker daemon (if available in CI).
+
+All Docker‑related code must be placed in `./src/docker/`, with its own `CMakeLists.txt` included from the top‑level `CMakeLists.txt`.
+
 ---
 
 ## 8. File Layout
@@ -453,18 +570,26 @@ project/
 │   ├── main.cpp
 │   ├── agent_core.cpp/.h
 │   ├── component_registry.cpp/.h
-│   ├── tool_runner.cpp/.h
+│   ├── tool_runner.cpp/.h               # HostToolRunner (renamed from SubprocessToolRunner)
 │   ├── skill_runner.cpp/.h
 │   ├── deepseek_provider.cpp/.h
 │   ├── context_manager.cpp/.h
 │   ├── invocation_logger.cpp/.h
 │   ├── schema_inference_engine.cpp/.h
 │   ├── dependency_resolver.cpp/.h
-│   └── trace.h
+│   ├── trace.h
+│   └── docker/                         # Docker sub‑module (required)
+│       ├── technical-specification.md  # Full Docker integration spec
+│       ├── container_manager.cpp/.h
+│       ├── compose_manager.cpp/.h
+│       ├── docker_tool_runner.cpp/.h
+│       ├── dependency_installer.cpp/.h
+│       └── CMakeLists.txt
 ├── test/
 │   ├── unit/
 │   │   ├── test_tool_runner.cpp
 │   │   ├── test_skill_runner.cpp
+│   │   ├── test_docker_*.cpp            # Docker unit tests
 │   │   └── ...
 │   ├── e2e/
 │   │   ├── mock_deepseek_server.py
@@ -481,14 +606,16 @@ project/
 ## 9. Development Workflow Summary
 
 1. Write spec files for each module.
-2. **Write interface assertion tests** (new) that codify the contract.
+2. **Write interface assertion tests** that codify the contract.
 3. Write stub implementations.
 4. Write unit tests (both stub‑passing and failing functional tests).
 5. Implement code iteratively until all tests pass.
 6. Run coverage tool; ensure ≥90% coverage.
 7. Run **positive and negative** E2E tests with mock DeepSeek API; fix any failures.
-8. Enable `-DTRACE` for debug builds; keep trace logs for diagnosis.
-9. Commit and CI verifies all tests + coverage.
+8. Implement Docker sub‑module (following `./src/docker/technical-specification.md`).
+9. Run Docker‑specific tests (unit and E2E with real Docker).
+10. Enable `-DTRACE` for debug builds; keep trace logs for diagnosis.
+11. Commit and CI verifies all tests + coverage.
 
 ---
 
@@ -498,6 +625,17 @@ project/
 - C++ compilation of performance‑critical validators.
 - Input/output transformation mappers in validator objects (e.g., JSONPath).
 - Sandboxing for `bash` tool (command allowlist).
-- Native `mustache` templating library for prompt expansion.
+- Native `mustache` templating for prompt expansion.
+- **LXC backend** as alternative to Docker (for environments without Docker).
+- Resource limits (CPU/memory) per tool in Docker.
+
+---
+
+## Appendix A: Docker Integration Sub‑Module Specification
+
+The complete technical specification for the Docker sub‑module is provided in a separate document: `./src/docker/technical-specification.md`. It includes detailed class specifications, sequence diagrams, configuration options, and testing requirements. The sub‑module is **required** for containerized execution; when `--no-docker` is used, the agent reverts to host‑only execution, but the Docker code is still compiled.
+
+**Location**: `./src/docker/technical-specification.md`  
+**Source code**: `./src/docker/`
 
 ---

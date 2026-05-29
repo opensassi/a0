@@ -48,6 +48,15 @@ bool FileSystemComponentRegistry::loadFromDirectory(const std::string& path) {
                 t.description = j.value("description", "");
                 t.command = j.value("command", "");
                 t.inputMode = j.value("inputMode", "stdin");
+                t.dockerImage = j.value("dockerImage", "");
+                std::string trustStr = j.value("trustLevel", "MEDIUM");
+                if (trustStr == "HIGH") t.trustLevel = TrustLevel::HIGH;
+                else if (trustStr == "LOW") t.trustLevel = TrustLevel::LOW;
+                else t.trustLevel = TrustLevel::MEDIUM;
+                t.useContainerPool = j.value("useContainerPool", true);
+                for (const auto& dep : j["aptDependencies"]) {
+                    t.aptDependencies.push_back(dep.get<std::string>());
+                }
                 m_tools[t.name] = std::move(t);
             } else if (endsWith(filename, ".skill.json")) {
                 Skill s;
@@ -61,6 +70,10 @@ bool FileSystemComponentRegistry::loadFromDirectory(const std::string& path) {
                     ValidatorBinding vb;
                     vb.toolName = v.value("toolName", "");
                     s.validators.push_back(std::move(vb));
+                }
+                s.composeFile = j.value("composeFile", "");
+                for (const auto& dep : j["aptDependencies"]) {
+                    s.aptDependencies.push_back(dep.get<std::string>());
                 }
                 m_skills[s.name] = std::move(s);
             }
@@ -117,6 +130,14 @@ bool FileSystemComponentRegistry::addTool(const Tool& tool) {
             j["description"] = tool.description;
             j["command"] = tool.command;
             j["inputMode"] = tool.inputMode;
+            if (!tool.dockerImage.empty()) j["dockerImage"] = tool.dockerImage;
+            switch (tool.trustLevel) {
+                case TrustLevel::HIGH: j["trustLevel"] = "HIGH"; break;
+                case TrustLevel::LOW:  j["trustLevel"] = "LOW"; break;
+                default:               j["trustLevel"] = "MEDIUM"; break;
+            }
+            if (!tool.useContainerPool) j["useContainerPool"] = false;
+            if (!tool.aptDependencies.empty()) j["aptDependencies"] = tool.aptDependencies;
             file << j.dump(2);
         }
     }
@@ -135,6 +156,8 @@ bool FileSystemComponentRegistry::addSkill(const Skill& skill) {
             j["description"] = skill.description;
             j["prompt"] = skill.prompt;
             j["dependencies"] = skill.dependencies;
+            if (!skill.composeFile.empty()) j["composeFile"] = skill.composeFile;
+            if (!skill.aptDependencies.empty()) j["aptDependencies"] = skill.aptDependencies;
             file << j.dump(2);
         }
     }

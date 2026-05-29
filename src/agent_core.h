@@ -11,7 +11,9 @@ public:
                      ContextManager* context,
                      InvocationLogger* logger,
                      DependencyResolver* depResolver,
-                     SchemaInferenceEngine* inferenceEngine);
+                     SchemaInferenceEngine* inferenceEngine,
+                     DockerToolRunner* dockerRunner = nullptr,
+                     ComposeManager* composeMgr = nullptr);
 
     bool init(const std::string& componentsDir) override;
     json processGoal(const std::string& goal) override;
@@ -22,6 +24,8 @@ public:
 private:
     ComponentRegistry* m_registry;
     ToolRunner* m_toolRunner;
+    DockerToolRunner* m_dockerRunner;
+    ComposeManager* m_composeMgr;
     SkillRunner* m_skillRunner;
     InferenceProvider* m_provider;
     ContextManager* m_context;
