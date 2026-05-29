@@ -18,3 +18,4 @@ test_e2e_logs_check/
 .nvmrc
 scripts/FlameGraph/
 node_modules/
+notes.md
