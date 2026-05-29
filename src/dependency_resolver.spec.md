@@ -1,0 +1,120 @@
+# DefaultDependencyResolver Spec
+
+## 1. Overview
+
+DefaultDependencyResolver implements DependencyResolver. It validates that all dependencies declared by a Skill are present in the ComponentRegistry. Tools are assumed to have zero dependencies. Skills may depend on tools or other skills, and dependency resolution follows the transitive closure. A `visited` set prevents infinite loops from circular skill references.
+
+**Dependencies:** ComponentRegistry (const pointer, lookup-only)
+**Lifecycle:** Instantiated with a registry pointer; the registry must outlive the resolver.
+
+## 2. Component Specifications
+
+```cpp
+class DefaultDependencyResolver : public DependencyResolver {
+public:
+    /// \param registry  Non-owning pointer to the component registry; must remain valid for the lifetime of this resolver.
+    explicit DefaultDependencyResolver(const ComponentRegistry* registry);
+
+    /// \param tool  The tool to check (ignored – tools always pass).
+    /// \retval true  Always, because tools have no dependency semantics.
+    bool checkToolDependencies(const Tool& tool) const override;
+
+    /// \param skill  The skill whose dependency set to check.
+    /// \retval true  When missingDependencies(skill) returns an empty vector.
+    bool checkSkillDependencies(const Skill& skill) const override;
+
+    /// \param skill  The skill to audit.
+    /// \returns  Names of every transitive dependency that is neither a registered tool nor a registered skill.
+    std::vector<std::string> missingDependencies(const Skill& skill) const override;
+
+private:
+    /// Recursive helper. Inserts skill.name into visited before iterating its deps.
+    /// \param skill    Current skill node to expand.
+    /// \param visited  Mutable set of already-visited skill names (cycle guard).
+    /// \returns        Accumulated missing dependencies for this subtree.
+    std::vector<std::string> missingDependenciesRecursive(
+        const Skill& skill, std::set<std::string>& visited) const;
+
+    const ComponentRegistry* m_registry;
+};
+```
+
+## 3. Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph Interfaces
+        DR[DependencyResolver]
+        CR[ComponentRegistry]
+    end
+    subgraph Implementation
+        DDR[DefaultDependencyResolver]
+    end
+    DDR --|> DR
+    DDR --> CR
+    Skill[Skill] -- declares deps --> DDR
+```
+
+## 4. Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant DDR as DefaultDependencyResolver
+    participant CR as ComponentRegistry
+
+    Client->>DDR: missingDependencies(skill)
+    activate DDR
+    DDR->>DDR: missingDependenciesRecursive(skill, visited)
+    loop for each dep in skill.dependencies
+        DDR->>CR: getTool(dep)
+        alt tool exists
+            CR-->>DDR: optional<Tool>
+            DDR->>DDR: skip (not missing)
+        else tool not found
+            CR-->>DDR: nullopt
+            DDR->>CR: getSkill(dep)
+            alt skill exists
+                CR-->>DDR: optional<Skill>
+                DDR->>DDR: recurse into skill
+            else skill not found
+                DDR->>DDR: add dep to missing list
+            end
+        end
+    end
+    DDR-->>Client: vector<string> missing
+    deactivate DDR
+```
+
+## 5. Error Handling
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Dependency not found in registry | Included in the returned missing list |
+| Circular skill dependency (A→B→A) | Cut by `visited` set; not reported as missing |
+| Duplicate dependency declared twice | Deduplicated by `visited` set |
+| Transitive chain where an intermediate skill is missing | Intermediate skill name appears in missing list, its children are not visited |
+| Registry pointer is null | Undefined behaviour (caller must ensure valid pointer) |
+
+## 6. Edge Cases
+
+| Case | Expected Result |
+|------|----------------|
+| Skill with empty `dependencies` vector | Empty result from `missingDependencies` |
+| Skill depending only on registered tools | Empty result (tools always pass) |
+| Deep chain (A→B→C→D where D is missing) | `[D]` is returned after full traversal |
+| Registry loaded with zero components | Every dependency reported as missing |
+| Skill depending on itself | Visited set prevents re-entry; self-dependency not reported as missing |
+
+## 7. Testing Requirements
+
+| Method | Test Case | Input | Expected Output |
+|--------|-----------|-------|----------------|
+| `checkToolDependencies` | Any tool | `Tool{name="ls", ...}` | `true` |
+| `checkSkillDependencies` | All deps satisfied | Skill with dep pointing to registered tool | `true` |
+| `checkSkillDependencies` | Missing dep | Skill with dep absent from registry | `false` |
+| `missingDependencies` | Fully satisfied | Skill with only tool deps | `[]` |
+| `missingDependencies` | Single missing | Skill with one dep missing | `["missing_dep"]` |
+| `missingDependencies` | Transitive missing | A→B→toolX, toolX missing | `["toolX"]` |
+| `missingDependencies` | Circular | A→B→A, both registered | `[]` |
+| `missingDependencies` | No deps | Skill with empty deps | `[]` |
