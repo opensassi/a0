@@ -144,8 +144,14 @@ int64_t SqliteStore::createSession(int64_t rootId, int64_t parentId, int agentId
     }
     sqlite3_bind_text(stmt, 1, uuid.str().c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 2, agentId);
-    sqlite3_bind_int64(stmt, 3, rootId);
-    sqlite3_bind_int64(stmt, 4, parentId);
+    if (rootId > 0)
+        sqlite3_bind_int64(stmt, 3, rootId);
+    else
+        sqlite3_bind_null(stmt, 3);
+    if (parentId > 0)
+        sqlite3_bind_int64(stmt, 4, parentId);
+    else
+        sqlite3_bind_null(stmt, 4);
     sqlite3_bind_int64(stmt, 5, static_cast<sqlite3_int64>(std::time(nullptr)));
 
     if (sqlite3_step(stmt) != SQLITE_DONE) {

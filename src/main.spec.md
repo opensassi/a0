@@ -55,7 +55,13 @@ static std::string getFlag(int argc, char* argv[],
  *
  * Flag parsing (two-pass):
  *   1st pass: extract --env-file before any env var reads
- *   2nd pass: --env-file, --components-dir, --api-key, --mock-api, --resume
+ *   2nd pass: --env-file, --a0-dir, --components-dir, --api-key, --mock-api, --resume
+ *
+ * .a0/ initialization:
+ *   After flag parsing, ensureA0Dir(a0Dir) creates the directory if missing.
+ *   On first creation, if CWD is a git repo, appends ".a0/" to .gitignore.
+ *   All non-committed agent artifacts (b1 socket/pid, SQLite DB, store, logs)
+ *   are scoped under this directory.
  *
  * API key resolution order:
  *   1. --api-key CLI flag
@@ -81,7 +87,7 @@ static std::string getFlag(int argc, char* argv[],
  * Cleanup: delete Docker objects in reverse order.
  *
  * Wire-up detail:
- *   SkillManager is constructed with "skills/", "./.a0/store", "./.a0/logs"
+ *   SkillManager is constructed with a0Dir + "/store", a0Dir + "/logs"
  *   SkillManager::loadAll() called during init
  *   DefaultAgentCore receives SkillManager* via new constructor parameter
  */

@@ -3,39 +3,25 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 #include <vector>
 
 namespace a0::persistence {
 
 using a0::CommandRunner;
 
-static std::string sha1OfStream(std::istream& is)
+std::string BuildIdentity::binarySha1()
 {
-    // Simple SHA1 using openssl CLI as a fallback
-    // In production, link against a SHA library
-    std::string content((std::istreambuf_iterator<char>(is)),
-                         std::istreambuf_iterator<char>());
-
-    // Use sha1sum command
-    auto result = CommandRunner::run(
-        "sha1sum", content, 10);
+    // Stream the binary to sha1sum via pipe — avoids loading into memory
+    auto result = CommandRunner::run("sha1sum /proc/self/exe", "", 10);
     if (result.exitCode == 0) {
-        // Output: "<hash>  -"
+        // Output: "<hash>  /proc/self/exe"
         auto space = result.stdout.find(' ');
         if (space != std::string::npos) {
             return result.stdout.substr(0, space);
         }
     }
-    return "";
-}
-
-std::string BuildIdentity::binarySha1()
-{
-    std::ifstream self("/proc/self/exe", std::ios::binary);
-    if (!self) {
-        return "";
-    }
-    return sha1OfStream(self);
+    throw std::runtime_error("failed to compute binary SHA1");
 }
 
 void BuildIdentity::detectGit(const std::string& projectDir, BuildFingerprint& fp)

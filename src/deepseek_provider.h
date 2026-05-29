@@ -7,6 +7,10 @@ public:
     DeepSeekProvider(const std::string& apiKey, const std::string& model = "deepseek-chat");
     std::string complete(const std::string& systemPrompt,
                           const std::string& userPrompt) override;
+    CompletionResponse complete(
+        const std::string& systemPrompt,
+        const std::vector<Message>& messages,
+        const std::vector<ToolSchema>& tools) override;
     void setMockUrl(const std::string& url) override;
 
 private:

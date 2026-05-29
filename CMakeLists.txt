@@ -10,8 +10,11 @@ find_package(GTest REQUIRED)
 find_package(SQLite3 REQUIRED)
 
 set(LIB_SOURCES
+    src/a0_dir.cpp
     src/agent_core.cpp
+    src/base_prompt.cpp
     src/skill_registry.cpp
+    src/system_tools.cpp
     src/tool_runner.cpp
     src/skill_runner.cpp
     src/deepseek_provider.cpp

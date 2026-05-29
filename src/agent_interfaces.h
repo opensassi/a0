@@ -61,11 +61,50 @@ public:
     virtual json run(const Tool& tool, const json& params) = 0;
 };
 
+struct ToolCall {
+    std::string id;
+    std::string name;
+    json arguments;
+};
+
+struct ToolSchema {
+    std::string name;
+    std::string description;
+    json inputSchema;  // JSON Schema object
+};
+
+struct Message {
+    std::string role;                 // "system", "user", "assistant", "tool"
+    std::string content;
+    std::string toolCallId;           // non-empty only for role=="tool"
+    std::vector<ToolCall> toolCalls;  // non-empty only for role=="assistant"
+
+    Message() = default;
+    Message(const std::string& r, const std::string& c)
+        : role(r), content(c) {}
+    Message(const std::string& r, const std::string& c, const std::string& tcid)
+        : role(r), content(c), toolCallId(tcid) {}
+};
+
+struct CompletionResponse {
+    std::string content;               // text response (empty if tool_calls)
+    std::vector<ToolCall> toolCalls;   // tool calls (empty if text response)
+};
+
 class InferenceProvider {
 public:
     virtual ~InferenceProvider() = default;
+
+    /// Original single-turn complete (used by SkillRunner template flow)
     virtual std::string complete(const std::string& systemPrompt,
                                   const std::string& userPrompt) = 0;
+
+    /// Tool-calling complete: sends messages + tool schemas, returns text or tool_calls
+    virtual CompletionResponse complete(
+        const std::string& systemPrompt,
+        const std::vector<Message>& messages,
+        const std::vector<ToolSchema>& tools) = 0;
+
     virtual void setMockUrl(const std::string& url) = 0;
 };
 

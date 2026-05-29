@@ -2,6 +2,10 @@
 # Mock docker CLI for unit testing
 
 case "$1" in
+    ps)
+        # docker ps -aq --filter name=^/<name>$ → no output (no container exists yet)
+        exit 0
+        ;;
     run)
         if [ "$2" = "-d" ]; then
             echo "cid_${4:-unknown}"

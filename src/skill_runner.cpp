@@ -1,8 +1,11 @@
 #include "skill_runner.h"
+#include "base_prompt.h"
 #include "trace.h"
 #include <regex>
 #include <sstream>
 #include <iostream>
+
+using a0::SystemToolRegistry;
 
 static ToolRunner* selectRunner(const Tool& tool, ToolRunner* host, DockerToolRunner* docker) {
     if (!tool.dockerImage.empty() && docker) {
@@ -11,19 +14,36 @@ static ToolRunner* selectRunner(const Tool& tool, ToolRunner* host, DockerToolRu
     return host;
 }
 
+static json runTool(const Tool& tool, const json& params,
+                     ToolRunner* hostRunner, DockerToolRunner* dockerRunner,
+                     SystemToolRegistry* systemTools) {
+    if (systemTools && SystemToolRegistry::isSystemTool(tool.name)) {
+        auto result = systemTools->execute(tool.name, params);
+        return json(result.output);
+    }
+    ToolRunner* runner = selectRunner(tool, hostRunner, dockerRunner);
+    return runner->run(tool, params);
+}
+
 DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
                                         InferenceProvider* provider,
                                         SkillRegistry* registry,
                                         DependencyResolver* depResolver,
+                                        SystemToolRegistry* systemTools,
                                         DockerToolRunner* dockerRunner,
                                         ComposeManager* composeMgr)
     : m_toolRunner(toolRunner)
+    , m_systemTools(systemTools)
     , m_dockerRunner(dockerRunner)
     , m_composeMgr(composeMgr)
     , m_provider(provider)
     , m_registry(registry)
     , m_depResolver(depResolver)
 {
+}
+
+void DefaultSkillRunner::xRebuildBasePrompt() {
+    m_basePrompt = a0::buildBasePrompt(m_registry);
 }
 
 void DefaultSkillRunner::setSkillsDir(const std::string& path) {
@@ -58,13 +78,23 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
         std::string toolName = match[1];
         std::string argsStr = match[2];
 
-        // Parse key="value" pairs
+        // Parse key="value" pairs with auto-type conversion
         json toolParams;
         std::regex argRe(R"((\w+)=["']([^"']*)["'])");
         std::smatch argMatch;
         std::string::const_iterator searchStart = argsStr.cbegin();
         while (std::regex_search(searchStart, argsStr.cend(), argMatch, argRe)) {
-            toolParams[argMatch[1]] = argMatch[2];
+            std::string val = argMatch[2];
+            // Auto-convert numeric and boolean strings to match opencode params
+            if (val == "true") {
+                toolParams[argMatch[1]] = true;
+            } else if (val == "false") {
+                toolParams[argMatch[1]] = false;
+            } else if (!val.empty() && val.find_first_not_of("0123456789") == std::string::npos) {
+                toolParams[argMatch[1]] = std::stoi(val);
+            } else {
+                toolParams[argMatch[1]] = val;
+            }
             searchStart = argMatch.suffix().first;
         }
 
@@ -74,8 +104,8 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
             continue;
         }
 
-        ToolRunner* runner = selectRunner(*toolOpt, m_toolRunner, m_dockerRunner);
-        json toolResult = runner->run(*toolOpt, toolParams);
+        json toolResult = runTool(*toolOpt, toolParams,
+                                   m_toolRunner, m_dockerRunner, m_systemTools);
 
         std::string replacement;
         if (toolResult.is_string()) {
@@ -107,8 +137,8 @@ json DefaultSkillRunner::runValidators(const Prompt& prompt, const json& input) 
             params["input"] = current.dump();
         }
 
-        ToolRunner* runner = selectRunner(*toolOpt, m_toolRunner, m_dockerRunner);
-        json validatorResult = runner->run(*toolOpt, params);
+        json validatorResult = runTool(*toolOpt, params,
+                                        m_toolRunner, m_dockerRunner, m_systemTools);
 
         if (validatorResult.is_string()) {
             std::string out = validatorResult.get<std::string>();
@@ -140,7 +170,20 @@ json DefaultSkillRunner::execute(const Prompt& prompt, const json& params) {
     }
 
     std::string expanded = expandPrompt(prompt, params);
-    std::string llmResult = m_provider->complete(prompt.description, expanded);
+
+    // Rebuild base prompt lazily on first execute
+    if (m_basePrompt.empty()) {
+        xRebuildBasePrompt();
+    }
+
+    // Prepend base prompt to skill-specific system description
+    std::string fullSystemPrompt = m_basePrompt;
+    if (!prompt.description.empty()) {
+        if (!fullSystemPrompt.empty()) fullSystemPrompt += "\n\n";
+        fullSystemPrompt += prompt.description;
+    }
+
+    std::string llmResult = m_provider->complete(fullSystemPrompt, expanded);
 
     json finalResult = runValidators(prompt, llmResult);
 

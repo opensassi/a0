@@ -1,4 +1,7 @@
+#include "a0_dir.h"
 #include "agent_core.h"
+#include "persistence/sqlite_store.h"
+#include "system_tools.h"
 #include "skill_registry.h"
 #include "context_manager.h"
 #include "deepseek_provider.h"
@@ -86,6 +89,7 @@ int main(int argc, char* argv[]) {
     }
     loadEnvFile(envFilePath);
 
+    std::string a0Dir = "./.a0";
     std::string runPrompt;
     std::string runSkillName;
     std::string runParamsStr = "{}";
@@ -97,7 +101,9 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "--env-file" && i + 1 < argc) {
             ++i;
-        } else if (arg == "--skills-dir" && i + 1 < argc)
+        } else if (arg == "--a0-dir" && i + 1 < argc)
+            a0Dir = argv[++i];
+        else if (arg == "--skills-dir" && i + 1 < argc)
             skillsDir = argv[++i];
         else if (arg == "--api-key" && i + 1 < argc)
             apiKey = argv[++i];
@@ -134,12 +140,19 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Ensure .a0/ directory exists (non-committed agent artifacts root)
+    int a0Created = a0::ensureA0Dir(a0Dir);
+    if (a0Created < 0) {
+        std::cerr << "a0: fatal: could not create " << a0Dir << std::endl;
+        return 1;
+    }
+
     if (killAll) {
-        std::string workdir = skillsDir.substr(0, skillsDir.find("/skills"));
-        if (workdir.empty()) workdir = ".";
-        killByPidFile(workdir + "/.a0/b1.pid");
+        std::string b1PidPath = a0Dir + "/b1.pid";
+        std::string b1SockPath = a0Dir + "/b1.sock";
+        killByPidFile(b1PidPath);
         killByPidFile(getC2PidPath());
-        a0::ipc::UnixSocket::unlinkPath(workdir + "/.a0/b1.sock");
+        a0::ipc::UnixSocket::unlinkPath(b1SockPath);
         a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
         return 0;
     }
@@ -177,13 +190,19 @@ int main(int argc, char* argv[]) {
         dockerRunner = new a0::docker::DockerToolRunnerImpl(containerMgr, composeMgr, !noContainerPool);
     }
 
+    a0::SystemToolRegistry systemTools;
+
+    // Persistence store (SQLite under .a0/db/)
+    a0::persistence::SqliteStore persistence(a0Dir + "/db/sessions.db");
+
     DefaultSkillRunner skillRunner(&toolRunner, &provider, &registry, &depResolver,
-                                    dockerRunner, composeMgr);
+                                    &systemTools, dockerRunner, composeMgr);
     skillRunner.setSkillsDir(skillsDir);
 
     DefaultAgentCore core(&registry, &toolRunner, &skillRunner,
                           &provider, &context, &logger,
                           &depResolver, &inferenceEngine,
+                          &systemTools, &persistence,
                           dockerRunner, composeMgr);
 
     if (!resumeSessionId.empty()) {
@@ -198,9 +217,9 @@ int main(int argc, char* argv[]) {
     // ---- b1 auto-launch ----
     int b1Fd = -1;
     if (!noB1 && runPrompt.empty() && runSkillName.empty()) {
+        std::string b1SockPath = a0Dir + "/b1.sock";
+        std::string b1PidPath = a0Dir + "/b1.pid";
         std::string cwd = ".";
-        std::string b1SockPath = cwd + "/.a0/b1.sock";
-        std::string b1PidPath = cwd + "/.a0/b1.pid";
 
         int existingPid = -1;
         std::ifstream pf(b1PidPath);
@@ -211,7 +230,8 @@ int main(int argc, char* argv[]) {
             std::remove(b1SockPath.c_str());
             pid_t pid = fork();
             if (pid == 0) {
-                execlp("b1", "b1", "--workdir", cwd.c_str(), nullptr);
+                execlp("b1", "b1", "--workdir", cwd.c_str(),
+                       "--a0-dir", a0Dir.c_str(), nullptr);
                 _exit(127);
             }
             for (int i = 0; i < 50; ++i) {
@@ -260,10 +280,9 @@ int main(int argc, char* argv[]) {
         std::cout << result.dump() << std::endl;
 
         if (killAll) {
-            std::string cwd = ".";
-            killByPidFile(cwd + "/.a0/b1.pid");
+            killByPidFile(a0Dir + "/b1.pid");
             killByPidFile(getC2PidPath());
-            a0::ipc::UnixSocket::unlinkPath(cwd + "/.a0/b1.sock");
+            a0::ipc::UnixSocket::unlinkPath(a0Dir + "/b1.sock");
         }
         delete dockerRunner;
         delete composeMgr;
@@ -275,10 +294,9 @@ int main(int argc, char* argv[]) {
     core.run();
 
     if (killAll) {
-        std::string cwd = ".";
-        killByPidFile(cwd + "/.a0/b1.pid");
+        killByPidFile(a0Dir + "/b1.pid");
         killByPidFile(getC2PidPath());
-        a0::ipc::UnixSocket::unlinkPath(cwd + "/.a0/b1.sock");
+        a0::ipc::UnixSocket::unlinkPath(a0Dir + "/b1.sock");
     }
 
     delete dockerRunner;

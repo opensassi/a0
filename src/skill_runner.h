@@ -1,6 +1,7 @@
 #pragma once
 
 #include "agent_interfaces.h"
+#include "system_tools.h"
 
 class DefaultSkillRunner : public SkillRunner {
 public:
@@ -8,6 +9,7 @@ public:
                        InferenceProvider* provider,
                        SkillRegistry* registry,
                        DependencyResolver* depResolver,
+                       a0::SystemToolRegistry* systemTools = nullptr,
                        DockerToolRunner* dockerRunner = nullptr,
                        ComposeManager* composeMgr = nullptr);
 
@@ -18,7 +20,11 @@ public:
     void setSkillsDir(const std::string& path);
 
 private:
+    void xRebuildBasePrompt();
+    std::string m_basePrompt;
+
     ToolRunner* m_toolRunner;
+    a0::SystemToolRegistry* m_systemTools;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
     InferenceProvider* m_provider;

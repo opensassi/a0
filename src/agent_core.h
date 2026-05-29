@@ -1,6 +1,9 @@
 #pragma once
 
 #include "agent_interfaces.h"
+#include "system_tools.h"
+
+namespace a0::persistence { class PersistenceStore; }
 
 class DefaultAgentCore : public AgentCore {
 public:
@@ -12,6 +15,8 @@ public:
                      InvocationLogger* logger,
                      DependencyResolver* depResolver,
                      SchemaInferenceEngine* inferenceEngine,
+                     a0::SystemToolRegistry* systemTools = nullptr,
+                     a0::persistence::PersistenceStore* persistence = nullptr,
                      DockerToolRunner* dockerRunner = nullptr,
                      ComposeManager* composeMgr = nullptr);
 
@@ -23,8 +28,15 @@ public:
     void run() override;
 
 private:
+    void xLogAndPush(const std::string& goal, const json& result);
+    std::string m_basePrompt;
+    int m_agentDbId = -1;
+    int64_t m_sessionDbId = 0;
+
     SkillRegistry* m_registry;
     ToolRunner* m_toolRunner;
+    a0::SystemToolRegistry* m_systemTools;
+    a0::persistence::PersistenceStore* m_persistence;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
     SkillRunner* m_skillRunner;

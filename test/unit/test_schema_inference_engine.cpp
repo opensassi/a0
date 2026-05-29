@@ -11,6 +11,11 @@ protected:
             (void)usr;
             return response;
         }
+        CompletionResponse complete(
+            const std::string&,
+            const std::vector<Message>&,
+            const std::vector<ToolSchema>&) override
+        { return {response, {}}; }
         void setMockUrl(const std::string& url) override { (void)url; }
     };
 

@@ -200,6 +200,11 @@ CommandResult CommandRunner::xRunSingle(const std::string& cmd,
     // Cancel alarm
     alarm(0);
 
+    // Kill child on timeout BEFORE waitpid so waitpid returns immediately
+    if (g_timeoutFired) {
+        kill(-pid, SIGKILL);
+    }
+
     // Wait for child
     int status;
     waitpid(pid, &status, 0);
@@ -207,7 +212,6 @@ CommandResult CommandRunner::xRunSingle(const std::string& cmd,
     if (g_timeoutFired) {
         result.timedOut = true;
         result.exitCode = -1;
-        kill(-pid, SIGKILL);
         result.stderr = "timeout";
         return result;
     }

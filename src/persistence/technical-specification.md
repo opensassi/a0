@@ -18,7 +18,7 @@ The Persistence sub-module records every agent invocation into a SQLite database
 
 **Dependencies:** SQLite3 (default), `CommandRunner` (for replay execution), `BuildIdentity` (for binary fingerprint)
 
-**Lifecycle:** Per-session. One database per project root (`.a0/db/sessions.db`).
+**Lifecycle:** Per-session. One database per project root, located at `a0Dir + "/db/sessions.db"` where `a0Dir` defaults to `./.a0/` and is configurable via the `--a0-dir` CLI flag. The `a0Dir` directory is auto-created on agent startup by `ensureA0Dir()`.
 
 ---
 
@@ -371,13 +371,14 @@ a0 --root <session-id> --parent <session-id> [other flags]
 
 Wire-up in `main.cpp`:
 
-1. `BuildIdentity::binarySha1()` + `BuildIdentity::detectGit()` → register `agent` row
-2. `SqliteStore` constructed with `.a0/db/sessions.db` during startup
-3. `AgentCore` receives `PersistenceStore*`
-4. `DeepSeekProvider::complete()` records `role=assistant`
-5. `CommandRunner::run()` records `role=tool`
-6. `--root` and `--parent` CLI flags populate `createSession` params
-7. `a0 replay` reads DB and drives the agent deterministically
+1. `ensureA0Dir(a0Dir)` creates `./.a0/` (or the configured `--a0-dir` path) on startup
+2. `BuildIdentity::binarySha1()` + `BuildIdentity::detectGit()` → register `agent` row
+3. `SqliteStore` constructed with `a0Dir + "/db/sessions.db"` during startup
+4. `AgentCore` receives `PersistenceStore*`
+5. `DeepSeekProvider::complete()` records `role=assistant`
+6. `CommandRunner::run()` records `role=tool`
+7. `--root` and `--parent` CLI flags populate `createSession` params
+8. `a0 replay` reads DB and drives the agent deterministically
 
 ## 10. Implementation Outline
 

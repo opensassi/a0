@@ -419,12 +419,13 @@ sequenceDiagram
 ## 6. CLI Entry Point
 
 ```bash
-agent --components-dir <path> [--env-file <path>] [--resume <session-id>]
+agent --components-dir <path> [--env-file <path>] [--a0-dir <path>] [--resume <session-id>]
       [--api-key <key>] [--mock-api <url>]
       [--docker-host <url>] [--container-idle-timeout <seconds>]
       [--max-idle-containers <count>] [--default-docker-image <image>] [--no-docker]
 ```
 
+- `--a0-dir` : Root directory for non-committed agent artifacts (default `./.a0`). Created on startup if missing; on first creation, automatically appended to `.gitignore` when CWD is a git repository. All runtime state (b1 socket/pid, SQLite database, skills store, logs) is scoped under this directory.
 - `--components-dir` : Root directory for components (default `./components`).
 - `--env-file` : Path to `.env` file to load (default `./.env`). Each line is `KEY=VALUE`; `#` comments and blank lines are skipped. **The implementation must overwrite existing environment variables** (i.e., use `setenv(key, val, 1)`).
 - `--resume` : Session ID to replay from `./logs/`.
@@ -441,6 +442,7 @@ agent --components-dir <path> [--env-file <path>] [--resume <session-id>]
 
 **Environment variables** (override defaults):
 
+- `A0_DIR` — default `.a0/` root (overridden by `--a0-dir`)
 - `A0_DOCKER_HOST`
 - `A0_CONTAINER_IDLE_TIMEOUT`
 - `A0_MAX_IDLE_CONTAINERS`
@@ -477,7 +479,20 @@ agent --components-dir ./my_components --container-idle-timeout 600 --max-idle-c
 
 **CMakeLists.txt** (as in original, plus `ENABLE_TRACE` and `ENABLE_COVERAGE` options). The Docker sub‑module sources reside in `./src/docker/` and are compiled into the main library.
 
-### 7.2 Implementation Plan (Test‑Driven, 90% Coverage)
+### 7.2 Startup Sequence
+
+On launch, `main.cpp` follows this order:
+
+1. **Parse flags (two-pass)** — extract `--env-file` first, then all flags including `--a0-dir`.
+2. **Resolve API key** — `--api-key` → `DEEPSEEK_API_KEY` env → `.env` → `~/.deepseek.env`.
+3. **Initialize `.a0/`** — `ensureA0Dir(a0Dir)` creates the directory if missing. On first creation, if the CWD is a git repository, appends `.a0/` to `.gitignore`.
+4. **`--kill-all` cleanup** — reads `.a0/b1.pid` and the c2 PID file, sends SIGTERM/SIGKILL, unlinks sockets, exits.
+5. **Component construction** — skill registry, tool runners, Docker managers, etc.
+6. **b1 auto-launch** — if not `--no-b1` and not in `--run` mode, start/connect to b1 supervisor using paths under `a0Dir`.
+7. **`--run` mode** — execute a skill non-interactively and exit.
+8. **Interactive REPL** — `core.run()` blocks until EOF.
+
+### 7.3 Implementation Plan (Test‑Driven, 90% Coverage)
 
 Follow these steps **in order**:
 
@@ -596,11 +611,12 @@ The `CommandRunner` is a stateless utility class that wraps all subprocess creat
 project/
 ├── CMakeLists.txt
 ├── src/
-│   ├── command_runner.h/.cpp           # All subprocess management (fork/exec/pipe/alarm)
+│   ├── a0_dir.h/.cpp                    # .a0/ directory lifecycle (create, gitignore)
+│   ├── command_runner.h/.cpp            # All subprocess management (fork/exec/pipe/alarm)
 │   ├── main.cpp
 │   ├── agent_core.cpp/.h
-│   ├── skill_registry.cpp/.h               # Flat file scanner (legacy)
-│   ├── tool_runner.cpp/.h                  # HostToolRunner
+│   ├── skill_registry.cpp/.h            # Flat file scanner (legacy)
+│   ├── tool_runner.cpp/.h               # HostToolRunner
 │   ├── skill_runner.cpp/.h
 │   ├── deepseek_provider.cpp/.h
 │   ├── context_manager.cpp/.h
@@ -608,16 +624,16 @@ project/
 │   ├── schema_inference_engine.cpp/.h
 │   ├── dependency_resolver.cpp/.h
 │   ├── trace.h
-│   ├── docker/                             # Docker sub‑module (required)
+│   ├── docker/                          # Docker sub‑module (required)
 │   │   ├── technical-specification.md
 │   │   ├── container_manager.cpp/.h
 │   │   ├── compose_manager.cpp/.h
 │   │   ├── docker_tool_runner.cpp/.h
 │   │   ├── dependency_installer.cpp/.h
 │   │   └── CMakeLists.txt
-│   └── skills/                             # Skills sub‑module (required)
-│       ├── technical-specification.md      # Full skills integration spec
-│       ├── skills.h                        # Data structures + SkillManager facade
+│   └── skills/                          # Skills sub‑module (required)
+│       ├── technical-specification.md   # Full skills integration spec
+│       ├── skills.h                     # Data structures + SkillManager facade
 │       ├── skill_manager.cpp
 │       ├── skill_loader.h/.cpp
 │       ├── version_manager.h/.cpp
@@ -627,7 +643,7 @@ project/
 │   ├── unit/
 │   │   ├── test_tool_runner.cpp
 │   │   ├── test_skill_runner.cpp
-│   │   ├── test_docker_*.cpp               # Docker unit tests
+│   │   ├── test_docker_*.cpp            # Docker unit tests
 │   │   ├── test_skill_manager.cpp
 │   │   ├── test_skill_loader.cpp
 │   │   ├── test_version_manager.cpp
@@ -640,7 +656,11 @@ project/
 │   ├── system/                      # shipped with agent (read-only)
 │   ├── local/                       # agent-created (writable)
 │   └── github_<user>/               # installed from GitHub (read-only)
-├── .a0/                             # agent internal state
+├── .a0/                             # agent internal state (auto-created, gitignored)
+│   ├── b1.pid                       # b1 supervisor PID file
+│   ├── b1.sock                      # b1 supervisor Unix socket
+│   ├── db/
+│   │   └── sessions.db              # SQLite session database
 │   ├── store/                       # version archive keyed by commit hash
 │   ├── logs/                        # historical invocation logs
 │   └── lock.json                    # version refcounts + metadata

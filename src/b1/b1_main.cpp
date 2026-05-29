@@ -14,6 +14,7 @@ static void handleSignal(int sig) {
 
 int main(int argc, char* argv[]) {
     std::string workdir = ".";
+    std::string a0Dir = workdir + "/.a0";
     bool noC2 = false;
     std::string c2Socket;
 
@@ -28,18 +29,20 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "--workdir" && i + 1 < argc) {
             workdir = argv[++i];
+        } else if (arg == "--a0-dir" && i + 1 < argc) {
+            a0Dir = argv[++i];
         } else if (arg == "--no-c2") {
             noC2 = true;
         } else if (arg == "--c2-socket" && i + 1 < argc) {
             c2Socket = argv[++i];
         } else if (arg == "--help") {
-            std::cout << "b1 --workdir <path> [--no-c2] [--c2-socket <path>]\n";
+            std::cout << "b1 --workdir <path> [--a0-dir <path>] [--no-c2] [--c2-socket <path>]\n";
             return 0;
         }
     }
 
-    std::string sockPath = workdir + "/.a0/b1.sock";
-    std::string pidPath = workdir + "/.a0/b1.pid";
+    std::string sockPath = a0Dir + "/b1.sock";
+    std::string pidPath = a0Dir + "/b1.pid";
 
     if (noC2) {
         c2Socket.clear();

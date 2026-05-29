@@ -341,6 +341,7 @@ b1 --workdir <path> [--no-c2] [--c2-socket <path>]
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--a0-dir <path>` | `./.a0` | Root directory for non-committed agent artifacts. b1 socket/pid and SQLite DB resolve under this path. Auto-created on startup |
 | `--run <skill>` | — | Non-interactive mode: execute qualified skill, print JSON result, exit |
 | `--params <json>` | `{}` | JSON params for `--run` |
 | `--no-b1` | `false` | Skip b1 launch check and socket registration |
@@ -350,6 +351,7 @@ b1 --workdir <path> [--no-c2] [--c2-socket <path>]
 
 | Variable | Used by | Description |
 |----------|---------|-------------|
+| `A0_DIR` | a0, b1 | Override default `.a0/` root path (overridden by `--a0-dir`) |
 | `A0_B1_SOCKET` | a0, b1 | Override `.a0/b1.sock` path |
 | `A0_C2_SOCKET` | b1, c2 | Override c2 socket path |
 | `XDG_RUNTIME_DIR` | b1, c2 | Base for c2 socket path |
@@ -394,15 +396,16 @@ All socket tests use a loopback Unix socket pair (socketpair(AF_UNIX)). No real 
 
 ### 7.1 a0 Changes (`src/main.cpp`)
 
-1. **Parsing**: Add `--run`, `--params`, `--no-b1`, `--kill-all` to existing argument parser.
-2. **Early exit** (`--kill-all` without `--run`): Read `.a0/b1.pid`, send SIGTERM (2s grace), then SIGKILL. Unlink `.a0/b1.sock`. Read c2 PID, same sequence. Exit 0.
-3. **Component init** (unchanged): All existing components initialize as before.
-4. **Post-init** (if not `--no-b1` and not `--run`): 
-   - Read `.a0/b1.pid`. If process alive → connect. If stale → remove socket, fork/exec `b1 --workdir <cwd>`, poll for socket readiness (exponential backoff, max 5s), then connect.
+1. **Parsing**: Add `--a0-dir`, `--run`, `--params`, `--no-b1`, `--kill-all` to existing argument parser.
+2. **`.a0/` initialization**: Call `ensureA0Dir(a0Dir)` after flag parsing. Creates the directory if missing; on first creation, appends `.a0/` to `.gitignore` if CWD is a git repo. All b1 paths resolve under `a0Dir`.
+3. **Early exit** (`--kill-all` without `--run`): Read `a0Dir/b1.pid`, send SIGTERM (2s grace), then SIGKILL. Unlink `a0Dir/b1.sock`. Read c2 PID, same sequence. Exit 0.
+4. **Component init** (unchanged): All existing components initialize as before.
+5. **Post-init** (if not `--no-b1` and not `--run`): 
+   - Read `a0Dir/b1.pid`. If process alive → connect. If stale → remove socket, fork/exec `b1 --workdir <cwd>`, poll for socket readiness (exponential backoff, max 5s), then connect.
    - Send `{"type":"register","pid":<getpid()>,"session":"<sessionUuid>"}`.
    - Registration is fire-and-forget — disconnect detection handles crash monitoring.
-5. **`--run` mode**: Skip b1 init entirely. Resolve skill, execute via `DefaultAgentCore::processGoal()` (or new `runSkill()` method), print JSON result to stdout. Exit. If `--kill-all` also set, clean up b1/c2 before exit.
-6. **REPL loop**: Existing behavior. On loop exit, if `--kill-all`, run cleanup.
+6. **`--run` mode**: Skip b1 init entirely. Resolve skill, execute via `DefaultAgentCore::processGoal()` (or new `runSkill()` method), print JSON result to stdout. Exit. If `--kill-all` also set, clean up b1/c2 before exit.
+7. **REPL loop**: Existing behavior. On loop exit, if `--kill-all`, run cleanup.
 
 ### 7.2 Build System
 
