@@ -132,7 +132,7 @@ The following diagram shows the new components (blue) and their relationship to 
 graph TB
     subgraph "Existing Agent"
         Core[AgentCore]
-        Reg[ComponentRegistry]
+        Reg[SkillRegistry]
         SkillRunner[SkillRunner]
         HostRunner[HostToolRunner]
     end

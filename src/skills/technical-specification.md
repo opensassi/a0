@@ -1,0 +1,730 @@
+# Technical Specification: Skills Sub-Module
+
+## For a0 Agent — Version 1.0
+
+---
+
+## 1. Overview
+
+The Skills sub-module manages the lifecycle of agent skills — bundles of tools and prompts distributed as `skill.json` packages organized in a three-tier namespace (system/local/github_<user>). It replaces the flat components directory model with a structured, versioned ecosystem designed for constructive evolution.
+
+**Goals:**
+
+- Enable the agent to create, refine, and share skills autonomously
+- Provide a deterministic upgrade path based on empirical validation, not version pinning
+- Keep the LLM-visible tool namespace clean — no alias explosion from version conflicts
+- Support GitHub-based distribution via `a0 skill install github:user/repo#commit`
+- Ensure ecosystem health through automated backward-compatibility testing
+
+**Dependencies on other sub-modules:**
+
+- `agent_interfaces.h` — core data structures (`Tool`, `SkillPrompt`)
+- `ToolRunner` / `DockerToolRunner` — executes tools at runtime
+- `InferenceProvider` — executes skill prompts at runtime
+- `InvocationLogger` — provides historical logs for upgrade validation
+- `SchemaInferenceEngine` — creates new skills via LLM inference (writes to `local/`)
+- `DependencyResolver` — validates transitive skill/tool dependencies
+
+**Lifecycle stages:**
+
+1. Construct → load (scan directories, parse manifests)
+2. Serve (resolve tools/skills by qualified name)
+3. Create (agent infers new tools/prompts, adds to `local/`)
+4. Validate (replay historical logs on upgrade)
+5. Archive (version snapshots in `.a0/store/`, GC old refs)
+
+---
+
+## 2. Component Specifications (C++ Interfaces)
+
+All classes are defined in the `a0::skills` namespace, declared in `src/skills/`.
+
+### 2.1 Core Data Structures
+
+```cpp
+#pragma once
+
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include <optional>
+#include "nlohmann/json.hpp"
+
+namespace a0::skills {
+
+/// Namespace identifier for a skill source.
+enum class SkillNamespace {
+    SYSTEM,   // skills/system/ — shipped with agent, read-only, not overridable
+    LOCAL,    // skills/local/  — agent-created, writable
+    GITHUB    // skills/github_<user>/ — installed from GitHub, read-only
+};
+
+/// I/O schema for a tool — governs upgrade validation.
+struct ToolSchema {
+    nlohmann::json input;   // JSON Schema for params
+    nlohmann::json output;  // JSON Schema for return value
+};
+
+/// Extended tool definition with versioned schema.
+struct SkillTool {
+    std::string name;
+    std::string description;
+    std::string command;
+    std::string inputMode = "stdin";
+    ToolSchema schema;
+    std::string dockerImage;
+    TrustLevel trustLevel = TrustLevel::MEDIUM;
+    bool useContainerPool = true;
+    std::vector<std::string> aptDependencies;
+};
+
+/// A prompt-based capability within a skill package.
+struct SkillPrompt {
+    std::string name;
+    std::string description;
+    std::string prompt;
+    std::vector<std::string> dependencies;      // bare tool/prompt names within this skill
+    std::vector<ValidatorBinding> validators;
+};
+
+/// Compatibility bridge — deterministic program that translates output formats.
+struct CompatBridge {
+    std::string toolName;          // tool this bridge applies to
+    std::string since;             // semver this bridge supports
+    std::string bridgeCommand;     // script to transform output format
+    std::string description;
+};
+
+/// Full manifest parsed from skill.json.
+struct SkillManifest {
+    std::string name;
+    std::string version;                            // semver
+    std::string description;
+    SkillNamespace ns;
+    std::string sourceUrl;                          // GitHub URL, if applicable
+    std::string commitHash;                         // installed commit
+    std::vector<SkillTool> tools;
+    std::vector<SkillPrompt> prompts;
+    std::vector<CompatBridge> compat;
+    std::unordered_map<std::string, std::string> dependencies;  // ns:component → bare name alias
+};
+
+/// Entry in .a0/store/ — versioned snapshot.
+struct StoredVersion {
+    std::string commitHash;
+    std::string version;
+    int refcount;
+    time_t installedAt;
+};
+
+/// Historical invocation record for upgrade validation.
+struct InvocationRecord {
+    std::string toolName;
+    nlohmann::json params;
+    nlohmann::json output;
+    int64_t timestamp;
+};
+
+} // namespace a0::skills
+```
+
+### 2.2 SkillManager Facade
+
+```cpp
+namespace a0::skills {
+
+/// Central facade for the skills sub-module.
+/// All skill lifecycle operations go through this class.
+class SkillManager {
+public:
+    /// \param skillsRoot  Path to skills/ directory (default: "./skills")
+    /// \param storeRoot   Path to .a0/store/ directory (default: "./.a0/store")
+    /// \param logDir      Path to .a0/logs/ directory (default: "./.a0/logs")
+    SkillManager(const std::string& skillsRoot,
+                 const std::string& storeRoot,
+                 const std::string& logDir);
+
+    virtual ~SkillManager();
+
+    /// Load all namespaces: system/ (locked), local/, github_*/.
+    /// Must be called before any lookup or operation.
+    /// \retval 0  All manifests loaded successfully.
+    /// \retval -1 Skills root does not exist.
+    int loadAll();
+
+    /// Resolve a qualified name to a tool.
+    /// Format: `<ns>:<component>[:<tool>]`
+    ///   system:bash                 → system namespace, "bash" tool
+    ///   local:file_utils:list_files → local namespace, "file_utils" component, "list_files" tool
+    ///   github_alice:utils:format   → github_alice namespace
+    /// \param qualifiedName  Fully qualified tool reference.
+    /// \param[out] tool      Populated on success.
+    /// \retval 0  Found.
+    /// \retval -1 Component not found.
+    /// \retval -2 Tool not found within component.
+    int getTool(const std::string& qualifiedName, SkillTool& tool) const;
+
+    /// Resolve a qualified name to a skill prompt.
+    /// \param qualifiedName  Fully qualified prompt reference.
+    /// \param[out] prompt    Populated on success.
+    /// \retval 0  Found.
+    /// \retval -1 Component or prompt not found.
+    int getPrompt(const std::string& qualifiedName, SkillPrompt& prompt) const;
+
+    /// List all loaded components, optionally filtered by namespace.
+    /// \param ns  Filter (std::nullopt = all).
+    /// \returns   Qualified names of all matching components.
+    std::vector<std::string> listSkills(std::optional<SkillNamespace> ns) const;
+
+    /// Add a new tool to the local namespace.
+    /// Creates or appends to skills/local/<component-name>/skill.json.
+    /// \param component  Target component name (created if absent).
+    /// \param tool       Tool definition to add.
+    /// \retval 0  Added.
+    /// \retval -1 System namespace is read-only.
+    int addTool(const std::string& component, const SkillTool& tool);
+
+    /// Add a new prompt to the local namespace.
+    /// \param component  Target component name.
+    /// \param prompt     Prompt definition to add.
+    /// \retval 0  Added.
+    /// \retval -1 System namespace is read-only.
+    int addPrompt(const std::string& component, const SkillPrompt& prompt);
+
+    /// Update an existing tool in-place.
+    /// \param component  Component containing the tool.
+    /// \param name       Name of the tool to update.
+    /// \param tool       Updated tool definition.
+    /// \retval 0  Updated.
+    /// \retval -1 Tool not found.
+    int updateTool(const std::string& component, const std::string& name, const SkillTool& tool);
+
+    /// --- Version management ---
+
+    /// Install the latest commit of a GitHub source.
+    /// \param sourceUrl  GitHub URL (e.g., "https://github.com/alice/utils").
+    /// \param force      If true, skip validation.
+    /// \retval 0  Installed and validated successfully.
+    /// \retval 1  Installed with compatibility bridge applied.
+    /// \retval -1 Validation failed; not installed.
+    int install(const std::string& sourceUrl, bool force = false);
+
+    /// Install a specific commit.
+    /// \param sourceUrl  GitHub URL.
+    /// \param commit     Full commit hash.
+    /// \param force      Skip validation.
+    /// \retval 0  Installed.
+    /// \retval -1 Validation failed.
+    int install(const std::string& sourceUrl, const std::string& commit, bool force = false);
+
+    /// Remove a component and GC its stored version if refcount reaches 0.
+    /// \param qualifiedName  Fully qualified component name.
+    /// \retval 0  Removed.
+    /// \retval -1 System namespace is read-only.
+    int remove(const std::string& qualifiedName);
+
+    /// Run garbage collection on .a0/store/ — remove versions with refcount 0.
+    /// \param dryRun  If true, only report what would be removed.
+    /// \returns       Number of versions removed.
+    int gc(bool dryRun = false);
+
+    /// Validate a component against historical logs.
+    /// \param qualifiedName  Component to validate.
+    /// \param commit         Commit hash to validate against.
+    /// \param[out] report    Validation report (failures, bridges applied).
+    /// \retval 0  All historical invocations match.
+    /// \retval 1  All pass after compat bridge applied.
+    /// \retval -1 One or more invocations fail validation.
+    int validate(const std::string& qualifiedName,
+                 const std::string& commit,
+                 std::string& report);
+
+private:
+    std::string m_skillsRoot;
+    std::string m_storeRoot;
+    std::string m_logDir;
+    SkillLoader* m_loader;
+    VersionManager* m_versionMgr;
+    ValidationEngine* m_validator;
+
+    SkillManager(const SkillManager&) = delete;
+    SkillManager& operator=(const SkillManager&) = delete;
+};
+
+} // namespace a0::skills
+```
+
+### 2.3 SkillLoader
+
+```cpp
+namespace a0::skills {
+
+/// Walks the skills/ directory tree, parses skill.json manifests.
+/// Maintains an in-memory index of all loaded components.
+class SkillLoader {
+public:
+    explicit SkillLoader(const std::string& root);
+
+    /// Scan all namespace directories and load manifests.
+    /// System namespace is loaded first and marked read-only.
+    /// \retval 0  All manifests loaded.
+    /// \retval -1 Root directory missing.
+    int loadAll();
+
+    /// Lookup a tool by qualified name components.
+    /// \param ns         Namespace string (e.g. "system", "local", "github_alice").
+    /// \param component  Component name.
+    /// \param toolName   Tool name within component.
+    /// \param[out] tool  Populated on success.
+    /// \retval 0  Found.
+    /// \retval -1 Component not found.
+    /// \retval -2 Tool not found.
+    int getTool(const std::string& ns,
+                const std::string& component,
+                const std::string& toolName,
+                SkillTool& tool) const;
+
+    /// Lookup a prompt by qualified name components.
+    int getPrompt(const std::string& ns,
+                  const std::string& component,
+                  const std::string& promptName,
+                  SkillPrompt& prompt) const;
+
+    /// List components in a namespace.
+    /// \param ns  Namespace to list.
+    /// \returns   Component names.
+    std::vector<std::string> listComponents(SkillNamespace ns) const;
+
+    /// Write a manifest back to disk (local namespace only).
+    /// \param component  Component name.
+    /// \param manifest   Manifest to persist.
+    /// \retval 0  Written.
+    /// \retval -1 Namespace is read-only.
+    int writeManifest(const std::string& component, const SkillManifest& manifest);
+
+    /// Read a manifest from disk (for validation against a stored version).
+    /// \param path  Path to skill.json file.
+    /// \param[out] manifest  Populated on success.
+    /// \retval 0  Parsed.
+    /// \retval -1 Parse error.
+    int readManifest(const std::string& path, SkillManifest& manifest) const;
+
+private:
+    std::string m_root;
+    std::unordered_map<std::string, SkillManifest> m_components;  // key: "ns:component"
+    std::unordered_map<std::string, SkillNamespace> m_nsMap;     // dir → enum
+
+    int xLoadNamespace(const std::string& dirPath, SkillNamespace ns);
+    int xParseManifestFile(const std::string& path, SkillManifest& manifest) const;
+    std::string xDirForNamespace(SkillNamespace ns) const;
+    SkillNamespace xNsForDir(const std::string& dir) const;
+};
+
+} // namespace a0::skills
+```
+
+### 2.4 VersionManager
+
+```cpp
+namespace a0::skills {
+
+/// Manages .a0/store/ version archive.
+/// Each installed commit is stored under .a0/store/<ns>/<commit>/<component>/.
+/// Tracks refcounts for GC via .a0/lock.json.
+class VersionManager {
+public:
+    VersionManager(const std::string& storeRoot,
+                   const std::string& skillsRoot);
+
+    /// Archive the current active version to the store.
+    /// If already present, refcount is bumped.
+    /// \param ns         Namespace.
+    /// \param component  Component name.
+    /// \param commit     Commit hash.
+    /// \param version    Semver string.
+    /// \retval 0  Archived.
+    int archive(SkillNamespace ns,
+                const std::string& component,
+                const std::string& commit,
+                const std::string& version);
+
+    /// Restore a version from store to active directory.
+    /// \param ns         Namespace.
+    /// \param component  Component name.
+    /// \param commit     Commit hash to restore.
+    /// \retval 0  Restored.
+    /// \retval -1 Version not in store.
+    int restore(SkillNamespace ns,
+                const std::string& component,
+                const std::string& commit);
+
+    /// Decrement refcount. If refcount reaches 0, version is eligible for GC.
+    /// \param ns         Namespace.
+    /// \param component  Component name.
+    /// \param commit     Commit hash.
+    /// \retval 0  Refcount decremented.
+    /// \retval -1 Version not in store.
+    int release(SkillNamespace ns,
+                const std::string& component,
+                const std::string& commit);
+
+    /// Remove all versions with refcount == 0.
+    /// \param dryRun  Only report, don't remove.
+    /// \returns       Number of versions removed.
+    int gc(bool dryRun = false);
+
+private:
+    std::string m_storeRoot;
+    std::string m_skillsRoot;
+    std::string m_lockPath;
+
+    std::unordered_map<std::string, StoredVersion> m_versions;  // key: "<ns>:<component>:<commit>"
+
+    int xLoadLock();
+    int xSaveLock();
+    std::string xStorePath(SkillNamespace ns,
+                           const std::string& commit,
+                           const std::string& component) const;
+    std::string xVersionKey(SkillNamespace ns,
+                            const std::string& component,
+                            const std::string& commit) const;
+    std::string xActivePath(SkillNamespace ns,
+                            const std::string& component) const;
+    int xCopyDir(const std::string& src, const std::string& dst);
+};
+
+} // namespace a0::skills
+```
+
+### 2.5 ValidationEngine
+
+```cpp
+namespace a0::skills {
+
+/// Replays historical tool invocations against a candidate version.
+/// Uses CommandRunner for all subprocess execution.
+/// Used by SkillManager::install() to validate upgrades.
+class ValidationEngine {
+public:
+    /// \param logDir  Path to .a0/logs/ directory.
+    ValidationEngine(const std::string& logDir);
+
+    /// Validate a candidate version against historical logs.
+    /// \param ns         Namespace of the component.
+    /// \param component  Component name.
+    /// \param manifest   Candidate manifest to validate.
+    /// \param commit     Candidate commit hash.
+    /// \param[out] report  Human-readable validation report.
+    /// \retval 0  All invocations match.
+    /// \retval 1  All pass after applying compat bridges.
+    /// \retval -1 One or more invocations fail.
+    int validate(SkillNamespace ns,
+                 const std::string& component,
+                 const SkillManifest& manifest,
+                 const std::string& commit,
+                 std::string& report);
+
+private:
+    std::string m_logDir;
+
+    int xReplay(const InvocationRecord& record,
+                const SkillManifest& manifest,
+                const std::string& toolName,
+                nlohmann::json& actualOutput);
+    int xCompare(const nlohmann::json& expected,
+                 const nlohmann::json& actual,
+                 const ToolSchema& schema);
+    int xApplyBridge(const CompatBridge& bridge,
+                     const nlohmann::json& input,
+                     nlohmann::json& output);
+    std::vector<InvocationRecord> xLoadLogs(const std::string& ns,
+                                             const std::string& component) const;
+    void xWriteReport(const std::string& path, const std::string& details);
+};
+
+} // namespace a0::skills
+```
+
+---
+
+## 3. System Architecture
+
+```mermaid
+graph TB
+    subgraph "Agent Core"
+        Core[AgentCore]
+        SIE[SchemaInferenceEngine]
+        DR[DependencyResolver]
+        SR[SkillRunner]
+    end
+
+    subgraph "Skills Sub-module"
+        SM[SkillManager]
+        SL[SkillLoader]
+        VM[VersionManager]
+        VE[ValidationEngine]
+    end
+
+    subgraph "Runners"
+        TR[ToolRunner]
+        IP[InferenceProvider]
+    end
+
+    subgraph "External"
+        GH[GitHub]
+        LOG[(Historical Logs)]
+    end
+
+    Core --> SM
+    Core --> SR
+    SIE --> SM
+    SR --> SM
+    SR --> TR
+    SR --> IP
+    SR --> DR
+    DR --> SM
+    SM --> SL
+    SM --> VM
+    SM --> VE
+    VE --> LOG
+    VE --> TR
+    SM --> GH
+
+    subgraph "Filesystem"
+        SK_DIR[skills/]
+        STORE[.a0/store/]
+        LOG_DIR[.a0/logs/]
+        LCK[.a0/lock.json]
+    end
+
+    SL --> SK_DIR
+    VM --> STORE
+    VM --> LCK
+    VE --> LOG_DIR
+
+    SK_DIR --> SYS[system/]
+    SK_DIR --> LOC[local/]
+    SK_DIR --> GHU[github_<user>/]
+```
+
+## 4. Detailed Data Flow
+
+### 4.1 Install with Validation
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant SM as SkillManager
+    participant GH as GitHub
+    participant VM as VersionManager
+    participant VE as ValidationEngine
+    participant LOG as Logs
+
+    User->>SM: install("https://github.com/alice/utils")
+    SM->>GH: fetch latest commit
+    GH-->>SM: commit abc123, skill.json
+    SM->>VE: validate("github_alice", "utils", abc123)
+    VE->>LOG: load records for github_alice:utils
+    LOG-->>VE: historical invocations
+    loop each record
+        VE->>VE: replay tool with new version
+        VE->>VE: compare output vs schema
+    end
+    alt all pass
+        VE-->>SM: valid (0 failures)
+        SM->>VM: archive current (release)
+        SM->>SM: write active skill.json
+        SM->>VM: archive new (refcount++)
+        SM-->>User: "Installed github_alice:utils@abc123"
+    else compat bridge applies
+        VE-->>SM: valid (bridge used)
+        SM-->>User: "Installed with compat bridge"
+    else validation fails
+        VE-->>SM: FAILED
+        SM-->>User: "Validation failed — not installed"
+    end
+```
+
+### 4.2 Agent Creating a Skill
+
+```mermaid
+sequenceDiagram
+    participant Agent as AgentCore
+    participant SIE as SchemaInferenceEngine
+    participant SM as SkillManager
+    participant SL as SkillLoader
+
+    Agent->>SIE: inferSkill("list files recursively")
+    SIE-->>Agent: SkillTool{name:"list_files", ...}
+    Agent->>Agent: pick component name: "file_utils"
+    Agent->>SM: addTool("file_utils", list_files_tool)
+    SM->>SL: component exists in local?
+    alt exists
+        SL->>SL: append to skill.json
+    else new
+        SL->>SL: create skill.json
+    end
+    SL-->>SM: done
+    SM-->>Agent: added
+```
+
+### 4.3 Lookup and Resolution
+
+```mermaid
+sequenceDiagram
+    participant SR as SkillRunner
+    participant SM as SkillManager
+    participant SL as SkillLoader
+
+    SR->>SM: getTool("local:file_utils:count_lines")
+    SM->>SL: parse ns="local", component="file_utils", tool="count_lines"
+    SL->>SL: lookup index key "local:file_utils"
+    SL->>SL: find SkillTool with name "count_lines"
+    SL-->>SM: SkillTool{command:"wc -l", ...}
+    SM-->>SR: tool definition
+    SR->>TR[ToolRunner]: execute tool
+```
+
+---
+
+## 5. Visualization
+
+Covered by the parent module's D3 animation. The sub-module's state machine (install → validate → archive → GC) is file-based and deterministic; a Mermaid sequence diagram (above) is sufficient. The top-level `technical-specification.md` will include a system-wide animation showing skill propagation lifecycle across namespaces.
+
+---
+
+## 6. Testing Requirements
+
+### 6.1 SkillManager
+
+| Method | Test Case | Expected Outcome |
+|--------|-----------|-----------------|
+| `loadAll` | Valid tree with all three namespaces | 0, manifests loaded, system locked |
+| `loadAll` | Missing skills root | -1 |
+| `loadAll` | Malformed skill.json in local | Error logged, component skipped |
+| `getTool` | Existing qualified name | 0, tool populated |
+| `getTool` | Nonexistent component | -1 |
+| `getTool` | Nonexistent tool in component | -2 |
+| `addTool` | New component in local | 0, skill.json created |
+| `addTool` | Existing component in local | 0, skill.json appended |
+| `addTool` | System namespace | -1 |
+| `install` | Valid repo, validation passes | 0 |
+| `install` | Validation fails, no force | -1, no files changed |
+| `install` | Validation fails, force flag | 0, installed |
+| `install` | Specific commit hash | 0, that commit installed |
+| `remove` | Existing local component | 0, dir removed, refcount dec |
+| `remove` | System component | -1 |
+| `gc` | Orphaned version in store | Version removed |
+| `gc` | All versions referenced | 0 removed |
+
+### 6.2 VersionManager
+
+| Method | Test Case | Expected Outcome |
+|--------|-----------|-----------------|
+| `archive` | New version | Stored, refcount=1 |
+| `archive` | Already stored | Refcount incremented |
+| `restore` | Existing stored version | Files copied to active dir |
+| `restore` | Missing version | -1 |
+| `release` | Existing version | Refcount decremented |
+| `release` | Refcount reaches 0 | Eligible for GC |
+| `gc` | dryRun=true | Reports, does not remove |
+| `gc` | dryRun=false | Removes unreferenced |
+
+### 6.3 ValidationEngine
+
+| Method | Test Case | Expected Outcome |
+|--------|-----------|-----------------|
+| `validate` | All invocations match | 0 |
+| `validate` | Differs, compat bridge exists | 1 |
+| `validate` | Differs, no bridge | -1 |
+| `validate` | No historical logs | 0 |
+| `validate` | Tool with no schema defined | 0 |
+| `validate` | 1000+ historical logs | Completes within timeout |
+
+### 6.4 SkillLoader
+
+| Method | Test Case | Expected Outcome |
+|--------|-----------|-----------------|
+| `loadAll` | skill.json with tools+prompts | Both loaded |
+| `loadAll` | skill.json with compat bridges | Bridges indexed |
+| `loadAll` | Missing required fields | Component skipped, error logged |
+| `getTool` | Cross-component qualified name | Resolved |
+| `writeManifest` | Local namespace | File written |
+| `writeManifest` | System namespace | -1 |
+
+---
+
+## 7. CLI Entry Point
+
+All skills sub-module commands are exposed under `a0 skill`:
+
+```
+a0 skill list [--ns system|local|github]
+    List installed skills, optionally filtered by namespace.
+
+a0 skill install <url> [--commit <hash>] [--force]
+    Install a skill from GitHub (latest or specific commit).
+    Runs validation against historical logs.
+    --force skips validation.
+
+a0 skill remove <qualified-name>
+    Remove a skill (local or github namespace).
+
+a0 skill gc [--dry-run]
+    Garbage collect unreferenced versions from .a0/store/.
+
+a0 skill validate <qualified-name>
+    Manually trigger validation against historical logs.
+
+a0 skill pin <qualified-name>
+    Pin a version so its refcount never auto-decrements.
+```
+
+---
+
+## 8. Wiring
+
+Wire-up in `main.cpp`:
+
+1. `SkillManager` is constructed at startup with paths: `./skills`, `./.a0/store`, `./.a0/logs`
+2. `SkillManager::loadAll()` called during initialization
+3. `AgentCore` receives a `SkillManager*`
+4. `SkillRunner` resolves tool/prompt lookups through `SkillManager`
+5. `DependencyResolver` uses `SkillManager` for dependency checking
+6. `SchemaInferenceEngine` writes inferred skills via `SkillManager::addTool`/`addPrompt`
+7. CLI parser routes `a0 skill ...` commands to `SkillManager` methods
+
+---
+
+## 9. Implementation Outline
+
+### Phase 1: Data structures + SkillLoader
+
+- Define data structures in `skills.h`
+- Implement `SkillLoader` — directory walking, `skill.json` parsing
+- Unit tests with fixture skill trees
+
+### Phase 2: SkillManager facade
+
+- Implement `SkillManager` — wraps loader, exposes resolved lookup
+- Wire into `AgentCore` and `SkillRunner`
+- Update `DependencyResolver` for qualified names
+
+### Phase 3: VersionManager + store
+
+- Implement `.a0/store/` archival, `lock.json`, refcounting
+- Implement `gc` command
+- Unit tests with mock store
+
+### Phase 4: ValidationEngine
+
+- Implement historical log replay
+- Implement output comparison with schemas
+- Implement compat bridge execution
+- Unit tests with recorded invocations
+
+### Phase 5: CLI + install
+
+- Implement `a0 skill install` — GitHub fetch, validation, archive
+- Implement `a0 skill list/remove/gc`
+- E2E tests with a real GitHub repo (or mock HTTP)

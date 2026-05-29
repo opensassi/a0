@@ -1,16 +1,16 @@
-# FileSystemComponentRegistry Spec
+# FileSystemSkillRegistry Spec
 
 ## 1. Overview
 
-FileSystemComponentRegistry implements ComponentRegistry by scanning a filesystem directory for JSON definition files (`*.tool.json` and `*.skill.json`). It maintains in-memory `unordered_map` caches for fast lookup. On `addTool`/`addSkill`, it persists the component to disk as a JSON file in the base path. It is a dependency of DefaultAgentCore and the single source of truth for available tools and skills at startup.
+FileSystemSkillRegistry implements `SkillRegistry` by scanning a directory for JSON definition files (`*.tool.json` and `*.skill.json`). It maintains in-memory `unordered_map` caches for fast lookup. On `addTool`/`addSkill`, it persists to disk.
 
 ## 2. Component Specifications
 
 ```cpp
-class FileSystemComponentRegistry : public ComponentRegistry {
+class FileSystemSkillRegistry : public SkillRegistry {
 public:
     /// \param path  Directory to scan for *.tool.json / *.skill.json
-    /// \retval true  Directory found, components loaded (possibly zero)
+    /// \retval true  Directory found, skills loaded (possibly zero)
     /// \retval false Path does not exist or is not a directory
     bool loadFromDirectory(const std::string& path) override;
 
@@ -41,7 +41,7 @@ public:
 private:
     std::unordered_map<std::string, Tool> m_tools;
     std::unordered_map<std::string, Skill> m_skills;
-    std::string m_basePath;  // Set after loadFromDirectory
+    std::string m_basePath;
 };
 ```
 
@@ -50,7 +50,7 @@ private:
 ```mermaid
 graph TB
     subgraph Registry
-        FSCR[FileSystemComponentRegistry]
+        FSSR[FileSystemSkillRegistry]
         MT[(m_tools)]
         MS[(m_skills)]
     end
@@ -61,12 +61,12 @@ graph TB
         BP[m_basePath]
     end
 
-    AC[DefaultAgentCore] --> FSCR
-    FSCR --> MT
-    FSCR --> MS
-    FSCR -.->|loadFromDirectory| TD
-    FSCR -.->|loadFromDirectory| SD
-    FSCR -.->|addTool/addSkill| BP
+    AC[DefaultAgentCore] --> FSSR
+    FSSR --> MT
+    FSSR --> MS
+    FSSR -.->|loadFromDirectory| TD
+    FSSR -.->|loadFromDirectory| SD
+    FSSR -.->|addTool/addSkill| BP
     BP --> TD
     BP --> SD
 ```
@@ -76,29 +76,29 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant AC as DefaultAgentCore
-    participant FSCR as FileSystemComponentRegistry
+    participant FSSR as FileSystemSkillRegistry
     participant FS as Filesystem
 
-    AC->>FSCR: loadFromDirectory(path)
-    FSCR->>FS: iterate directory
-    FS-->>FSCR: *.tool.json / *.skill.json
+    AC->>FSSR: loadFromDirectory(path)
+    FSSR->>FS: iterate directory
+    FS-->>FSSR: *.tool.json / *.skill.json
     loop Each JSON file
-        FSCR->>FS: read file
-        FS-->>FSCR: raw JSON
-        FSCR->>FSCR: parse -> Tool / Skill
-        FSCR->>FSCR: store in m_tools / m_skills
+        FSSR->>FS: read file
+        FS-->>FSSR: raw JSON
+        FSSR->>FSSR: parse -> Tool / Skill
+        FSSR->>FSSR: store in m_tools / m_skills
     end
-    FSCR-->>AC: true
+    FSSR-->>AC: true
 
-    AC->>FSCR: getTool("bash") / getSkill("test")
-    FSCR->>FSCR: lookup in unordered_map
-    FSCR-->>AC: optional<Tool> / optional<Skill>
+    AC->>FSSR: getTool("bash") / getSkill("test")
+    FSSR->>FSSR: lookup in unordered_map
+    FSSR-->>AC: optional<Tool> / optional<Skill>
 
-    AC->>FSCR: addTool(myTool)
-    FSCR->>FSCR: insert into m_tools
-    FSCR->>FS: write myTool.name.tool.json
-    FS-->>FSCR: file written
-    FSCR-->>AC: true
+    AC->>FSSR: addTool(myTool)
+    FSSR->>FSSR: insert into m_tools
+    FSSR->>FS: write myTool.name.tool.json
+    FS-->>FSSR: file written
+    FSSR-->>AC: true
 ```
 
 ## 5. Error Handling
@@ -116,10 +116,10 @@ sequenceDiagram
 
 | Case | Behaviour |
 |------|-----------|
-| Empty directory | Returns `true`, zero components loaded |
+| Empty directory | Returns `true`, zero skills loaded |
 | File matches both `.tool.json` and `.skill.json` patterns | Impossible by extension; `.tool.json` is checked first |
-| Unicode characters in component names | Passed through as-is to both map keys and filenames |
-| Duplicate component name (same name loaded twice) | Last definition wins (unordered_map assignment) |
+| Unicode characters in skill names | Passed through as-is to both map keys and filenames |
+| Duplicate skill name (same name loaded twice) | Last definition wins (unordered_map assignment) |
 | File with no `.tool.json` / `.skill.json` suffix (e.g. `.json`) | Silently skipped |
 | `stripExt` for `.tool.json` filename `foo.tool.json` | Returns `"foo"` |
 | `stripExt` for `.skill.json` filename `bar.skill.json` | Returns `"bar"` |

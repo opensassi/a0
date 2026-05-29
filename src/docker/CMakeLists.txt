@@ -7,4 +7,4 @@ add_library(docker_lib STATIC
 )
 
 target_include_directories(docker_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_link_libraries(docker_lib PRIVATE ${CMAKE_DL_LIBS})
+target_link_libraries(docker_lib PUBLIC cmd_runner_lib ${CMAKE_DL_LIBS})

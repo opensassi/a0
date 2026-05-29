@@ -1,10 +1,11 @@
 # DockerToolRunnerImpl Spec
 
 ## 1. Overview
-Implements `DockerToolRunner` by executing tool commands inside Docker containers. Supports two modes: pooled (via `DockerContainerManager`) and ephemeral (`docker run --rm`). Compose network attachment is supported for ephemeral runs when a compose manager is available.
+
+Implements `DockerToolRunner` by executing tool commands inside Docker containers. Supports two modes: pooled (via `DockerContainerManager`) and ephemeral (`docker run --rm`). All subprocess management (fork, exec, pipe, alarm) is delegated to `CommandRunner`.
 
 **Base class:** `DockerToolRunner` (from `agent_interfaces.h`)
-**Dependencies:** `ContainerManager`, `ComposeManager` (raw pointers; non-owning)
+**Dependencies:** `ContainerManager`, `ComposeManager` (raw pointers; non-owning), `CommandRunner`
 
 ## 2. Component Specifications
 
@@ -59,24 +60,17 @@ private:
 
 ```cpp
 /**
- * @brief  Execute a docker run --rm -i command with fork/pipe/alarm
- * @param  image      Docker image
- * @param  network    Optional network flag (empty = none)
- * @param  command    Shell command
- * @param  stdinData  Optional stdin
+ * @brief  Execute a docker run --rm -i command via CommandRunner.
+ * @param  image       Docker image
+ * @param  command     Shell command
+ * @param  stdinData   Optional stdin
  * @param  timeoutSecs Max seconds
  * @return stdout + stderr
  */
 std::string execDockerRun(const std::string& image,
-                           const std::string& network,
                            const std::string& command,
                            const std::string& stdinData,
                            int timeoutSecs);
-
-/**
- * @brief  Shell-escape a string (single-quote wrapping)
- */
-std::string shellEscape(const std::string& s);
 ```
 
 ## 3. Architecture Diagram
@@ -98,9 +92,8 @@ graph TB
         CompM[DockerComposeManager]
     end
 
-    subgraph Free
-        EDR[execDockerRun]
-        SE[shellEscape]
+    subgraph Utility
+        CR[CommandRunner]
     end
 
     subgraph CLI
@@ -113,7 +106,8 @@ graph TB
     DTR -->|runEphemeral| RE
     RE -->|EDR| EDR
     RE -->|getCurrentNetwork| CompM
-    EDR -->|fork/pipe/alarm| Docker[docker CLI]
+    EDR -->|CR| CR
+    CR --> Docker[docker CLI]
     CM --> DCW
 ```
 
@@ -125,7 +119,8 @@ sequenceDiagram
     participant DTR as DockerToolRunnerImpl
     participant CM as ContainerManager
     participant CompM as ComposeManager
-    participant EDR as execDockerRun (free)
+    participant EDR as execDockerRun
+    participant CR as CommandRunner
 
     S->>DTR: run(tool, params)
     DTR->>DTR: buildCommand(tool, params)
@@ -136,13 +131,10 @@ sequenceDiagram
         DTR->>CM: execInContainer(id, cmd, stdin)
         CM-->>DTR: output
     else ephemeral
-        DTR->>EDR: execDockerRun(image, network, cmd, stdin, timeout)
-        alt compose network
-            DTR->>CompM: getCurrentNetwork()
-            CompM-->>DTR: network name
-            EDR->>EDR: include --network=<name>
-        end
-        EDR->>EDR: fork + pipe + alarm
+        DTR->>EDR: execDockerRun(image, cmd, stdin, timeout)
+        EDR->>CR: run("docker run --rm -i ...", stdin, timeout)
+        CR->>CR: fork + pipe + alarm
+        CR-->>EDR: CommandResult
         EDR-->>DTR: output
     end
     DTR-->>S: return { "output": result }
@@ -152,7 +144,7 @@ sequenceDiagram
 - **Null manager pointers:** `m_containerManager` or `m_composeManager` may be null. `run` must check before dereferencing.
 - **buildCommand parsing:** Malformed params JSON throws `std::runtime_error`.
 - **execInContainer failure:** Exception from `ContainerManager` propagates to caller.
-- **execDockerRun failure:** SIGALRM timeout → child killed → `std::runtime_error`. Non-zero exit → `runtime_error` with stderr.
+- **execDockerRun failure:** Timeout returns `"ERROR: timeout"`. Non-zero exit code returns stdout.
 - **Compose network missing:** `getCurrentNetwork` returns empty → no `--network` flag added.
 
 ## 6. Edge Cases
@@ -176,6 +168,6 @@ sequenceDiagram
 | `buildCommand` | Stdin mode | Extracts stdin, returns empty command if no other args |
 | `runEphemeral` | Normal execution | Returns stdout |
 | `runEphemeral` | Timeout | `std::runtime_error` thrown |
-| `execDockerRun` | Valid params | fork/exec succeeds, output returned |
-| `execDockerRun` | Non-zero exit | `std::runtime_error` thrown |
-| `execDockerRun` | Timeout via alarm | Child killed, exception thrown |
+| `execDockerRun` | Valid params | CommandRunner exec succeeds, output returned |
+| `execDockerRun` | Non-zero exit | Error string returned, no exception |
+| `execDockerRun` | Timeout via alarm | `"ERROR: timeout"` returned |

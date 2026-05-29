@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(CURL REQUIRED)
 find_package(nlohmann_json 3.11.0 REQUIRED)
 find_package(GTest REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 set(LIB_SOURCES
     src/agent_core.cpp
@@ -20,15 +21,21 @@ set(LIB_SOURCES
     src/dependency_resolver.cpp
 )
 
+# CommandRunner — isolated utility with no agent dependencies
+add_library(cmd_runner_lib STATIC src/command_runner.cpp)
+target_include_directories(cmd_runner_lib PUBLIC src)
+
 add_library(a0_lib STATIC ${LIB_SOURCES})
 target_include_directories(a0_lib PUBLIC src)
 
 add_subdirectory(src/docker)
+add_subdirectory(src/skills)
+add_subdirectory(src/persistence)
 
-target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib)
+target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib skills_lib persistence_lib cmd_runner_lib)
 
 add_executable(a0 src/main.cpp)
-target_link_libraries(a0 PRIVATE a0_lib)
+target_link_libraries(a0 PRIVATE a0_lib persistence_lib cmd_runner_lib)
 
 option(ENABLE_TRACE "Enable trace logging" OFF)
 if(ENABLE_TRACE)

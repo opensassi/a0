@@ -2,24 +2,24 @@
 
 ## 1. Overview
 
-DefaultAgentCore is the central orchestrator of the agent system. It owns pointers to every subsystem (registry, runners, provider, context, logger, resolver, inference engine, Docker infra) and exposes a high-level goal-processing loop. Its lifecycle is: construct → init (load components + generate session ID) → run (REPL) or processGoal — resumeSession replays a prior session's log. It depends on ComponentRegistry, ToolRunner, SkillRunner, InferenceProvider, ContextManager, InvocationLogger, DependencyResolver, SchemaInferenceEngine, and optionally DockerToolRunner + ComposeManager.
+DefaultAgentCore is the central orchestrator of the agent system. It owns pointers to every subsystem (skill manager, runners, provider, context, logger, resolver, inference engine, Docker infra) and exposes a high-level goal-processing loop. Its lifecycle is: construct → init (load skills + generate session ID) → run (REPL) or processGoal — resumeSession replays a prior session's log. It depends on SkillManager, ToolRunner, SkillRunner, InferenceProvider, ContextManager, InvocationLogger, DependencyResolver, SchemaInferenceEngine, and optionally DockerToolRunner + ComposeManager.
 
 ## 2. Component Specifications
 
 ```cpp
 class DefaultAgentCore : public AgentCore {
 public:
-    /// \param registry      Component loader (tools/skills from filesystem)
-    /// \param toolRunner    Executes tool commands
-    /// \param skillRunner   Executes skill pipelines
-    /// \param provider      LLM inference (e.g. DeepSeek)
-    /// \param context       Conversation context stack
-    /// \param logger        Invocation audit log
-    /// \param depResolver   Checks transitive dependencies
+    /// \param skillManager   Skill manager (tools/skills from filesystem)
+    /// \param toolRunner     Executes tool commands
+    /// \param skillRunner    Executes skill pipelines
+    /// \param provider       LLM inference (e.g. DeepSeek)
+    /// \param context        Conversation context stack
+    /// \param logger         Invocation audit log
+    /// \param depResolver    Checks transitive dependencies
     /// \param inferenceEngine  Infers Skill/Tool from natural language
-    /// \param dockerRunner  Optional – runs tools in Docker containers
-    /// \param composeMgr    Optional – manages Docker Compose environments
-    DefaultAgentCore(ComponentRegistry* registry,
+    /// \param dockerRunner   Optional – runs tools in Docker containers
+    /// \param composeMgr     Optional – manages Docker Compose environments
+    DefaultAgentCore(SkillManager* skillManager,
                      ToolRunner* toolRunner,
                      SkillRunner* skillRunner,
                      InferenceProvider* provider,
@@ -30,10 +30,10 @@ public:
                      DockerToolRunner* dockerRunner = nullptr,
                      ComposeManager* composeMgr = nullptr);
 
-    /// \param componentsDir  Path scanned for *.tool.json / *.skill.json
-    /// \retval true  Components loaded, session created
+    /// \param skillsDir  Path scanned for skill.json files
+    /// \retval true  Skills loaded, session created
     /// \retval false Directory missing or empty
-    bool init(const std::string& componentsDir) override;
+    bool init(const std::string& skillsDir) override;
 
     /// \param goal  Natural-language goal string
     /// \retval Execution result (JSON) – may be an error string
@@ -53,7 +53,7 @@ public:
     void run() override;
 
 private:
-    ComponentRegistry* m_registry;
+    SkillManager* m_skillManager;
     ToolRunner* m_toolRunner;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
@@ -76,7 +76,7 @@ graph TB
         AC[DefaultAgentCore]
     end
 
-    AC --> CR[ComponentRegistry]
+    AC --> SM[SkillManager]
     AC --> TR[ToolRunner]
     AC --> SR[SkillRunner]
     AC --> IP[InferenceProvider]
@@ -87,7 +87,9 @@ graph TB
     AC -.-> DTR[DockerToolRunner]
     AC -.-> CPM[ComposeManager]
 
-    CR --> FS[Filesystem JSON Files]
+    SM --> SL[SkillLoader]
+    SM --> VM[VersionManager]
+    SM --> VE[ValidationEngine]
     TR --> DTR
     DTR --> DC[Docker Daemon]
     IP --> LLM[DeepSeek API / LLM]
@@ -100,22 +102,22 @@ graph TB
 sequenceDiagram
     participant U as User
     participant AC as DefaultAgentCore
-    participant CR as ComponentRegistry
+    participant SM as SkillManager
     participant SIE as SchemaInferenceEngine
     participant DR as DependencyResolver
     participant SR as SkillRunner
     participant IL as InvocationLogger
 
     U->>AC: processGoal(goal)
-    AC->>CR: listSkills()
+    AC->>SM: listSkills()
     alt Exact match
-        CR-->>AC: skill name
-        AC->>CR: getSkill(name)
-        CR-->>AC: Skill
+        SM-->>AC: skill name
+        AC->>SM: getPrompt(name)
+        SM-->>AC: SkillPrompt
     else No exact match
         AC->>SIE: inferSkill(goal)
         SIE-->>AC: Skill
-        AC->>CR: addSkill(skill)
+        AC->>SM: addPrompt(skill.name, prompt)
     end
     AC->>DR: missingDependencies(skill)
     alt Dependencies missing

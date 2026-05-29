@@ -36,24 +36,68 @@ struct ValidatorBinding {
 };
 ```
 
-### `Skill` struct
+### `Skill` struct (legacy — replaced by skills sub-module)
 ```cpp
 struct Skill {
-    std::string name;                           /**< Unique skill identifier */
-    std::string description;                    /**< Human-readable description */
-    std::string prompt;                         /**< System prompt for LLM */
-    std::vector<std::string> dependencies;      /**< Required tool/skill names */
-    std::vector<ValidatorBinding> validators;   /**< Post-LLM processing chain */
-    std::string composeFile;                    /**< Docker Compose file path */
+    std::string name;
+    std::string description;
+    std::string prompt;
+    std::vector<std::string> dependencies;
+    std::vector<ValidatorBinding> validators;
+    std::string composeFile;
     std::vector<std::string> aptDependencies;
 };
 ```
 
-### `ComponentRegistry` (abstract)
+### `ToolSchema` struct (skills sub-module)
 ```cpp
-class ComponentRegistry {
+struct ToolSchema {
+    nlohmann::json input;   /**< JSON Schema for input parameters */
+    nlohmann::json output;  /**< JSON Schema for return value */
+};
+```
+
+### `SkillTool` struct (skills sub-module)
+```cpp
+struct SkillTool {
+    std::string name;
+    std::string description;
+    std::string command;
+    std::string inputMode = "stdin";
+    ToolSchema schema;
+    std::string dockerImage;
+    TrustLevel trustLevel = TrustLevel::MEDIUM;
+    bool useContainerPool = true;
+    std::vector<std::string> aptDependencies;
+};
+```
+
+### `SkillPrompt` struct (skills sub-module)
+```cpp
+struct SkillPrompt {
+    std::string name;
+    std::string description;
+    std::string prompt;
+    std::vector<std::string> dependencies;
+    std::vector<ValidatorBinding> validators;
+};
+```
+
+### `CompatBridge` struct (skills sub-module)
+```cpp
+struct CompatBridge {
+    std::string toolName;
+    std::string since;
+    std::string bridgeCommand;
+    std::string description;
+};
+```
+
+### `SkillRegistry` (abstract)
+```cpp
+class SkillRegistry {
 public:
-    virtual ~ComponentRegistry() = default;
+    virtual ~SkillRegistry() = default;
     /**
      * @param path Directory to scan for tool/skill JSON/YAML files
      * @retval true  All files loaded successfully
@@ -297,7 +341,8 @@ graph TB
     end
 
     subgraph Core_Interfaces
-        CR[ComponentRegistry]
+        SKR[SkillRegistry]
+        SM[SkillManager]
         TR[ToolRunner]
         IP[InferenceProvider]
         CM[ContextManager]
@@ -324,9 +369,9 @@ graph TB
     SR -->|uses| TR
     SR -->|uses| IP
     SR -->|uses| DR
-    SR -->|uses| CR
+    SR -->|uses| SM
     AC -->|composes| SR
-    AC -->|composes| CR
+    AC -->|composes| SM
     AC -->|composes| TR
     AC -->|composes| IP
     AC -->|composes| CM
@@ -346,14 +391,15 @@ sequenceDiagram
     participant SR as SkillRunner
     participant TR as ToolRunner
     participant IP as InferenceProvider
-    participant CR as ComponentRegistry
+    participant SM as SkillManager
     participant CM as ContextManager
     participant DR as DependencyResolver
     participant SIE as SchemaInferenceEngine
     participant IL as InvocationLogger
 
     User->>AC: processGoal(goal)
-    AC->>CM: push({role:"user", content:goal})
+    AC->>SM: getPrompt(qualifiedName)
+    SM-->>AC: SkillPrompt
     AC->>SIE: inferSkill(goal)
     SIE-->>AC: Skill
     AC->>DR: checkSkillDependencies(skill)
@@ -361,8 +407,6 @@ sequenceDiagram
     AC->>SR: execute(skill, params)
     SR->>IP: complete(systemPrompt, userPrompt)
     IP-->>SR: response
-    SR->>DR: checkToolDependencies(tool)
-    DR-->>SR: ok
     SR->>TR: run(tool, params)
     TR-->>SR: result
     SR->>SR: runValidators(skill, result)
@@ -400,7 +444,7 @@ sequenceDiagram
 
 ## 7. Testing Requirements
 
-### `ComponentRegistry`
+### `SkillRegistry`
 | Method | Test Case |
 |---|---|
 | `loadFromDirectory` | Valid directory, missing directory, malformed JSON |

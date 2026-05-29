@@ -9,25 +9,25 @@ DefaultSkillRunner implements SkillRunner. It orchestrates the end-to-end execut
 - `DockerToolRunner*` — containerized tool execution (nullable)
 - `ComposeManager*` — Docker Compose lifecycle (nullable)
 - `InferenceProvider*` — LLM completion (required)
-- `ComponentRegistry*` — tool/skill lookup (required)
+- `SkillManager*` — tool/skill lookup (required)
 - `DependencyResolver*` — dependency checking (nullable)
 
-**Lifecycle:** One instance per application. `setComponentsDir` must be called before `execute` if Compose is used.
+**Lifecycle:** One instance per application. `setSkillsDir` must be called before `execute` if Compose is used.
 
 ## 2. Component Specifications
 
 ```cpp
 class DefaultSkillRunner : public SkillRunner {
 public:
-    /// \param toolRunner    Host-level tool runner (non-owning, required).
-    /// \param provider      LLM inference provider (non-owning, required).
-    /// \param registry      Component registry for tool/skill lookup.
-    /// \param depResolver   Optional dependency checker.
-    /// \param dockerRunner  Optional containerized tool runner.
-    /// \param composeMgr    Optional Docker Compose lifecycle manager.
+    /// \param toolRunner      Host-level tool runner (non-owning, required).
+    /// \param provider        LLM inference provider (non-owning, required).
+    /// \param skillManager    Skill manager for tool/skill lookup.
+    /// \param depResolver     Optional dependency checker.
+    /// \param dockerRunner    Optional containerized tool runner.
+    /// \param composeMgr      Optional Docker Compose lifecycle manager.
     DefaultSkillRunner(ToolRunner* toolRunner,
                        InferenceProvider* provider,
-                       ComponentRegistry* registry,
+                       SkillManager* skillManager,
                        DependencyResolver* depResolver = nullptr,
                        DockerToolRunner* dockerRunner = nullptr,
                        ComposeManager* composeMgr = nullptr);
@@ -47,17 +47,17 @@ public:
     /// \returns LLM response (possibly validator-processed).
     json execute(const Skill& skill, const json& params) override;
 
-    /// \param path  Filesystem path to the components directory (used for compose file resolution).
-    void setComponentsDir(const std::string& path);
+    /// \param path  Filesystem path to the skills directory (used for compose file resolution).
+    void setSkillsDir(const std::string& path);
 
 private:
     ToolRunner* m_toolRunner;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
     InferenceProvider* m_provider;
-    ComponentRegistry* m_registry;
+    SkillManager* m_skillManager;
     DependencyResolver* m_depResolver;
-    std::string m_componentsDir;
+    std::string m_skillsDir;
 };
 ```
 
@@ -98,7 +98,7 @@ graph TB
     DSR --> CM
     DSR --> TR
     DSR --> DTR
-    DSR --> CR[ComponentRegistry]
+    DSR --> SM[SkillManager]
     selectRunner -- chooses --> HTR
     selectRunner -- chooses --> DTR
 ```

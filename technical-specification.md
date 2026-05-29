@@ -85,9 +85,9 @@ struct Skill {
 ### 2.2 Abstract Interfaces
 
 ```cpp
-class ComponentRegistry {
+class SkillRegistry {
 public:
-    virtual ~ComponentRegistry() = default;
+    virtual ~SkillRegistry() = default;
     virtual bool loadFromDirectory(const std::string& path) = 0;
     virtual std::optional<Tool> getTool(const std::string& name) const = 0;
     virtual std::optional<Skill> getSkill(const std::string& name) const = 0;
@@ -232,7 +232,7 @@ graph TB
     subgraph "Agent Process"
         Core[AgentCore]
         Context[ContextManager]
-        Reg[ComponentRegistry]
+        Reg[SkillRegistry]
         HostRunner[HostToolRunner]
         DockerRunner[DockerToolRunner]
         SkillRunner[SkillRunner]
@@ -364,7 +364,7 @@ sequenceDiagram
 | `SkillRunner`        | `expandPrompt` with eager tool call                         | Eager execution, substitution                      |
 | `SkillRunner`        | `runValidators` with failing validator                      | Result starts with `"VALIDATOR_ERROR: ERROR: ..."` |
 | `SkillRunner`        | `execute` when dependencies missing                         | Returns error message, does not call LLM           |
-| `ComponentRegistry`  | `loadFromDirectory` with malformed JSON                     | Skips file, logs warning, continues                |
+| `SkillRegistry`      | `loadFromDirectory` with malformed JSON                     | Skips file, logs warning, continues                |
 | `DependencyResolver` | `checkSkillDependencies` on skill with missing tool         | Returns false, missing list includes the tool      |
 | `InvocationLogger`   | `log` then `replay`                                         | Log two entries, replay → callback receives both   |
 | `AgentCore`          | `processGoal` with exact skill name match                   | Uses the skill, does not infer a new one           |
@@ -559,6 +559,35 @@ The Docker sub‑module is a **required** part of the agent for containerized to
 
 All Docker‑related code must be placed in `./src/docker/`, with its own `CMakeLists.txt` included from the top‑level `CMakeLists.txt`.
 
+#### Step 11: Implement Skills sub‑module
+
+The Skills sub‑module is a **required** part of the agent for tool/skill lifecycle management, distribution, and version validation. Its complete technical specification is located in `./src/skills/technical-specification.md` and the implementation source code resides in `./src/skills/`. The key implementation phases are:
+
+11.1 Implement `SkillLoader` — directory walking, `skill.json` parsing, three-tier namespace index.
+11.2 Implement `SkillManager` facade — qualified name resolution, `addTool`/`addPrompt`, CLI dispatch.
+11.3 Implement `VersionManager` — `.a0/store/` archival, `lock.json` refcounting, GC.
+11.4 Implement `ValidationEngine` — historical log replay, output comparison, compat bridge execution.
+11.5 Wire `SkillManager` into `AgentCore`.
+11.6 Add `a0 skill` CLI subcommand routing in `main.cpp`.
+11.7 Write unit tests with fixture skill trees and mock historical logs.
+11.8 Write integration tests for install/remove/gc with a mock GitHub endpoint.
+
+All skills‑related code must be placed in `./src/skills/`, with its own `CMakeLists.txt` included from the top‑level `CMakeLists.txt`.
+
+#### Step 12: Implement CommandRunner utility
+
+The `CommandRunner` is a stateless utility class that wraps all subprocess creation in the agent. Every `fork()`, `exec()`, `pipe()`, `alarm()` call is isolated here — no other class manages processes directly.
+
+12.1 Implement `CommandRunner::run()` — single command execution with stdin piping, alarm timeout, stdout/stderr capture, and process group management.
+12.2 Implement `CommandRunner::runAll()` — parallel command execution via N-child fork + waitpid loop, configurable `maxParallel`.
+12.3 Implement `CommandRunner::shellEscape()` — single-quote shell escaping for safe argument passing.
+12.4 Refactor `SubprocessToolRunner` to delegate all subprocess calls to `CommandRunner::run()`, retaining only command-building logic (args mode, stdin mode).
+12.5 Refactor `DockerCLIWrapper` to use `CommandRunner::run()` instead of its own `execSimple`/`execWithTimeout`/`shellEscape` internals.
+12.6 Refactor `DockerToolRunnerImpl::execDockerRun` to delegate to `CommandRunner::run()`.
+12.7 Refactor `ValidationEngine` to use `CommandRunner::run()` for replay and compat bridge execution.
+12.8 Remove duplicate `shellEscape`, `handleAlarm`, signal handler, and fork/exec/pipe code from all other files.
+12.9 Write unit tests for CommandRunner (echo, timeout, pipe, parallel, edge cases).
+
 ---
 
 ## 8. File Layout
@@ -567,10 +596,11 @@ All Docker‑related code must be placed in `./src/docker/`, with its own `CMake
 project/
 ├── CMakeLists.txt
 ├── src/
+│   ├── command_runner.h/.cpp           # All subprocess management (fork/exec/pipe/alarm)
 │   ├── main.cpp
 │   ├── agent_core.cpp/.h
-│   ├── component_registry.cpp/.h
-│   ├── tool_runner.cpp/.h               # HostToolRunner (renamed from SubprocessToolRunner)
+│   ├── skill_registry.cpp/.h               # Flat file scanner (legacy)
+│   ├── tool_runner.cpp/.h                  # HostToolRunner
 │   ├── skill_runner.cpp/.h
 │   ├── deepseek_provider.cpp/.h
 │   ├── context_manager.cpp/.h
@@ -578,27 +608,44 @@ project/
 │   ├── schema_inference_engine.cpp/.h
 │   ├── dependency_resolver.cpp/.h
 │   ├── trace.h
-│   └── docker/                         # Docker sub‑module (required)
-│       ├── technical-specification.md  # Full Docker integration spec
-│       ├── container_manager.cpp/.h
-│       ├── compose_manager.cpp/.h
-│       ├── docker_tool_runner.cpp/.h
-│       ├── dependency_installer.cpp/.h
+│   ├── docker/                             # Docker sub‑module (required)
+│   │   ├── technical-specification.md
+│   │   ├── container_manager.cpp/.h
+│   │   ├── compose_manager.cpp/.h
+│   │   ├── docker_tool_runner.cpp/.h
+│   │   ├── dependency_installer.cpp/.h
+│   │   └── CMakeLists.txt
+│   └── skills/                             # Skills sub‑module (required)
+│       ├── technical-specification.md      # Full skills integration spec
+│       ├── skills.h                        # Data structures + SkillManager facade
+│       ├── skill_manager.cpp
+│       ├── skill_loader.h/.cpp
+│       ├── version_manager.h/.cpp
+│       ├── validation_engine.h/.cpp
 │       └── CMakeLists.txt
 ├── test/
 │   ├── unit/
 │   │   ├── test_tool_runner.cpp
 │   │   ├── test_skill_runner.cpp
-│   │   ├── test_docker_*.cpp            # Docker unit tests
-│   │   └── ...
+│   │   ├── test_docker_*.cpp               # Docker unit tests
+│   │   ├── test_skill_manager.cpp
+│   │   ├── test_skill_loader.cpp
+│   │   ├── test_version_manager.cpp
+│   │   └── test_validation_engine.cpp
 │   ├── e2e/
 │   │   ├── mock_deepseek_server.py
 │   │   ├── fixtures/
 │   │   └── run_e2e_tests.sh
-├── specs/                         # one .spec.md per source file
-├── logs/                          # created at runtime
-├── components/                    # created at runtime
-└── coverage_html/                 # generated after coverage run
+├── skills/                          # created at runtime — three-tier namespace
+│   ├── system/                      # shipped with agent (read-only)
+│   ├── local/                       # agent-created (writable)
+│   └── github_<user>/               # installed from GitHub (read-only)
+├── .a0/                             # agent internal state
+│   ├── store/                       # version archive keyed by commit hash
+│   ├── logs/                        # historical invocation logs
+│   └── lock.json                    # version refcounts + metadata
+├── logs/                            # session logs (created at runtime)
+└── coverage_html/                   # generated after coverage run
 ```
 
 ---
@@ -614,8 +661,10 @@ project/
 7. Run **positive and negative** E2E tests with mock DeepSeek API; fix any failures.
 8. Implement Docker sub‑module (following `./src/docker/technical-specification.md`).
 9. Run Docker‑specific tests (unit and E2E with real Docker).
-10. Enable `-DTRACE` for debug builds; keep trace logs for diagnosis.
-11. Commit and CI verifies all tests + coverage.
+10. Implement Skills sub‑module (following `./src/skills/technical-specification.md`).
+11. Implement `CommandRunner` utility — centralize all fork/exec/pipe/alarm code.
+12. Enable `-DTRACE` for debug builds; keep trace logs for diagnosis.
+13. Commit and CI verifies all tests + coverage.
 
 ---
 
@@ -637,5 +686,12 @@ The complete technical specification for the Docker sub‑module is provided in 
 
 **Location**: `./src/docker/technical-specification.md`  
 **Source code**: `./src/docker/`
+
+## Appendix B: Skills Sub‑Module Specification
+
+The complete technical specification for the Skills sub‑module is provided in a separate document: `./src/skills/technical-specification.md`. It includes detailed class specifications, sequence diagrams, configuration options, and testing requirements. The sub‑module is **required** — it implements a three-tier namespace system with version validation via historical log replay and GitHub distribution support.
+
+**Location**: `./src/skills/technical-specification.md`  
+**Source code**: `./src/skills/`
 
 ---

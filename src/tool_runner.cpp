@@ -1,135 +1,29 @@
 #include "tool_runner.h"
+#include "command_runner.h"
 #include "trace.h"
-#include <algorithm>
-#include <csignal>
-#include <cstring>
-#include <sstream>
-#include <unistd.h>
-#include <sys/wait.h>
 
-static volatile sig_atomic_t g_timeoutFlag = 0;
-static pid_t g_childPid = 0;
+using a0::CommandRunner;
+using a0::CommandResult;
 
-extern "C" void handleAlarm(int) {
-    g_timeoutFlag = 1;
-    if (g_childPid > 0) {
-        kill(-g_childPid, SIGKILL);
-    }
-}
-
-static std::string shellEscape(const std::string& s) {
-    TRACE_LOG("shellEscape(len=" << s.size() << ")");
-    std::string escaped;
-    escaped.reserve(s.size() + 2);
-    escaped.push_back('\'');
-    for (char c : s) {
-        if (c == '\'') {
-            escaped += "'\\''";
-        } else {
-            escaped.push_back(c);
-        }
-    }
-    escaped.push_back('\'');
-    return escaped;
-}
-
-static std::string exec(const std::string& cmd, const std::string& stdinData) {
-    TRACE_LOG("exec(" << cmd << ")");
-
-    int stdoutPipe[2];
-    int stdinPipe[2];
-    bool hasStdin = !stdinData.empty();
-
-    if (pipe(stdoutPipe) < 0) return "ERROR: pipe failed";
-    if (hasStdin && pipe(stdinPipe) < 0) {
-        close(stdoutPipe[0]);
-        close(stdoutPipe[1]);
-        return "ERROR: pipe failed";
-    }
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        close(stdoutPipe[0]);
-        close(stdoutPipe[1]);
-        if (hasStdin) { close(stdinPipe[0]); close(stdinPipe[1]); }
-        return "ERROR: fork failed";
-    }
-
-    if (pid == 0) {
-        close(stdoutPipe[0]);
-        dup2(stdoutPipe[1], STDOUT_FILENO);
-        close(stdoutPipe[1]);
-
-        if (hasStdin) {
-            close(stdinPipe[1]);
-            dup2(stdinPipe[0], STDIN_FILENO);
-            close(stdinPipe[0]);
-        } else {
-            close(STDIN_FILENO);
-        }
-
-        setpgid(0, 0);
-        execl("/bin/sh", "sh", "-c", cmd.c_str(), (char*)NULL);
-        _exit(127);
-    }
-
-    close(stdoutPipe[1]);
-    if (hasStdin) {
-        close(stdinPipe[0]);
-        const char* data = stdinData.c_str();
-        size_t remaining = stdinData.size();
-        while (remaining > 0) {
-            ssize_t written = write(stdinPipe[1], data, remaining);
-            if (written <= 0) break;
-            data += written;
-            remaining -= written;
-        }
-        close(stdinPipe[1]);
-    }
-
-    g_childPid = pid;
-    g_timeoutFlag = 0;
-    struct sigaction sa;
-    sa.sa_handler = handleAlarm;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    sigaction(SIGALRM, &sa, nullptr);
-    alarm(30);
-
-    std::string result;
-    char buf[4096];
-    ssize_t n;
-    while ((n = read(stdoutPipe[0], buf, sizeof(buf))) > 0) {
-        result.append(buf, n);
-    }
-    close(stdoutPipe[0]);
-
-    alarm(0);
-
-    int status;
-    waitpid(pid, &status, 0);
-    g_childPid = 0;
-
-    if (g_timeoutFlag) {
+static std::string formatResult(const CommandResult& res)
+{
+    if (res.timedOut) {
         return "ERROR: timeout";
     }
-
-    if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-        if (result.empty()) {
-            return "ERROR: command failed with exit code " + std::to_string(WEXITSTATUS(status));
-        }
+    if (res.exitCode != 0 && res.stdout.empty()) {
+        return "ERROR: command failed with exit code " + std::to_string(res.exitCode);
     }
-
     const size_t maxSize = 1024 * 1024;
-    if (result.size() > maxSize) {
-        result.resize(maxSize);
-        result += "... (truncated)";
+    std::string output = res.stdout;
+    if (output.size() > maxSize) {
+        output.resize(maxSize);
+        output += "... (truncated)";
     }
-
-    return result;
+    return output;
 }
 
-json SubprocessToolRunner::run(const Tool& tool, const json& params) {
+json SubprocessToolRunner::run(const Tool& tool, const json& params)
+{
     TRACE_LOG("run(" << tool.name << ")");
 
     if (tool.inputMode == "args") {
@@ -138,9 +32,9 @@ json SubprocessToolRunner::run(const Tool& tool, const json& params) {
             for (auto& [key, value] : params.items()) {
                 if (key == "_") {
                     if (value.is_string()) {
-                        cmd += " " + shellEscape(value.get<std::string>());
+                        cmd += " " + CommandRunner::shellEscape(value.get<std::string>());
                     } else {
-                        cmd += " " + shellEscape(value.dump());
+                        cmd += " " + CommandRunner::shellEscape(value.dump());
                     }
                 } else {
                     std::string val;
@@ -153,14 +47,14 @@ json SubprocessToolRunner::run(const Tool& tool, const json& params) {
                     } else {
                         val = value.dump();
                     }
-                    cmd += " --" + key + "=" + shellEscape(val);
+                    cmd += " --" + key + "=" + CommandRunner::shellEscape(val);
                 }
             }
         } else if (params.is_string()) {
-            cmd += " " + shellEscape(params.get<std::string>());
+            cmd += " " + CommandRunner::shellEscape(params.get<std::string>());
         }
-        std::string output = exec(cmd, "");
-        return output;
+        auto result = CommandRunner::run(cmd, "", 30);
+        return formatResult(result);
     }
 
     std::string input;
@@ -172,6 +66,6 @@ json SubprocessToolRunner::run(const Tool& tool, const json& params) {
         input = params.dump();
     }
 
-    std::string output = exec(tool.command, input);
-    return output;
+    auto result = CommandRunner::run(tool.command, input, 30);
+    return formatResult(result);
 }

@@ -68,12 +68,22 @@ static std::string getFlag(int argc, char* argv[],
  *              DockerToolRunnerImpl allocated
  *
  * Wire-up order:
- *   registry, toolRunner, provider, context, logger,
+ *   skillManager (replaces legacy registry),
+ *   toolRunner, provider, context, logger,
  *   depResolver, inferenceEngine, skillRunner → DefaultAgentCore
+ *
+ * CLI subcommand routing:
+ *   "a0 skill list/install/remove/gc/validate/pin" → SkillManager methods
+ *   Other arguments → interactive REPL via AgentCore.run()
  *
  * Post-init: resume session if --resume given,
  *            then call core.run() (interactive REPL).
  * Cleanup: delete Docker objects in reverse order.
+ *
+ * Wire-up detail:
+ *   SkillManager is constructed with "skills/", "./.a0/store", "./.a0/logs"
+ *   SkillManager::loadAll() called during init
+ *   DefaultAgentCore receives SkillManager* via new constructor parameter
  */
 int main(int argc, char* argv[]);
 ```
@@ -90,7 +100,8 @@ graph TB
     end
 
     subgraph Core_Components
-        CR[FileSystemComponentRegistry]
+        SM[SkillManager]              # Skills sub-module facade
+        SKR[FileSystemSkillRegistry]  # Legacy adapter
         TR[SubprocessToolRunner]
         DP[DeepSeekProvider]
         CM[DefaultContextManager]
@@ -99,6 +110,12 @@ graph TB
         IE[DefaultSchemaInferenceEngine]
         SR[DefaultSkillRunner]
         CORE[DefaultAgentCore]
+    end
+
+    subgraph Skills_SubModule
+        SL[SkillLoader]
+        VM[VersionManager]
+        VE[ValidationEngine]
     end
 
     subgraph Docker_Components
@@ -120,8 +137,9 @@ graph TB
     M -->|--no-docker?| DCM
     M -->|--no-docker?| DCoM
     M -->|--no-docker?| DTR
+    M -->|a0 skill ...| SM
 
-    M --> CR
+    M --> SM
     M --> TR
     M --> DP
     M --> CM
@@ -131,14 +149,19 @@ graph TB
     M --> SR
     M --> CORE
 
+    SM --> SL
+    SM --> VM
+    SM --> VE
+    VE --> LG
+
     SR --> TR
     SR --> DP
-    SR --> CR
+    SR --> SM
     SR --> DR
     SR --> DTR
     SR --> DCoM
 
-    CORE --> CR
+    CORE --> SM
     CORE --> TR
     CORE --> SR
     CORE --> DP
@@ -164,11 +187,13 @@ sequenceDiagram
     participant OS as OS (argv, env)
     participant M as main()
     participant LF as loadEnvFile()
+    participant SM as SkillManager
     participant DP as DeepSeekProvider
     participant DockerMgr as Docker Managers
     participant SR as DefaultSkillRunner
     participant CORE as DefaultAgentCore
     participant User as User (stdin/stdout)
+    participant SL as SkillLoader
 
     OS->>M: argc, argv
     M->>M: First pass: extract --env-file
@@ -184,27 +209,42 @@ sequenceDiagram
     end
     M->>DP: DeepSeekProvider(apiKey)
     M->>M: setMockUrl(mockUrl) if --mock-api
-    M->>SR: DefaultSkillRunner(toolRunner, provider, ...)
-    M->>CORE: DefaultAgentCore(registry, ..., dockerRunner, ...)
 
-    alt --resume <id>
-        M->>CORE: resumeSession(sessionId)
+    rect rgb(240, 240, 255)
+        Note over M,SM: Skills sub-module init
+        M->>SM: SkillManager("skills/", ".a0/store", ".a0/logs")
+        SM->>SL: loadAll()
+        SL-->>SM: index built
+        SM-->>M: ready
     end
-    M->>CORE: init(componentsDir)
-    alt init fails
-        CORE-->>M: false
-        M->>OS: return 1
-    else init succeeds
-        CORE-->>M: true
+
+    M->>SR: DefaultSkillRunner(toolRunner, provider, skillManager, ...)
+    M->>CORE: DefaultAgentCore(skillManager, ..., dockerRunner, ...)
+
+    alt argv == "a0 skill ..."
+        M->>SM: dispatch command (list/install/remove/gc/validate)
+        SM-->>User: result
+        M->>OS: return 0
+    else interactive REPL
+        alt --resume <id>
+            M->>CORE: resumeSession(sessionId)
+        end
+        M->>CORE: init(componentsDir)
+        alt init fails
+            CORE-->>M: false
+            M->>OS: return 1
+        else init succeeds
+            CORE-->>M: true
+        end
+        M->>CORE: run()
+        loop REPL
+            CORE->>User: prompt
+            User->>CORE: input
+            CORE->>CORE: processGoal(input)
+            CORE-->>User: result
+        end
+        CORE-->>M: return
     end
-    M->>CORE: run()
-    loop REPL
-        CORE->>User: prompt
-        User->>CORE: input
-        CORE->>CORE: processGoal(input)
-        CORE-->>User: result
-    end
-    CORE-->>M: return
     M->>DockerMgr: delete dockerRunner, composeMgr, containerMgr
     M->>OS: return 0
 ```
@@ -230,8 +270,11 @@ sequenceDiagram
 | Both `--api-key` and `DEEPSEEK_API_KEY` env | CLI flag takes priority |
 | `--no-docker` combined with Docker-requiring tools | `dockerRunner` is `nullptr`; `SkillRunner` must handle |
 | `--resume` with invalid session ID | `resumeSession` returns `false`, continues with fresh session |
-| No flags at all | All defaults: `.env`, `./components`, no Docker constraints |
-| `componentsDir` does not exist | `init` returns `false`, program exits with 1 |
+| No flags at all | All defaults: `.env`, `./skills`, no Docker constraints |
+| `skillsDir` does not exist | `SkillManager::loadAll` returns -1, program exits with 1 |
+| `a0 skill install` with no args | Prints usage, exits cleanly |
+| `a0 skill install` validation fails | Prints failure report, exits 1, no files changed |
+| `a0 skill list` with installed skills | Prints table of all namespaces |
 | Empty `.env` file | No environment variables set, no error |
 | `--container-idle-timeout` set to non-numeric string | Defaults to 300 |
 
@@ -243,3 +286,7 @@ sequenceDiagram
 | `hasFlag` | Flag present, flag absent, partial match, `--` terminator |
 | `getFlag` | Flag with value, flag without value, env var fallback, default fallback, `A0_` env var mapping |
 | `main` (integration) | No flags, all flags, `--no-docker`, `--resume` valid, `--resume` invalid, missing API key, Docker unavailable, init failure |
+| `main` (`a0 skill` routing) | `a0 skill list` → SkillManager::listSkills called, output printed |
+| `main` (`a0 skill` install) | `a0 skill install https://github.com/alice/utils` → install flow executed |
+| `main` (`a0 skill` validation fail) | Install fails validation → error message printed, exit 1 |
+| `main` (SkillManager init fail) | `skills/` directory missing → exit 1 |
