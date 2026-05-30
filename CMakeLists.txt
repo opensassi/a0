@@ -77,17 +77,31 @@ function(add_agent_test TEST_NAME TEST_SOURCE)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endfunction()
 
+add_agent_test(test_a0_dir test/unit/test_a0_dir.cpp)
+add_agent_test(test_skill_loader test/unit/test_skill_loader.cpp)
+add_agent_test(test_validation_engine test/unit/test_validation_engine.cpp)
+add_agent_test(test_version_manager test/unit/test_version_manager.cpp)
 add_agent_test(test_tool_runner test/unit/test_tool_runner.cpp)
 add_agent_test(test_skill_resolver test/unit/test_skill_resolver.cpp)
 # Disabled: replaced by synthetic test framework
 # add_agent_test(test_skill_runner test/unit/test_skill_runner.cpp)
-# add_agent_test(test_dependency_resolver test/unit/test_dependency_resolver.cpp)
+add_agent_test(test_dependency_resolver test/unit/test_dependency_resolver.cpp)
+# Disabled: replaced by synthetic test framework
 # add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
 # add_agent_test(test_interfaces test/unit/test_interfaces.cpp)
 add_agent_test(test_invocation_logger test/unit/test_invocation_logger.cpp)
 add_agent_test(test_schema_inference test/unit/test_schema_inference_engine.cpp)
+add_agent_test(test_skill_manager test/unit/test_skill_manager.cpp)
 add_agent_test(test_context_manager test/unit/test_context_manager.cpp)
 add_agent_test(test_deepseek_provider test/unit/test_deepseek_provider.cpp)
+
+add_agent_test(test_system_tools test/unit/test_system_tools.cpp)
+
+add_agent_test(test_system_tools_e2e test/unit/test_system_tools_e2e.cpp)
+add_agent_test(test_agent_integration test/unit/test_agent_integration.cpp)
+add_agent_test(test_agent_tool_calls test/unit/test_agent_tool_calls.cpp)
+target_compile_definitions(test_system_tools_e2e PRIVATE
+    TEST_PROJECT_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_agent_test(test_docker_interfaces test/unit/test_docker_interfaces.cpp)
 

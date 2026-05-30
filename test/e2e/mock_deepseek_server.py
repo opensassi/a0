@@ -12,6 +12,8 @@ RESPONSES = {
     "tool": json.load(open(os.path.join(FIXTURES_DIR, "infer_tool_response.json"))),
     "skill": json.load(open(os.path.join(FIXTURES_DIR, "infer_skill_response.json"))),
     "files": json.load(open(os.path.join(FIXTURES_DIR, "find_related_files_response.json"))),
+    "tool_calls": json.load(open(os.path.join(FIXTURES_DIR, "tool_calls_response.json"))),
+    "tool_result": {"id":"mock-completion-5","choices":[{"index":0,"message":{"role":"assistant","content":"Tool executed successfully"}}]}
 }
 
 
@@ -23,18 +25,26 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
         payload = json.loads(body) if body else {}
         messages = payload.get("messages", [])
         user_text = ""
-        for msg in messages:
-            if msg.get("role") == "user":
-                user_text = msg.get("content", "")
-                break
-
         system_text = ""
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_text = msg.get("content", "")
-                break
+        has_tool_role = False
 
-        if "tool generator" in system_text.lower():
+        for msg in messages:
+            role = msg.get("role", "")
+            if role == "user":
+                user_text = msg.get("content", "")
+            elif role == "system":
+                system_text = msg.get("content", "")
+            elif role == "tool":
+                has_tool_role = True
+
+        # Phase 2 dispatch: request has tools array and no tool role messages yet
+        if not has_tool_role and payload.get("tools"):
+            # First call in tool-calling loop — respond with tool_calls
+            response = RESPONSES["tool_calls"]
+        elif has_tool_role:
+            # Subsequent call after tool execution — return content
+            response = RESPONSES["tool_result"]
+        elif "tool generator" in system_text.lower():
             response = RESPONSES["tool"]
         elif "skill generator" in system_text.lower():
             response = RESPONSES["skill"]

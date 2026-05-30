@@ -6,9 +6,15 @@ protected:
     class MockProvider : public InferenceProvider {
     public:
         std::string response;
+        int callCount = 0;
+        std::string secondResponse; // returned on second call, for retry tests
+
         std::string complete(const std::string& sys, const std::string& usr) override {
             (void)sys;
             (void)usr;
+            callCount++;
+            if (callCount == 2 && !secondResponse.empty())
+                return secondResponse;
             return response;
         }
         CompletionResponse complete(
@@ -93,4 +99,31 @@ TEST_F(SchemaInferenceTest, ShortDescription) {
     provider->response = R"({"name":"one","description":"a","command":"ls","inputMode":"stdin"})";
     Tool t = engine->inferTool("ls");
     EXPECT_EQ(t.name, "one");
+}
+
+TEST_F(SchemaInferenceTest, InferToolEmptyResponseThrows) {
+    provider->response = "";
+    EXPECT_THROW(engine->inferTool("anything"), std::runtime_error);
+}
+
+TEST_F(SchemaInferenceTest, InferPromptEmptyResponseThrows) {
+    provider->response = "";
+    EXPECT_THROW(engine->inferPrompt("anything"), std::runtime_error);
+}
+
+TEST_F(SchemaInferenceTest, InferPromptRetryOnInvalidJson) {
+    // First call returns invalid JSON; retry returns valid
+    provider->response = "not json";
+    provider->secondResponse = R"({"name":"retry_tool","description":"retry","prompt":"retry prompt","dependencies":[],"validators":[]})";
+    provider->callCount = 0;
+    Prompt p = engine->inferPrompt("retry");
+    EXPECT_EQ(p.name, "retry_tool");
+}
+
+TEST_F(SchemaInferenceTest, InferToolRetryOnInvalidJson) {
+    provider->response = "invalid{json";
+    provider->secondResponse = R"({"name":"retry_tool","description":"inferred retry","command":"echo retry","inputMode":"stdin"})";
+    provider->callCount = 0;
+    Tool t = engine->inferTool("retry");
+    EXPECT_EQ(t.name, "retry_tool");
 }

@@ -56,6 +56,7 @@ int VersionManager::restore(SkillNamespace ns,
     std::string dst = xActivePath(ns, component);
     std::string rmCmd = "rm -rf " + dst;
     system(rmCmd.c_str());
+    mkdir(dst.c_str(), 0755);
     return xCopyDir(src, dst);
 }
 

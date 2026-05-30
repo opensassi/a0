@@ -95,3 +95,55 @@ TEST_F(InvocationLoggerTest, LargeSessionId) {
         EXPECT_EQ(sessions[0], longId);
     }
 }
+
+TEST_F(InvocationLoggerTest, ReplayWithCorruptLine) {
+    logger->log(makeEntry("corrupt_test", "good_event"));
+    // Write a corrupt line to the same file
+    {
+        std::ofstream f(m_testDir + "/corrupt_test.jsonl", std::ios::app);
+        f << "{invalid json,}\n";
+    }
+    std::vector<LogEntry> replayed;
+    bool ok = logger->replay("corrupt_test", [&](const LogEntry& entry) {
+        replayed.push_back(entry);
+    });
+    EXPECT_TRUE(ok);
+    EXPECT_EQ(replayed.size(), 1u);
+}
+
+TEST_F(InvocationLoggerTest, ExportSession) {
+    logger->log(makeEntry("export_me", "event_a"));
+    logger->log(makeEntry("export_me", "event_b"));
+    std::string outPath = m_testDir + "/export_output.json";
+    bool ok = logger->exportSession("export_me", outPath);
+    EXPECT_TRUE(ok);
+    // Check exported file exists and has content
+    std::ifstream f(outPath);
+    EXPECT_TRUE(f.good());
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    EXPECT_FALSE(content.empty());
+}
+
+TEST_F(InvocationLoggerTest, ExportNonexistentSession) {
+    bool ok = logger->exportSession("no_such", m_testDir + "/nonexistent.json");
+    EXPECT_FALSE(ok);
+}
+
+TEST_F(InvocationLoggerTest, LogAndReplayMultipleSessions) {
+    logger->log(makeEntry("sess_a", "a1"));
+    logger->log(makeEntry("sess_b", "b1"));
+    logger->log(makeEntry("sess_a", "a2"));
+    logger->log(makeEntry("sess_b", "b2"));
+    logger->log(makeEntry("sess_c", "c1"));
+
+    std::vector<std::string> sessions = logger->listSessions();
+    EXPECT_EQ(sessions.size(), 3u);
+
+    std::vector<LogEntry> fromA;
+    logger->replay("sess_a", [&](const LogEntry& e) { fromA.push_back(e); });
+    EXPECT_EQ(fromA.size(), 2u);
+
+    std::vector<LogEntry> fromC;
+    logger->replay("sess_c", [&](const LogEntry& e) { fromC.push_back(e); });
+    EXPECT_EQ(fromC.size(), 1u);
+}

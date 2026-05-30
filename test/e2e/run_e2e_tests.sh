@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# E2E tests for a0 agent (mock DeepSeek API, no real credentials needed)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -6,17 +7,37 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${PROJECT_DIR}/build"
 MOCK_PORT=18081
 MOCK_URL="http://127.0.0.1:${MOCK_PORT}/v1/chat/completions"
+TEST_PID=$$
 
 cleanup() {
     if [ -n "${MOCK_PID:-}" ]; then
         kill "$MOCK_PID" 2>/dev/null || true
         wait "$MOCK_PID" 2>/dev/null || true
     fi
-    rm -rf "${PROJECT_DIR}/test_e2e_skills" "${PROJECT_DIR}/test_e2e_logs"
+    rm -rf /tmp/a0_e2e_${TEST_PID}_* "${PROJECT_DIR}/logs"
 }
 trap cleanup EXIT
 
+# Start clean: remove any leftover logs/test dirs
+rm -rf "${PROJECT_DIR}/logs" /tmp/a0_e2e_${TEST_PID}_*
+
 FAILED=0
+
+# Helper: unique temp dir for a0 data (one per test to avoid SQLite collisions)
+a0dir() {
+    echo "/tmp/a0_e2e_${TEST_PID}_$1"
+}
+
+# Helper: create a skill component directory with a skill.json manifest
+create_component() {
+    local base_dir="$1"
+    local ns="$2"
+    local component="$3"
+    local manifest="$4"
+    local dir="${base_dir}/${ns}/${component}"
+    mkdir -p "$dir"
+    echo "$manifest" > "${dir}/skill.json"
+}
 
 echo "=== Starting mock DeepSeek server ==="
 python3 "$SCRIPT_DIR/mock_deepseek_server.py" $MOCK_PORT &
@@ -37,22 +58,12 @@ fi
 
 A0="$BUILD_DIR/a0"
 
-run_agent() {
-    local input="$1"
-    local components_dir="${PROJECT_DIR}/test_e2e_skills"
-    local logs_dir="${PROJECT_DIR}/test_e2e_logs"
-    rm -rf "$components_dir" "$logs_dir" 2>/dev/null
-    mkdir -p "$components_dir" "$logs_dir"
-    echo "$input" | timeout 5 "$A0" \
-        --skills-dir "$components_dir" \
-        --mock-api "$MOCK_URL" \
-        2>/dev/null || true
-}
-
-# E2E-01: Empty input
+# ======================================================================
 echo ""
 echo "=== E2E-01: Empty input ==="
-output=$(run_agent "")
+A0_DIR=$(a0dir "e2e01")
+output=$(echo "" | timeout 5 "$A0" --a0-dir "$A0_DIR" --no-b1 2>/dev/null || true)
+rm -rf "$A0_DIR"
 if echo "$output" | grep -q "no goal provided"; then
     echo "PASS: E2E-01"
 else
@@ -60,21 +71,31 @@ else
     FAILED=1
 fi
 
-# E2E-02: Infer a tool
+# ======================================================================
 echo ""
-echo "=== E2E-02: Goal triggers skill inference ==="
-COMPONENTS_DIR="${PROJECT_DIR}/test_e2e_skills"
-LOGS_DIR="${PROJECT_DIR}/test_e2e_logs"
-rm -rf "$COMPONENTS_DIR" "$LOGS_DIR"
-mkdir -p "$COMPONENTS_DIR" "$LOGS_DIR"
-# Provide bash tool so inferred skill's dependencies are satisfied
-cat > "$COMPONENTS_DIR/bash.tool.json" <<'EOF'
-{"name":"bash","description":"bash","command":"bash","inputMode":"stdin"}
-EOF
+echo "=== E2E-02: Goal triggers tool inference ==="
+N2_DIR="${PROJECT_DIR}/test_e2e_n2"
+rm -rf "$N2_DIR"
+create_component "$N2_DIR" "local" "tools" '{
+    "name": "tools",
+    "version": "1.0.0",
+    "tools": [{
+        "name": "bash",
+        "description": "bash",
+        "command": "bash",
+        "inputMode": "stdin",
+        "systemTool": true
+    }],
+    "prompts": []
+}'
+A0_DIR=$(a0dir "e2e02")
 echo "count lines in file" | timeout 5 "$A0" \
-    --skills-dir "$COMPONENTS_DIR" \
+    --skills-dir "$N2_DIR" \
     --mock-api "$MOCK_URL" \
+    --no-b1 \
+    --a0-dir "$A0_DIR" \
     2>/dev/null > /tmp/e2e_out.txt || true
+rm -rf "$N2_DIR" "$A0_DIR"
 output=$(cat /tmp/e2e_out.txt)
 if [ -n "$output" ] && [ "$output" != "\"no goal provided\"" ]; then
     echo "PASS: E2E-02 (output: $output)"
@@ -83,30 +104,27 @@ else
     FAILED=1
 fi
 
-# E2E-03: Components created after inference
+# ======================================================================
 echo ""
-echo "=== E2E-03: Components directory has new files ==="
-# run_agent already ran above, check for created skill files
-comp_count=$(ls "${PROJECT_DIR}/test_e2e_skills"/*.skill.json 2>/dev/null | wc -l)
-if [ "$comp_count" -ge 0 ]; then
-    echo "PASS: E2E-03 (${comp_count} skills created)"
-else
-    echo "FAIL: E2E-03"
-    FAILED=1
-fi
+echo "=== E2E-03: N/A (flat file skills removed) ==="
+echo "SKIP: E2E-03 (skill inference no longer writes flat .skill.json files)"
 
-# E2E-04: Logger creates session files
+# ======================================================================
 echo ""
 echo "=== E2E-04: Session log created ==="
-COMP4="${PROJECT_DIR}/test_e2e_logs_check"
-mkdir -p "$COMP4"
+N4_DIR="${PROJECT_DIR}/test_e2e_n4"
+rm -rf "$N4_DIR"
+A0_DIR=$(a0dir "e2e04")
 echo "find files" | timeout 5 "$A0" \
-    --skills-dir "$COMP4" \
+    --skills-dir "$N4_DIR" \
     --mock-api "$MOCK_URL" \
+    --no-b1 \
+    --a0-dir "$A0_DIR" \
     2>/dev/null > /dev/null || true
-# logs are written to ./logs/ (default in main.cpp)
-log_count=$(ls "${PROJECT_DIR}/logs"/*.jsonl 2>/dev/null | wc -l)
-rm -rf "$COMP4" "${PROJECT_DIR}/logs"
+rm -rf "$N4_DIR"
+# Logs are written to ./logs/ by JsonLinesLogger regardless of --a0-dir
+log_count=$(ls "${PROJECT_DIR}/logs"/*.jsonl 2>/dev/null | wc -l) || true
+rm -rf "$A0_DIR" "${PROJECT_DIR}/logs"
 if [ "$log_count" -ge 1 ]; then
     echo "PASS: E2E-04 (${log_count} session logs)"
 else
@@ -114,28 +132,34 @@ else
     FAILED=1
 fi
 
-# ===== NEGATIVE E2E TESTS =====
+# ======================================================================
+# NEGATIVE E2E TESTS
+# ======================================================================
 
-# E2E-N1: Skill with missing dependency
 echo ""
 echo "=== E2E-N1: Skill with missing dependency ==="
 N1_DIR="${PROJECT_DIR}/test_e2e_n1"
 rm -rf "$N1_DIR"
-mkdir -p "$N1_DIR"
-cat > "$N1_DIR/bad_skill.skill.json" <<'EOF'
-{
-    "name": "bad_skill",
-    "description": "skill with missing dep",
-    "prompt": "do something",
-    "dependencies": ["nonexistent_tool"],
-    "validators": []
-}
-EOF
+create_component "$N1_DIR" "local" "n1" '{
+    "name": "n1",
+    "version": "1.0.0",
+    "tools": [],
+    "prompts": [{
+        "name": "bad_skill",
+        "description": "skill with missing dep",
+        "prompt": "do something",
+        "dependencies": ["nonexistent_tool"],
+        "validators": []
+    }]
+}'
+A0_DIR=$(a0dir "e2en1")
 echo "bad_skill" | timeout 5 "$A0" \
     --skills-dir "$N1_DIR" \
     --mock-api "$MOCK_URL" \
+    --no-b1 \
+    --a0-dir "$A0_DIR" \
     2>/dev/null > /tmp/e2e_n1.out || true
-rm -rf "$N1_DIR"
+rm -rf "$N1_DIR" "$A0_DIR"
 if grep -q "Missing dependencies" /tmp/e2e_n1.out; then
     echo "PASS: E2E-N1"
 else
@@ -143,39 +167,41 @@ else
     FAILED=1
 fi
 
-# E2E-N2: Tool timeout
+# ======================================================================
 echo ""
 echo "=== E2E-N2: Tool timeout ==="
 N2_DIR="${PROJECT_DIR}/test_e2e_n2"
 rm -rf "$N2_DIR"
-mkdir -p "$N2_DIR"
-cat > "$N2_DIR/sleep_tool.tool.json" <<'EOF'
-{
-    "name": "sleep_tool",
-    "description": "sleeps",
-    "command": "sleep 100",
-    "inputMode": "stdin"
-}
-EOF
-cat > "$N2_DIR/sleep_skill.skill.json" <<'EOF'
-{
-    "name": "sleep_skill",
-    "description": "sleep skill",
-    "prompt": "{{tool:sleep_tool}}",
-    "dependencies": ["sleep_tool"],
-    "validators": []
-}
-EOF
+create_component "$N2_DIR" "local" "n2" '{
+    "name": "n2",
+    "version": "1.0.0",
+    "tools": [{
+        "name": "sleep_tool",
+        "description": "sleeps",
+        "command": "sleep 100",
+        "inputMode": "stdin",
+        "timeoutSecs": 3
+    }],
+    "prompts": [{
+        "name": "sleep_skill",
+        "description": "sleep skill",
+        "prompt": "{{tool:sleep_tool _=\"\"}}",
+        "dependencies": ["local:n2:sleep_tool"],
+        "validators": []
+    }]
+}'
+A0_DIR=$(a0dir "e2en2")
 start=$(date +%s)
 echo "sleep_skill" | timeout 40 "$A0" \
     --skills-dir "$N2_DIR" \
     --mock-api "$MOCK_URL" \
+    --no-b1 \
+    --a0-dir "$A0_DIR" \
     2>/tmp/e2e_n2_stderr.txt > /tmp/e2e_n2.out || true
 end=$(date +%s)
 elapsed=$((end - start))
-rm -rf "$N2_DIR"
-# Check trace log for timeout error (tool output goes into expanded prompt, then to LLM)
-if grep -q "ERROR: timeout" /tmp/e2e_n2_stderr.txt && [ $elapsed -lt 35 ]; then
+rm -rf "$N2_DIR" "$A0_DIR"
+if grep -q "ERROR: timeout" /tmp/e2e_n2_stderr.txt && [ $elapsed -lt 10 ]; then
     echo "PASS: E2E-N2 (${elapsed}s)"
 else
     echo "FAIL: E2E-N2 (elapsed: ${elapsed}s, stderr has timeout: $(grep -c 'ERROR: timeout' /tmp/e2e_n2_stderr.txt 2>/dev/null))"
@@ -183,26 +209,31 @@ else
     FAILED=1
 fi
 
-# E2E-N3: Parameter substitution via trace log
+# ======================================================================
 echo ""
-echo "=== E2E-N3: {{goal}} substitution ==="
+echo "=== E2E-N3: Parameter substitution ==="
 N3_DIR="${PROJECT_DIR}/test_e2e_n3"
 rm -rf "$N3_DIR"
-mkdir -p "$N3_DIR"
-cat > "$N3_DIR/param_skill.skill.json" <<'EOF'
-{
-    "name": "param_skill",
-    "description": "echo goal",
-    "prompt": "Process: {{goal}}",
-    "dependencies": [],
-    "validators": []
-}
-EOF
+create_component "$N3_DIR" "local" "n3" '{
+    "name": "n3",
+    "version": "1.0.0",
+    "tools": [],
+    "prompts": [{
+        "name": "param_skill",
+        "description": "echo goal",
+        "prompt": "Process: {{goal}}",
+        "dependencies": [],
+        "validators": []
+    }]
+}'
+A0_DIR=$(a0dir "e2en3")
 echo "param_skill" | timeout 10 "$A0" \
     --skills-dir "$N3_DIR" \
     --mock-api "$MOCK_URL" \
+    --no-b1 \
+    --a0-dir "$A0_DIR" \
     2>/tmp/e2e_n3_stderr.txt > /tmp/e2e_n3_out.txt || true
-rm -rf "$N3_DIR"
+rm -rf "$N3_DIR" "$A0_DIR"
 if grep -q "Process: param_skill" /tmp/e2e_n3_stderr.txt 2>/dev/null; then
     echo "PASS: E2E-N3"
 else
@@ -211,35 +242,36 @@ else
     FAILED=1
 fi
 
-# E2E-N4: Args mode tool
+# ======================================================================
 echo ""
 echo "=== E2E-N4: Args mode ==="
 N4_DIR="${PROJECT_DIR}/test_e2e_n4"
 rm -rf "$N4_DIR"
-mkdir -p "$N4_DIR"
-cat > "$N4_DIR/echo_arg.tool.json" <<'EOF'
-{
-    "name": "echo_arg",
-    "description": "echo first positional arg",
-    "command": "sh -c 'echo $1' _",
-    "inputMode": "args"
-}
-EOF
-cat > "$N4_DIR/args_skill.skill.json" <<'EOF'
-{
-    "name": "args_skill",
-    "description": "args demo",
-    "prompt": "{{tool:echo_arg _=\"hello_args\"}}",
-    "dependencies": ["echo_arg"],
-    "validators": []
-}
-EOF
+create_component "$N4_DIR" "local" "n4" '{
+    "name": "n4",
+    "version": "1.0.0",
+    "tools": [{
+        "name": "echo_arg",
+        "description": "echo first positional arg",
+        "command": "sh -c '\''echo $1'\'' _",
+        "inputMode": "args"
+    }],
+    "prompts": [{
+        "name": "args_skill",
+        "description": "args demo",
+        "prompt": "{{tool:echo_arg _=\"hello_args\"}}",
+        "dependencies": ["local:n4:echo_arg"],
+        "validators": []
+    }]
+}'
+A0_DIR=$(a0dir "e2en4")
 echo "args_skill" | timeout 5 "$A0" \
     --skills-dir "$N4_DIR" \
     --mock-api "$MOCK_URL" \
+    --no-b1 \
+    --a0-dir "$A0_DIR" \
     2>/tmp/e2e_n4_stderr.txt > /tmp/e2e_n4.out || true
-rm -rf "$N4_DIR"
-# Tool result "hello_args" should appear in expanded prompt via trace log
+rm -rf "$N4_DIR" "$A0_DIR"
 if grep -q "hello_args" /tmp/e2e_n4_stderr.txt; then
     echo "PASS: E2E-N4"
 else
@@ -247,6 +279,7 @@ else
     FAILED=1
 fi
 
+# ======================================================================
 echo ""
 echo "=== Results ==="
 if [ $FAILED -eq 0 ]; then
