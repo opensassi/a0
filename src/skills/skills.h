@@ -39,14 +39,8 @@ struct SkillTool {
     std::string dockerImage;
     TrustLevel trustLevel = TrustLevel::MEDIUM;
     std::vector<std::string> aptDependencies;
-};
-
-struct SkillPrompt {
-    std::string name;
-    std::string description;
-    std::string prompt;
-    std::vector<std::string> dependencies;
-    std::vector<ValidatorBinding> validators;
+    bool systemTool = false;
+    int timeoutSecs = 30;
 };
 
 struct CompatBridge {
@@ -64,7 +58,7 @@ struct SkillManifest {
     std::string sourceUrl;
     std::string commitHash;
     std::vector<SkillTool> tools;
-    std::vector<SkillPrompt> prompts;
+    std::vector<Prompt> prompts;
     std::vector<CompatBridge> compat;
     std::unordered_map<std::string, std::string> dependencies;
 };
@@ -122,12 +116,29 @@ public:
     int loadAll();
 
     int getTool(const std::string& qualifiedName, SkillTool& tool) const;
-    int getPrompt(const std::string& qualifiedName, SkillPrompt& prompt) const;
+    int getPrompt(const std::string& qualifiedName, Prompt& prompt) const;
+
+    // Resolve a prompt, flattening its chain into a single concatenated prompt.
+    // out.prompt = chain[0].prompt + "\n\n" + chain[1].prompt + "\n\n" + target.prompt
+    int getPromptResolved(const std::string& qualifiedName, Prompt& out) const;
+
+    // Resolve a short name within a component:
+    //   If shortName contains ':', do qualified lookup directly
+    //   Otherwise, try <componentNs:componentName:shortName>, then qualified lookup
+    int resolveName(const std::string& componentNs,
+                    const std::string& componentName,
+                    const std::string& shortName,
+                    std::string& qualifiedOut) const;
+
+    // Build dispatch table: LLM-facing short name → qualified internal name.
+    // Collision resolution: if two entries share the same last segment, prepend
+    // component name, then namespace:component, then full underscores.
+    std::unordered_map<std::string, std::string> buildDispatchTable() const;
 
     std::vector<std::string> listSkills(std::optional<SkillNamespace> ns) const;
 
     int addTool(const std::string& component, const SkillTool& tool);
-    int addPrompt(const std::string& component, const SkillPrompt& prompt);
+    int addPrompt(const std::string& component, const Prompt& prompt);
     int updateTool(const std::string& component, const std::string& name, const SkillTool& tool);
 
     int install(const std::string& sourceUrl, bool force = false);

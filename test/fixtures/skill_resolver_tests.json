@@ -1,0 +1,914 @@
+[
+  {
+    "id": "01-chain-simple",
+    "description": "Two prompts: child chains base \u2014 verify concatenated output and tool_call",
+    "fixtures": [
+      "test/fixtures/skills/01-chain-simple/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/01-chain-simple/"
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:01-chain-simple:child",
+        "expect": 0
+      },
+      {
+        "action": "assert_prompt_contains",
+        "name": "local:01-chain-simple:child",
+        "strings": [
+          "BASE_TEXT",
+          "CHILD_TEXT"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:01-chain-simple:uses_toolcall",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "child"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "02-chain-deep",
+    "description": "Three-level chain A>B>C \u2014 verify all three texts in order and tool_call",
+    "fixtures": [
+      "test/fixtures/skills/02-chain-deep/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/02-chain-deep/"
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:02-chain-deep:level_a",
+        "expect": 0
+      },
+      {
+        "action": "assert_prompt_contains",
+        "name": "local:02-chain-deep:level_a",
+        "strings": [
+          "LEVEL_C",
+          "LEVEL_B",
+          "LEVEL_A"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:02-chain-deep:uses_toolcall",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "level_a"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "03-same-package-deps",
+    "description": "Prompt depends on tool in same package \u2014 short name resolves, tool/tool_call expand",
+    "fixtures": [
+      "test/fixtures/skills/03-same-package-deps/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/03-same-package-deps/"
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:03-same-package-deps:uses_tool",
+        "expect": 0
+      },
+      {
+        "action": "assert_deps_resolved",
+        "name": "local:03-same-package-deps:uses_tool",
+        "exact": [
+          "my_tool"
+        ]
+      },
+      {
+        "action": "resolve_tool",
+        "name": "local:03-same-package-deps:my_tool",
+        "expect": 0
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:03-same-package-deps:uses_tool_expand",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "hello"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool:"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:03-same-package-deps:uses_toolcall",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "my_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "04-cross-package-deps",
+    "description": "Prompt depends on system:read \u2014 qualified name resolves, cross-pkg tool/tool_call expand",
+    "fixtures": [
+      "test/fixtures/skills/04-cross-package-deps/",
+      "skills/system/read/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "skills/system/read/"
+      },
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/04-cross-package-deps/"
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:04-cross-package-deps:uses_read",
+        "expect": 0
+      },
+      {
+        "action": "assert_deps_resolved",
+        "name": "local:04-cross-package-deps:uses_read",
+        "contains": [
+          "system:read"
+        ]
+      },
+      {
+        "action": "resolve_tool",
+        "name": "system:read",
+        "expect": 0
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:04-cross-package-deps:uses_read_expand",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "end"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool:"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:04-cross-package-deps:uses_read_toolcall",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "read"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "05-system-tool-flag",
+    "description": "Tool with systemTool:true \u2014 flag parsed, tool_call expands",
+    "fixtures": [
+      "test/fixtures/skills/05-system-tool-flag/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/05-system-tool-flag/"
+      },
+      {
+        "action": "resolve_tool",
+        "name": "local:05-system-tool-flag:cpp_tool",
+        "expect": 0
+      },
+      {
+        "action": "assert_tool_is_system",
+        "name": "local:05-system-tool-flag:cpp_tool",
+        "expected": true
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:05-system-tool-flag:uses_toolcall",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "cpp_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "06-command-tool",
+    "description": "Tool with command field \u2014 subprocess execution via tool and tool_call expansion",
+    "fixtures": [
+      "test/fixtures/skills/06-command-tool/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/06-command-tool/"
+      },
+      {
+        "action": "resolve_tool",
+        "name": "local:06-command-tool:sub_tool",
+        "expect": 0
+      },
+      {
+        "action": "assert_tool_is_system",
+        "name": "local:06-command-tool:sub_tool",
+        "expected": false
+      },
+      {
+        "action": "assert_tool_command",
+        "name": "local:06-command-tool:sub_tool",
+        "equals": "echo hello"
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:06-command-tool:uses_tool_expand",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "hello"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool:"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:06-command-tool:uses_toolcall",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "sub_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "07-mixed-deps",
+    "description": "Chain + same-pkg + cross-pkg deps resolve; tool_call expansion works",
+    "fixtures": [
+      "test/fixtures/skills/07-mixed-deps/",
+      "skills/system/read/",
+      "skills/system/write/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "skills/system/read/"
+      },
+      {
+        "action": "load",
+        "source": "skills/system/write/"
+      },
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/07-mixed-deps/"
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:07-mixed-deps:master",
+        "expect": 0
+      },
+      {
+        "action": "assert_deps_resolved",
+        "name": "local:07-mixed-deps:master",
+        "contains": [
+          "system:read",
+          "system:write",
+          "helper_tool"
+        ]
+      },
+      {
+        "action": "assert_prompt_contains",
+        "name": "local:07-mixed-deps:master",
+        "strings": [
+          "BASE_TXT",
+          "MASTER_TXT"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:07-mixed-deps:uses_toolcall",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "master"
+        ]
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "helper_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "08-circular-deps",
+    "description": "A->B->A circular \u2014 resolve succeeds; tool_call expansion works",
+    "fixtures": [
+      "test/fixtures/skills/08-circular-deps/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/08-circular-deps/"
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:08-circular-deps:prompt_a",
+        "expect": 0
+      },
+      {
+        "action": "assert_prompt_contains",
+        "name": "local:08-circular-deps:prompt_a",
+        "strings": [
+          "PROMPT_A"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:08-circular-deps:uses_toolcall",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "prompt_a"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "09-missing-dep",
+    "description": "Missing dependency detection + tool_call with nonexistent short name",
+    "fixtures": [
+      "test/fixtures/skills/09-missing-dep/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/09-missing-dep/"
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:09-missing-dep:needs_ghost",
+        "expect": 0
+      },
+      {
+        "action": "assert_missing_contains",
+        "name": "local:09-missing-dep:needs_ghost",
+        "strings": [
+          "ghost_tool"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:09-missing-dep:uses_toolcall_ghost",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "ghost_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "10-llm-name-collision",
+    "description": "Two packages export same short tool name 'parser' \u2014 tool_call resolves independently in each",
+    "fixtures": [
+      "test/fixtures/skills/10-llm-name-collision/pkg_a/",
+      "test/fixtures/skills/10-llm-name-collision/pkg_b/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/10-llm-name-collision/pkg_a/"
+      },
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/10-llm-name-collision/pkg_b/"
+      },
+      {
+        "action": "assert_tool_count",
+        "ns": "local",
+        "component": "pkg_a",
+        "expected": 1
+      },
+      {
+        "action": "assert_tool_count",
+        "ns": "local",
+        "component": "pkg_b",
+        "expected": 1
+      },
+      {
+        "action": "resolve_tool",
+        "name": "local:pkg_a:parser",
+        "expect": 0
+      },
+      {
+        "action": "resolve_tool",
+        "name": "local:pkg_b:parser",
+        "expect": 0
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:pkg_a:uses_parser",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "parser"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "pkg_b"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:pkg_b:uses_parser",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "parser"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "pkg_a"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      },
+      {
+        "action": "build_dispatch_table"
+      },
+      {
+        "action": "assert_dispatch_size",
+        "expected": 4
+      },
+      {
+        "action": "assert_dispatch_contains",
+        "qualified": "local:pkg_a:parser"
+      },
+      {
+        "action": "assert_dispatch_contains",
+        "qualified": "local:pkg_b:parser"
+      },
+      {
+        "action": "assert_dispatch_contains",
+        "qualified": "local:pkg_a:uses_parser"
+      },
+      {
+        "action": "assert_dispatch_contains",
+        "qualified": "local:pkg_b:uses_parser"
+      },
+      {
+        "action": "assert_dispatch_names_unique"
+      }
+    ]
+  },
+  {
+    "id": "11-empty-manifest",
+    "description": "Empty manifest loads without error, zero tools and prompts",
+    "fixtures": [
+      "test/fixtures/skills/11-empty-manifest/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/11-empty-manifest/"
+      },
+      {
+        "action": "assert_tool_count",
+        "ns": "local",
+        "component": "11-empty-manifest",
+        "expected": 0
+      },
+      {
+        "action": "assert_prompt_count",
+        "ns": "local",
+        "component": "11-empty-manifest",
+        "expected": 0
+      }
+    ]
+  },
+  {
+    "id": "12-tool-simple",
+    "description": "{{tool:local:12-tool-substitution:my_tool}} resolves and executes subprocess",
+    "fixtures": [
+      "test/fixtures/skills/12-tool-substitution/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/12-tool-substitution/"
+      },
+      {
+        "action": "resolve_tool",
+        "name": "local:12-tool-substitution:my_tool",
+        "expect": 0
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:12-tool-substitution:uses_tool_template",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "hello"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "13-tool-qualified",
+    "description": "{{tool:system:read ...}} expands with qualified name containing colon",
+    "fixtures": [
+      "test/fixtures/skills/04-cross-package-deps/",
+      "skills/system/read/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "skills/system/read/"
+      },
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/04-cross-package-deps/"
+      },
+      {
+        "action": "resolve_tool",
+        "name": "system:read",
+        "expect": 0
+      },
+      {
+        "action": "expand_prompt_text",
+        "prompt": "Open {{tool:system:read filePath=\"/etc/hostname\"}} closed",
+        "dependencies": [
+          "system:read"
+        ],
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "closed"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "14-tool-nonexistent",
+    "description": "{{tool:ghost_tool}} produces ERROR",
+    "fixtures": [
+      "test/fixtures/skills/12-tool-substitution/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/12-tool-substitution/"
+      },
+      {
+        "action": "expand_prompt_text",
+        "prompt": "Test {{tool:ghost_tool arg=\"x\"}} end",
+        "dependencies": [],
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "ERROR: tool not found"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "15-toolcall-simple",
+    "description": "{{tool_call:my_tool}} strips to short name",
+    "fixtures": [
+      "test/fixtures/skills/13-toolcall-substitution/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/13-toolcall-substitution/"
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:13-toolcall-substitution:uses_toolcall_simple",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "my_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "16-toolcall-qualified",
+    "description": "{{tool_call:local:12-tool-substitution:my_tool}} strips to last segment (my_tool)",
+    "fixtures": [
+      "test/fixtures/skills/13-toolcall-substitution/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/13-toolcall-substitution/"
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:13-toolcall-substitution:uses_toolcall_qualified",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "my_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "17-toolcall-nonexistent",
+    "description": "{{tool_call:ghost_tool}} strips wrapper, keeps name (no error)",
+    "fixtures": [
+      "test/fixtures/skills/13-toolcall-substitution/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/13-toolcall-substitution/"
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:13-toolcall-substitution:uses_toolcall_missing",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "ghost_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "18-tool-mixed",
+    "description": "{{tool:...}} and {{tool_call:...}} in one prompt both resolve",
+    "fixtures": [
+      "test/fixtures/skills/13-toolcall-substitution/",
+      "skills/system/read/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "skills/system/read/"
+      },
+      {
+        "action": "load",
+        "source": "test/fixtures/skills/13-toolcall-substitution/"
+      },
+      {
+        "action": "resolve_tool",
+        "name": "system:read",
+        "expect": 0
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:13-toolcall-substitution:uses_mixed",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "my_tool"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "ERROR"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool:"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool_call:"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "19-session-evaluation",
+    "description": "Session-evaluation: chain resolves, export prompt expanded with short-name tool resolution",
+    "fixtures": [
+      "skills/local/opensassi/session-evaluation/"
+    ],
+    "steps": [
+      {
+        "action": "load",
+        "source": "skills/local/opensassi/session-evaluation/"
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:session-evaluation:generate",
+        "expect": 0
+      },
+      {
+        "action": "assert_prompt_contains",
+        "name": "local:session-evaluation:generate",
+        "strings": [
+          "Session Evaluation Summary",
+          "Aggregation Tags"
+        ]
+      },
+      {
+        "action": "resolve_prompt",
+        "name": "local:session-evaluation:export",
+        "expect": 0
+      },
+      {
+        "action": "assert_prompt_contains",
+        "name": "local:session-evaluation:export",
+        "strings": [
+          "SESSION_ID",
+          "export_session"
+        ]
+      },
+      {
+        "action": "expand_prompt",
+        "name": "local:session-evaluation:export",
+        "expect": 0
+      },
+      {
+        "action": "assert_expand_contains",
+        "strings": [
+          "export_session"
+        ]
+      },
+      {
+        "action": "assert_expand_not_contains",
+        "strings": [
+          "{{tool:"
+        ]
+      }
+    ]
+  }
+]

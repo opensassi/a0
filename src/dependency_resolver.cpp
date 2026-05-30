@@ -1,9 +1,10 @@
 #include "dependency_resolver.h"
+#include "skills/skills.h"
 #include <set>
 #include <algorithm>
 
-DefaultDependencyResolver::DefaultDependencyResolver(const SkillRegistry* registry)
-    : m_registry(registry) {}
+DefaultDependencyResolver::DefaultDependencyResolver(const a0::skills::SkillManager* skillMgr)
+    : m_skillMgr(skillMgr) {}
 
 bool DefaultDependencyResolver::checkToolDependencies(const Tool& tool) const {
     (void)tool;
@@ -29,14 +30,15 @@ std::vector<std::string> DefaultDependencyResolver::missingDependenciesRecursive
 
     std::vector<std::string> missing;
     for (const auto& dep : prompt.dependencies) {
-        // Check if dependency is a tool
-        if (m_registry->getTool(dep).has_value()) {
+        // Check if dependency is a tool (qualified lookup)
+        a0::skills::SkillTool tool;
+        if (m_skillMgr && m_skillMgr->getTool(dep, tool) == 0) {
             continue;
         }
         // Check if dependency is a prompt
-        auto opt = m_registry->getPrompt(dep);
-        if (opt.has_value()) {
-            auto transitive = missingDependenciesRecursive(*opt, visited);
+        Prompt sp;
+        if (m_skillMgr && m_skillMgr->getPrompt(dep, sp) == 0) {
+            auto transitive = missingDependenciesRecursive(sp, visited);
             missing.insert(missing.end(), transitive.begin(), transitive.end());
         } else {
             missing.push_back(dep);

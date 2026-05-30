@@ -62,3 +62,25 @@ std::vector<std::string> JsonLinesLogger::listSessions() const {
     }
     return sessions;
 }
+
+bool JsonLinesLogger::exportSession(const std::string& sessionId,
+                                     const std::string& outputPath) const {
+    TRACE_LOG("exportSession(" << sessionId << ")");
+    std::string inPath = m_logDir + "/" + sessionId + ".jsonl";
+    std::ifstream inFile(inPath);
+    if (!inFile) return false;
+
+    std::ofstream outFile(outputPath);
+    if (!outFile) return false;
+
+    outFile << "[\n";
+    bool first = true;
+    std::string line;
+    while (std::getline(inFile, line)) {
+        if (!first) outFile << ",\n";
+        outFile << line;
+        first = false;
+    }
+    outFile << "\n]\n";
+    return !first;
+}

@@ -1,0 +1,20 @@
+{
+  "name": "05-system-tool-flag",
+  "version": "1.0.0",
+  "description": "Synthetic test: tool with systemTool:true",
+  "tools": [
+    {
+      "name": "cpp_tool",
+      "description": "A tool flagged as system-handled",
+      "systemTool": true
+    }
+  ],
+  "prompts": [
+    {
+      "name": "uses_toolcall",
+      "description": "Prompt referencing a systemTool-flagged tool",
+      "dependencies": [],
+      "prompt": "Call the {{tool_call:cpp_tool}} to execute"
+    }
+  ]
+}

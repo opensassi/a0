@@ -1,0 +1,27 @@
+{
+  "name": "12-tool-substitution",
+  "version": "1.0.0",
+  "description": "Synthetic test: tools for expandPrompt template substitution",
+  "tools": [
+    {
+      "name": "my_tool",
+      "description": "A subprocess tool for expansion testing",
+      "command": "echo hello",
+      "inputMode": "args"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "uses_tool_template",
+      "description": "Prompt containing {{tool:...}} template with qualified name",
+      "dependencies": ["my_tool"],
+      "prompt": "Before {{tool:local:12-tool-substitution:my_tool arg=\"x\"}} After"
+    },
+    {
+      "name": "uses_tool_qualified",
+      "description": "Prompt with qualified tool reference to system:bash",
+      "dependencies": ["system:bash"],
+      "prompt": "Run {{tool:system:bash command=\"echo hi\"}} done"
+    }
+  ]
+}

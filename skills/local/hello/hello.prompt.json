@@ -1,6 +1,0 @@
-{
-  "dependencies": [],
-  "description": "A simple skill that responds with a greeting",
-  "name": "hello_skill",
-  "prompt": "Hello! How can I assist you today?"
-}

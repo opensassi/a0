@@ -25,6 +25,7 @@ struct Tool {
     std::string dockerImage;
     TrustLevel trustLevel = TrustLevel::MEDIUM;
     std::vector<std::string> aptDependencies;
+    int timeoutSecs = 30;
 };
 
 struct ValidatorBinding {
@@ -38,9 +39,14 @@ struct Prompt {
     std::string prompt;
     std::vector<std::string> dependencies;
     std::vector<ValidatorBinding> validators;
+    std::vector<std::string> chain;
 
     std::string composeFile;
     std::vector<std::string> aptDependencies;
+
+    // Component context for short-name resolution in tool templates
+    std::string ns;
+    std::string component;
 };
 
 class SkillRegistry {
@@ -138,6 +144,10 @@ public:
     virtual bool replay(const std::string& sessionId,
                         std::function<void(const LogEntry&)> callback) = 0;
     virtual std::vector<std::string> listSessions() const = 0;
+    /// Export session log as JSON array to outputPath.
+    /// Returns true if any entries were written.
+    virtual bool exportSession(const std::string& sessionId,
+                                const std::string& outputPath) const = 0;
 };
 
 class DependencyResolver {
@@ -154,6 +164,8 @@ public:
     virtual std::string expandPrompt(const Prompt& prompt, const json& params) = 0;
     virtual json runValidators(const Prompt& prompt, const json& input) = 0;
     virtual json execute(const Prompt& prompt, const json& params) = 0;
+    virtual void setGlobalVar(const std::string& key, const std::string& value) = 0;
+    virtual void setGlobalVars(const std::unordered_map<std::string, std::string>& vars) = 0;
 };
 
 class SchemaInferenceEngine {
@@ -181,7 +193,8 @@ public:
     virtual std::string acquireContainer(const Tool& tool) = 0;
     virtual std::string execInContainer(const std::string& containerId,
                                         const std::string& command,
-                                        const std::string& stdinData = "") = 0;
+                                        const std::string& stdinData = "",
+                                        int timeoutSecs = 30) = 0;
     virtual void pruneIdleContainers() = 0;
 };
 

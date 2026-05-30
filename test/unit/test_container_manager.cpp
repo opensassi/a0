@@ -96,8 +96,9 @@ TEST_F(ContainerManagerTest, PruneIdleRemovesExpired) {
 
 TEST_F(ContainerManagerTest, ExecInContainerTimeout) {
     Tool t = makeTool("timeout_tool");
+    t.timeoutSecs = 2;
     std::string id = mgr->acquireContainer(t);
-    std::string output = mgr->execInContainer(id, "sleep 100");
+    std::string output = mgr->execInContainer(id, "sleep 10", "", t.timeoutSecs);
     EXPECT_TRUE(output.find("ERROR: timeout") == 0 ||
                 output.find("ERROR:") == 0);
 }

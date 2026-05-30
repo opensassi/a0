@@ -1,0 +1,33 @@
+{
+  "name": "07-mixed-deps",
+  "version": "1.0.0",
+  "description": "Synthetic test: chain + same-package + cross-package deps",
+  "tools": [
+    {
+      "name": "helper_tool",
+      "description": "A helper tool in the same package",
+      "command": "echo helper",
+      "inputMode": "args"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "base",
+      "description": "Base for mixed test",
+      "prompt": "BASE_TXT"
+    },
+    {
+      "name": "master",
+      "description": "Master prompt with mixed dependencies",
+      "chain": ["base"],
+      "dependencies": ["helper_tool", "system:read", "system:write"],
+      "prompt": "MASTER_TXT"
+    },
+    {
+      "name": "uses_toolcall",
+      "description": "Prompt with both tool and deps",
+      "dependencies": ["helper_tool"],
+      "prompt": "Chain {{tool_call:master}} with {{tool_call:helper_tool}} done"
+    }
+  ]
+}

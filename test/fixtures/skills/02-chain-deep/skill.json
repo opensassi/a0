@@ -1,0 +1,31 @@
+{
+  "name": "02-chain-deep",
+  "version": "1.0.0",
+  "description": "Synthetic test: 3-level chain A->B->C",
+  "prompts": [
+    {
+      "name": "level_c",
+      "description": "Deepest level",
+      "prompt": "LEVEL_C"
+    },
+    {
+      "name": "level_b",
+      "description": "Middle level",
+      "chain": ["level_c"],
+      "prompt": "LEVEL_B"
+    },
+    {
+      "name": "level_a",
+      "description": "Top level",
+      "chain": ["level_b"],
+      "dependencies": [],
+      "prompt": "LEVEL_A"
+    },
+    {
+      "name": "uses_toolcall",
+      "description": "Prompt with tool_call referencing chain top",
+      "dependencies": [],
+      "prompt": "Run {{tool_call:level_a}} done"
+    }
+  ]
+}

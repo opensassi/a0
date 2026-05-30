@@ -1,0 +1,25 @@
+{
+  "name": "01-chain-simple",
+  "version": "1.0.0",
+  "description": "Synthetic test: simple chain of 2 prompts",
+  "prompts": [
+    {
+      "name": "base",
+      "description": "Base prompt for chaining test",
+      "prompt": "BASE_TEXT"
+    },
+    {
+      "name": "child",
+      "description": "Chained child prompt",
+      "chain": ["base"],
+      "dependencies": [],
+      "prompt": "CHILD_TEXT"
+    },
+    {
+      "name": "uses_toolcall",
+      "description": "Prompt with tool_call template",
+      "dependencies": [],
+      "prompt": "Run {{tool_call:child}} done"
+    }
+  ]
+}

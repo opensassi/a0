@@ -21,7 +21,7 @@ public:
     int getPrompt(const std::string& ns,
                   const std::string& component,
                   const std::string& promptName,
-                  SkillPrompt& prompt) const;
+                  Prompt& prompt) const;
 
     std::vector<std::string> listComponents(SkillNamespace ns) const;
 
@@ -30,7 +30,7 @@ public:
     int readManifest(const std::string& path, SkillManifest& manifest) const;
 
     int addTool(const std::string& component, const SkillTool& tool);
-    int addPrompt(const std::string& component, const SkillPrompt& prompt);
+    int addPrompt(const std::string& component, const Prompt& prompt);
     int updateTool(const std::string& component, const std::string& name, const SkillTool& tool);
     int removeComponent(const std::string& component);
     int getManifest(SkillNamespace ns, const std::string& component, SkillManifest& manifest) const;

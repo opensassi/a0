@@ -1,0 +1,7 @@
+{
+  "name": "11-empty-manifest",
+  "version": "1.0.0",
+  "description": "Synthetic test: empty manifest with no tools or prompts",
+  "tools": [],
+  "prompts": []
+}

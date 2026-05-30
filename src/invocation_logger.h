@@ -10,6 +10,8 @@ public:
     bool replay(const std::string& sessionId,
                 std::function<void(const LogEntry&)> callback) override;
     std::vector<std::string> listSessions() const override;
+    bool exportSession(const std::string& sessionId,
+                        const std::string& outputPath) const override;
 
 private:
     std::string m_logDir;

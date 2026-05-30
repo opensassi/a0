@@ -2,20 +2,21 @@
 
 #include "agent_interfaces.h"
 #include "system_tools.h"
+#include "skills/skills.h"
 
 namespace a0::persistence { class PersistenceStore; }
 
 class DefaultAgentCore : public AgentCore {
 public:
-    DefaultAgentCore(SkillRegistry* registry,
-                     ToolRunner* toolRunner,
+    DefaultAgentCore(ToolRunner* toolRunner,
                      SkillRunner* skillRunner,
                      InferenceProvider* provider,
                      ContextManager* context,
                      InvocationLogger* logger,
                      DependencyResolver* depResolver,
                      SchemaInferenceEngine* inferenceEngine,
-                     a0::SystemToolRegistry* systemTools = nullptr,
+                     a0::SystemToolRegistry* systemTools,
+                     a0::skills::SkillManager* skillMgr,
                      a0::persistence::PersistenceStore* persistence = nullptr,
                      DockerToolRunner* dockerRunner = nullptr,
                      ComposeManager* composeMgr = nullptr);
@@ -29,11 +30,13 @@ public:
 
 private:
     void xLogAndPush(const std::string& goal, const json& result);
+    void xBuildDispatchTable();
+
     std::string m_basePrompt;
     int m_agentDbId = -1;
     int64_t m_sessionDbId = 0;
 
-    SkillRegistry* m_registry;
+    a0::skills::SkillManager* m_skillMgr;
     ToolRunner* m_toolRunner;
     a0::SystemToolRegistry* m_systemTools;
     a0::persistence::PersistenceStore* m_persistence;
@@ -47,4 +50,7 @@ private:
     SchemaInferenceEngine* m_inferenceEngine;
     std::string m_sessionId;
     bool m_initialized;
+
+    /// Dispatch: short LLM-facing name → qualified internal name
+    std::unordered_map<std::string, std::string> m_dispatch;
 };

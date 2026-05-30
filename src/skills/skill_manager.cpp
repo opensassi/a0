@@ -80,7 +80,7 @@ int SkillManager::getTool(const std::string& qualifiedName, SkillTool& tool) con
     return m_loader->getTool(ns, component, toolName, tool);
 }
 
-int SkillManager::getPrompt(const std::string& qualifiedName, SkillPrompt& prompt) const
+int SkillManager::getPrompt(const std::string& qualifiedName, Prompt& prompt) const
 {
     std::string ns, component, promptName;
     if (!parseQualifiedName(qualifiedName, ns, component, promptName)) {
@@ -89,17 +89,116 @@ int SkillManager::getPrompt(const std::string& qualifiedName, SkillPrompt& promp
     return m_loader->getPrompt(ns, component, promptName, prompt);
 }
 
+/// Recursively collect prompts from a chain list and append their resolved texts to `parts`.
+/// chain entries are within the same component by default; qualified names (containing ':')
+/// are resolved cross-component.
+static void xCollectChain(const SkillLoader* loader,
+                           const std::string& ns,
+                           const std::string& component,
+                           const std::vector<std::string>& chain,
+                           std::vector<std::string>& parts) {
+    for (const auto& chainName : chain) {
+        Prompt cp;
+        bool found = false;
+        if (chainName.find(':') == std::string::npos) {
+            // Short name: resolve within the same component
+            if (loader->getPrompt(ns, component, chainName, cp) == 0) {
+                found = true;
+            }
+        } else {
+            // Qualified name: parse and resolve
+            std::string ns2, comp2, name2;
+            if (parseQualifiedName(chainName, ns2, comp2, name2) &&
+                loader->getPrompt(ns2, comp2, name2, cp) == 0) {
+                found = true;
+            }
+        }
+        if (found) {
+            // Recurse into the chain entry's own chain first
+            if (!cp.chain.empty()) {
+                xCollectChain(loader, ns, component, cp.chain, parts);
+            }
+            parts.push_back(cp.prompt);
+        }
+    }
+}
+
+int SkillManager::getPromptResolved(const std::string& qualifiedName, Prompt& out) const
+{
+    std::string ns, component, promptName;
+    if (!parseQualifiedName(qualifiedName, ns, component, promptName)) {
+        return -2;
+    }
+    // Load the target prompt
+    Prompt target;
+    int rc = m_loader->getPrompt(ns, component, promptName, target);
+    if (rc != 0) return rc;
+
+    // Copy metadata
+    out.name = target.name;
+    out.description = target.description;
+    out.dependencies = target.dependencies;
+    out.validators = target.validators;
+    out.ns = ns;
+    out.component = component;
+
+    // Flatten chain recursively: chain entries' chains are resolved first,
+    // then the chain entry's text, then the target's text
+    std::vector<std::string> parts;
+    if (!target.chain.empty()) {
+        xCollectChain(m_loader, ns, component, target.chain, parts);
+    }
+    parts.push_back(target.prompt);
+
+    // Concatenate with double-newline separators
+    std::string combined;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) combined += "\n\n";
+        combined += parts[i];
+    }
+    out.prompt = combined;
+    return 0;
+}
+
+int SkillManager::resolveName(const std::string& componentNs,
+                               const std::string& componentName,
+                               const std::string& shortName,
+                               std::string& qualifiedOut) const
+{
+    // If already qualified (contains ':'), use directly
+    if (shortName.find(':') != std::string::npos) {
+        qualifiedOut = shortName;
+        return 0;
+    }
+
+    // Try within the same component first
+    std::string within = buildQualifiedName(componentNs, componentName, shortName);
+    SkillTool tool;
+    Prompt prompt;
+    if (m_loader->getTool(componentNs, componentName, shortName, tool) == 0 ||
+        m_loader->getPrompt(componentNs, componentName, shortName, prompt) == 0) {
+        qualifiedOut = within;
+        return 0;
+    }
+
+    // Fall through: leave as-is; caller will handle unresolved
+    qualifiedOut = shortName;
+    return 1; // not found but no error — may resolve at call site
+}
+
 std::vector<std::string> SkillManager::listSkills(std::optional<SkillNamespace> ns) const
 {
+    if (ns.has_value()) {
+        return m_loader->listComponents(ns.value());
+    }
     std::vector<std::string> result;
-    auto all = m_loader->listComponents(SkillNamespace::SYSTEM);
-    all.insert(all.end(),
-               m_loader->listComponents(SkillNamespace::LOCAL).begin(),
-               m_loader->listComponents(SkillNamespace::LOCAL).end());
-    all.insert(all.end(),
-               m_loader->listComponents(SkillNamespace::GITHUB).begin(),
-               m_loader->listComponents(SkillNamespace::GITHUB).end());
-    return all;
+    auto sys = m_loader->listComponents(SkillNamespace::SYSTEM);
+    result.insert(result.end(), sys.begin(), sys.end());
+    auto loc = m_loader->listComponents(SkillNamespace::LOCAL);
+    result.insert(result.end(), loc.begin(), loc.end());
+    auto git = m_loader->listComponents(SkillNamespace::GITHUB);
+    result.insert(result.end(), git.begin(), git.end());
+    return result;
 }
 
 int SkillManager::addTool(const std::string& component, const SkillTool& tool)
@@ -107,7 +206,7 @@ int SkillManager::addTool(const std::string& component, const SkillTool& tool)
     return m_loader->addTool(component, tool);
 }
 
-int SkillManager::addPrompt(const std::string& component, const SkillPrompt& prompt)
+int SkillManager::addPrompt(const std::string& component, const Prompt& prompt)
 {
     return m_loader->addPrompt(component, prompt);
 }
@@ -174,6 +273,78 @@ int SkillManager::validate(const std::string& qualifiedName,
     SkillManifest manifest;
     m_loader->getManifest(nsEnum, component, manifest);
     return m_validator->validate(nsEnum, component, manifest, commit, report);
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch table
+// ---------------------------------------------------------------------------
+
+/// Split a string on a delimiter character.
+static std::vector<std::string> xSplit(const std::string& s, char delim) {
+    std::vector<std::string> parts;
+    std::stringstream ss(s);
+    std::string part;
+    while (std::getline(ss, part, delim)) {
+        parts.push_back(part);
+    }
+    return parts;
+}
+
+/// Convert SkillNamespace enum to string prefix.
+static std::string xNsToStr(SkillNamespace ns) {
+    switch (ns) {
+        case SkillNamespace::SYSTEM: return "system";
+        case SkillNamespace::LOCAL:  return "local";
+        case SkillNamespace::GITHUB: return "github";
+    }
+    return "";
+}
+
+std::unordered_map<std::string, std::string> SkillManager::buildDispatchTable() const {
+    std::unordered_map<std::string, std::string> table;
+
+    struct Entry { std::string qn; };
+    std::vector<Entry> entries;
+
+    // Collect every tool and prompt from every loaded namespace
+    for (auto ns : {SkillNamespace::SYSTEM, SkillNamespace::LOCAL, SkillNamespace::GITHUB}) {
+        auto components = m_loader->listComponents(ns);
+        for (const auto& comp : components) {
+            SkillManifest manifest;
+            if (m_loader->getManifest(ns, comp, manifest) != 0) continue;
+            std::string nsStr = xNsToStr(ns);
+
+            for (const auto& tool : manifest.tools)
+                entries.push_back({buildQualifiedName(nsStr, comp, tool.name)});
+            for (const auto& prompt : manifest.prompts)
+                entries.push_back({buildQualifiedName(nsStr, comp, prompt.name)});
+        }
+    }
+
+    // Assign short names with collision resolution
+    for (const auto& entry : entries) {
+        std::string shortName = entry.qn.substr(entry.qn.rfind(':') + 1);
+        std::string candidate = shortName;
+        int attempt = 0;
+
+        while (table.find(candidate) != table.end()) {
+            auto parts = xSplit(entry.qn, ':');
+            int n = (int)parts.size();
+            // Build from rightmost segments: +2 because attempt 0 already tried the last segment
+            int segments = std::min(attempt + 2, n);
+
+            std::string rebuilt;
+            for (int i = n - segments; i < n; ++i) {
+                if (!rebuilt.empty()) rebuilt += '_';
+                rebuilt += parts[i];
+            }
+            candidate = rebuilt;
+            attempt++;
+        }
+        table[candidate] = entry.qn;
+    }
+
+    return table;
 }
 
 // ---------------------------------------------------------------------------

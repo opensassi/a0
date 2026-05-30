@@ -68,7 +68,7 @@ int SkillLoader::getTool(const std::string& ns,
 int SkillLoader::getPrompt(const std::string& ns,
                             const std::string& component,
                             const std::string& promptName,
-                            SkillPrompt& prompt) const
+                            Prompt& prompt) const
 {
     std::string key = xIndexKey(xNsForDir(ns), component);
     auto it = m_components.find(key);
@@ -113,6 +113,15 @@ int SkillLoader::writeManifest(const std::string& component, const SkillManifest
         jt["description"] = t.description;
         jt["command"] = t.command;
         jt["inputMode"] = t.inputMode;
+        if (t.systemTool) jt["systemTool"] = true;
+        if (t.timeoutSecs != 30) jt["timeoutSecs"] = t.timeoutSecs;
+        if (!t.dockerImage.empty()) jt["dockerImage"] = t.dockerImage;
+        switch (t.trustLevel) {
+            case TrustLevel::HIGH: jt["trustLevel"] = "HIGH"; break;
+            case TrustLevel::LOW:  jt["trustLevel"] = "LOW"; break;
+            default:               jt["trustLevel"] = "MEDIUM"; break;
+        }
+        if (!t.aptDependencies.empty()) jt["aptDependencies"] = t.aptDependencies;
         j["tools"].push_back(jt);
     }
     for (const auto& p : manifest.prompts) {
@@ -120,6 +129,15 @@ int SkillLoader::writeManifest(const std::string& component, const SkillManifest
         jp["name"] = p.name;
         jp["description"] = p.description;
         jp["prompt"] = p.prompt;
+        if (!p.dependencies.empty()) jp["dependencies"] = p.dependencies;
+        if (!p.chain.empty()) jp["chain"] = p.chain;
+        if (!p.validators.empty()) {
+            for (const auto& v : p.validators) {
+                nlohmann::json jv;
+                jv["toolName"] = v.toolName;
+                jp["validators"].push_back(jv);
+            }
+        }
         j["prompts"].push_back(jp);
     }
 
@@ -154,17 +172,58 @@ int SkillLoader::readManifest(const std::string& path, SkillManifest& manifest) 
             tool.description = jt.value("description", "");
             tool.command = jt.value("command", "");
             tool.inputMode = jt.value("inputMode", "stdin");
+            tool.systemTool = jt.value("systemTool", false);
+            tool.timeoutSecs = jt.value("timeoutSecs", 30);
+            if (jt.contains("dockerImage"))
+                tool.dockerImage = jt["dockerImage"].get<std::string>();
+            if (jt.contains("trustLevel")) {
+                std::string tl = jt["trustLevel"].get<std::string>();
+                if (tl == "HIGH") tool.trustLevel = TrustLevel::HIGH;
+                else if (tl == "LOW") tool.trustLevel = TrustLevel::LOW;
+                else tool.trustLevel = TrustLevel::MEDIUM;
+            }
+            if (jt.contains("aptDependencies"))
+                tool.aptDependencies = jt["aptDependencies"].get<std::vector<std::string>>();
             manifest.tools.push_back(tool);
         }
     }
     if (j.contains("prompts")) {
         for (const auto& jp : j["prompts"]) {
-            SkillPrompt prompt;
+            Prompt prompt;
             prompt.name = jp.value("name", "");
             prompt.description = jp.value("description", "");
-            prompt.prompt = jp.value("prompt", "");
+            // Load prompt text: promptFile takes precedence over inline prompt
+            if (jp.contains("promptFile")) {
+                std::string relPath = jp["promptFile"].get<std::string>();
+                // Resolve relative to the skill.json directory (parent of path)
+                std::string baseDir = path;
+                auto slash = baseDir.find_last_of("/\\");
+                if (slash != std::string::npos)
+                    baseDir = baseDir.substr(0, slash);
+                std::string fullPath = baseDir + "/" + relPath;
+                std::ifstream pf(fullPath);
+                if (pf) {
+                    std::stringstream ss;
+                    ss << pf.rdbuf();
+                    prompt.prompt = ss.str();
+                } else {
+                    std::cerr << "Warning: promptFile not found: " << fullPath << std::endl;
+                }
+            } else {
+                prompt.prompt = jp.value("prompt", "");
+            }
             if (jp.contains("dependencies")) {
                 prompt.dependencies = jp["dependencies"].get<std::vector<std::string>>();
+            }
+            if (jp.contains("chain")) {
+                prompt.chain = jp["chain"].get<std::vector<std::string>>();
+            }
+            if (jp.contains("validators")) {
+                for (const auto& jv : jp["validators"]) {
+                    ValidatorBinding vb;
+                    vb.toolName = jv.value("toolName", "");
+                    prompt.validators.push_back(std::move(vb));
+                }
             }
             manifest.prompts.push_back(prompt);
         }
@@ -189,7 +248,7 @@ int SkillLoader::addTool(const std::string& component, const SkillTool& tool)
     return writeManifest(component, it->second);
 }
 
-int SkillLoader::addPrompt(const std::string& component, const SkillPrompt& prompt)
+int SkillLoader::addPrompt(const std::string& component, const Prompt& prompt)
 {
     std::string key = xIndexKey(SkillNamespace::LOCAL, component);
     auto it = m_components.find(key);

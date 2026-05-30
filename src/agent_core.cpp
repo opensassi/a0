@@ -1,12 +1,15 @@
 #include "agent_core.h"
 #include "base_prompt.h"
+#include "skills/skills.h"
 #include "persistence/persistence_store.h"
 #include "persistence/build_identity.h"
 #include "trace.h"
+#include <unistd.h>
 #include <chrono>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <algorithm>
 
 using a0::persistence::BuildIdentity;
 
@@ -23,7 +26,6 @@ static std::string sanitizeUtf8(const std::string& raw) {
         if (c <= 0x7F) {
             out += c;
         } else if (c >= 0xC0 && c <= 0xDF) {
-            // 2-byte sequence
             if (i + 1 < raw.size() &&
                 (static_cast<unsigned char>(raw[i+1]) & 0xC0) == 0x80) {
                 out += raw[i]; out += raw[i+1]; ++i;
@@ -31,7 +33,6 @@ static std::string sanitizeUtf8(const std::string& raw) {
                 out += '?';
             }
         } else if (c >= 0xE0 && c <= 0xEF) {
-            // 3-byte sequence
             if (i + 2 < raw.size() &&
                 (static_cast<unsigned char>(raw[i+1]) & 0xC0) == 0x80 &&
                 (static_cast<unsigned char>(raw[i+2]) & 0xC0) == 0x80) {
@@ -40,7 +41,6 @@ static std::string sanitizeUtf8(const std::string& raw) {
                 out += '?';
             }
         } else if (c >= 0xF0 && c <= 0xF7) {
-            // 4-byte sequence
             if (i + 3 < raw.size() &&
                 (static_cast<unsigned char>(raw[i+1]) & 0xC0) == 0x80 &&
                 (static_cast<unsigned char>(raw[i+2]) & 0xC0) == 0x80 &&
@@ -56,8 +56,7 @@ static std::string sanitizeUtf8(const std::string& raw) {
     return out;
 }
 
-DefaultAgentCore::DefaultAgentCore(SkillRegistry* registry,
-                                    ToolRunner* toolRunner,
+DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
                                     SkillRunner* skillRunner,
                                     InferenceProvider* provider,
                                     ContextManager* context,
@@ -65,10 +64,11 @@ DefaultAgentCore::DefaultAgentCore(SkillRegistry* registry,
                                     DependencyResolver* depResolver,
                                     SchemaInferenceEngine* inferenceEngine,
                                     a0::SystemToolRegistry* systemTools,
+                                    a0::skills::SkillManager* skillMgr,
                                     a0::persistence::PersistenceStore* persistence,
                                     DockerToolRunner* dockerRunner,
                                     ComposeManager* composeMgr)
-    : m_registry(registry)
+    : m_skillMgr(skillMgr)
     , m_toolRunner(toolRunner)
     , m_systemTools(systemTools)
     , m_persistence(persistence)
@@ -84,8 +84,10 @@ DefaultAgentCore::DefaultAgentCore(SkillRegistry* registry,
 
 bool DefaultAgentCore::init(const std::string& skillsDir) {
     TRACE_LOG("init(" << skillsDir << ")");
-    if (!m_registry->loadFromDirectory(skillsDir)) {
-        return false;
+
+    // Load all skills from disk
+    if (m_skillMgr && m_skillMgr->loadAll() != 0) {
+        std::cerr << "Warning: SkillManager::loadAll() returned non-zero" << std::endl;
     }
 
     auto now = std::chrono::system_clock::now();
@@ -96,7 +98,17 @@ bool DefaultAgentCore::init(const std::string& skillsDir) {
     m_sessionId = ss.str();
 
     // Build base prompt once at init
-    m_basePrompt = a0::buildBasePrompt(m_registry);
+    m_basePrompt = a0::buildBasePrompt(m_skillMgr);
+
+    // Set global template variables
+    m_skillRunner->setGlobalVar("SESSION_ID", m_sessionId);
+    m_skillRunner->setGlobalVar("LOGS_DIR", "logs");
+    m_skillRunner->setGlobalVar("SESSIONS_DIR", "sessions");
+    m_skillRunner->setGlobalVar("A0_DIR", ".a0");
+    char cwdBuf[4096];
+    if (::getcwd(cwdBuf, sizeof(cwdBuf))) {
+        m_skillRunner->setGlobalVar("PROJECT_DIR", cwdBuf);
+    }
 
     // Register agent binary fingerprint with persistence store
     if (m_persistence) {
@@ -135,6 +147,21 @@ static std::string truncateForLLM(const std::string& output, size_t maxBytes = 8
     return truncated;
 }
 
+// ---------------------------------------------------------------------------
+// Build dispatch table — maps LLM-facing short names to qualified internal names
+// ---------------------------------------------------------------------------
+
+void DefaultAgentCore::xBuildDispatchTable() {
+    m_dispatch.clear();
+    if (m_skillMgr) {
+        m_dispatch = m_skillMgr->buildDispatchTable();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// processGoal
+// ---------------------------------------------------------------------------
+
 json DefaultAgentCore::processGoal(const std::string& goal) {
     TRACE_LOG("processGoal(" << goal << ")");
     if (!m_initialized) {
@@ -152,36 +179,75 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
         m_persistence->appendMessage(m_sessionDbId, "user", goal, "", "", "", "");
     }
 
-    // Check for exact skill name match (backward compat with SkillRunner)
-    for (const auto& name : m_registry->listPrompts()) {
-        if (goal == name) {
-            auto promptOpt = m_registry->getPrompt(name);
-            if (promptOpt.has_value()) {
-                auto result = m_skillRunner->execute(*promptOpt, {{"goal", goal}});
-                xLogAndPush(goal, result);
-                if (m_persistence && m_sessionDbId > 0)
-                    m_persistence->endSession(m_sessionDbId);
-                return result;
+    // Phase 1: Check for exact goal → prompt match in SkillManager
+    if (m_skillMgr) {
+        Prompt resolved;
+        // Try as qualified name first
+        if (m_skillMgr->getPromptResolved(goal, resolved) == 0) {
+            auto result = m_skillRunner->execute(resolved, {{"goal", goal}});
+            xLogAndPush(goal, result);
+            if (m_persistence && m_sessionDbId > 0)
+                m_persistence->endSession(m_sessionDbId);
+            return result;
+        }
+
+        // Also try simple name match by searching all loaded prompts
+        auto allSkills = m_skillMgr->listSkills(std::nullopt);
+        for (const auto& comp : allSkills) {
+            // Try local:component:goal, system:component:goal
+            for (const auto& ns : {"local", "system"}) {
+                std::string qn = std::string(ns) + ":" + comp + ":" + goal;
+                if (m_skillMgr->getPromptResolved(qn, resolved) == 0) {
+                    auto result = m_skillRunner->execute(resolved, {{"goal", goal}});
+                    xLogAndPush(goal, result);
+                    if (m_persistence && m_sessionDbId > 0)
+                        m_persistence->endSession(m_sessionDbId);
+                    return result;
+                }
             }
         }
     }
 
-    // No exact match — try tool-calling loop if system tools available
+    // Phase 2: No exact match — use tool-calling loop with tool discovery
     auto toolSchemas = m_systemTools ? m_systemTools->schemas()
-                                     : std::vector<ToolSchema>();
+                                      : std::vector<ToolSchema>();
 
     if (!toolSchemas.empty()) {
         std::vector<Message> messages;
         messages.push_back({"user", goal});
 
+        // Build dispatch table for this session
+        xBuildDispatchTable();
+
         const int maxTurns = 10;
         const size_t maxPayloadBytes = 512 * 1024; // 512 KB total
 
         for (int turn = 0; turn < maxTurns; ++turn) {
-            auto response = m_provider->complete(m_basePrompt, messages, toolSchemas);
+            // Merge system tool schemas with skill tool schemas
+            std::vector<ToolSchema> combinedSchemas = toolSchemas;
+
+            // Add skill tools and prompts as LLM-callable tools (skip system tools — already added)
+            for (const auto& [shortName, qualifiedName] : m_dispatch) {
+                if (m_systemTools && m_systemTools->isSystemTool(shortName)) continue;
+
+                ToolSchema ts;
+                ts.name = shortName;
+                a0::skills::SkillTool st;
+                if (m_skillMgr && m_skillMgr->getTool(qualifiedName, st) == 0) {
+                    ts.description = st.description;
+                } else {
+                    Prompt sp;
+                    if (m_skillMgr && m_skillMgr->getPrompt(qualifiedName, sp) == 0) {
+                        ts.description = sp.description;
+                    }
+                }
+                ts.inputSchema = {{"type", "object"}, {"properties", {}}, {"required", {}}};
+                combinedSchemas.push_back(ts);
+            }
+
+            auto response = m_provider->complete(m_basePrompt, messages, combinedSchemas);
 
             if (!response.toolCalls.empty()) {
-                // Insert assistant message with tool_calls before results
                 Message asstMsg("assistant", "");
                 asstMsg.toolCalls = response.toolCalls;
                 messages.push_back(asstMsg);
@@ -189,17 +255,56 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
                 for (auto& tc : response.toolCalls) {
                     TRACE_LOG("tool_call[" << turn << "]: " << tc.name
                               << " args=" << tc.arguments.dump());
-                    auto result = m_systemTools->execute(tc.name, tc.arguments);
 
-                    // Truncate + sanitize tool output for LLM context limits
-                    std::string safeOutput = sanitizeUtf8(truncateForLLM(result.output));
-                    messages.push_back({"tool", safeOutput, tc.id});
+                    // Look up in dispatch table
+                    auto dit = m_dispatch.find(tc.name);
+                    if (dit != m_dispatch.end()) {
+                        const std::string& qualifiedName = dit->second;
+                        std::string result;
 
-                    // Persist tool call + result
-                    if (m_persistence && m_sessionDbId > 0) {
-                        m_persistence->appendMessage(m_sessionDbId, "tool_call", "",
-                                                      tc.arguments.dump(), tc.id,
-                                                      tc.name, safeOutput);
+                        if (m_systemTools && m_systemTools->isSystemTool(tc.name)) {
+                            result = m_systemTools->execute(tc.name, tc.arguments).output;
+                        } else {
+                            // Try as skill tool first
+                            a0::skills::SkillTool st;
+                            if (m_skillMgr && m_skillMgr->getTool(qualifiedName, st) == 0) {
+                                Tool t;
+                                t.name = st.name;
+                                t.description = st.description;
+                                t.command = st.command;
+                                t.inputMode = st.inputMode;
+                                t.dockerImage = st.dockerImage;
+                                t.trustLevel = st.trustLevel;
+                                t.aptDependencies = st.aptDependencies;
+                                auto runner = (!t.dockerImage.empty() && m_dockerRunner)
+                                    ? m_dockerRunner : m_toolRunner;
+                                auto r = runner->run(t, tc.arguments);
+                                result = r.is_string() ? r.get<std::string>() : r.dump();
+                            } else {
+                                // Try as skill prompt
+                                Prompt resolved;
+                                if (m_skillMgr && m_skillMgr->getPromptResolved(qualifiedName, resolved) == 0) {
+                                    auto r = m_skillRunner->execute(resolved, tc.arguments);
+                                    result = r.is_string() ? r.get<std::string>() : r.dump();
+                                } else {
+                                    result = "ERROR: dispatch target not found: " + tc.name;
+                                }
+                            }
+                        }
+
+                        std::string safeOutput = sanitizeUtf8(truncateForLLM(result));
+                        messages.push_back({"tool", safeOutput, tc.id});
+
+                        if (m_persistence && m_sessionDbId > 0) {
+                            m_persistence->appendMessage(m_sessionDbId, "tool_call", "",
+                                                          tc.arguments.dump(), tc.id,
+                                                          tc.name, safeOutput);
+                        }
+                    } else {
+                        // Unknown tool — fall back to system tools directly
+                        auto result = m_systemTools->execute(tc.name, tc.arguments);
+                        std::string safeOutput = sanitizeUtf8(truncateForLLM(result.output));
+                        messages.push_back({"tool", safeOutput, tc.id});
                     }
 
                     // Check cumulative payload size
@@ -237,7 +342,10 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
     json result;
     try {
         auto prompt = m_inferenceEngine->inferPrompt(goal);
-        m_registry->addPrompt(prompt);
+        // Use SkillManager to add the inferred prompt to local namespace
+        if (m_skillMgr) {
+            m_skillMgr->addPrompt("inferred", prompt);
+        }
         result = m_skillRunner->execute(prompt, {{"goal", goal}});
     } catch (const std::exception& e) {
         result = json("failed to infer prompt: " + std::string(e.what()));
@@ -254,12 +362,16 @@ json DefaultAgentCore::runSkill(const std::string& skillName, const json& params
         throw std::logic_error("AgentCore not initialized");
     }
 
-    auto promptOpt = m_registry->getPrompt(skillName);
-    if (!promptOpt.has_value()) {
+    if (!m_skillMgr) {
+        return json("SkillManager not available");
+    }
+
+    // Resolve the prompt via SkillManager (with chain flattening)
+    Prompt prompt;
+    if (m_skillMgr->getPromptResolved(skillName, prompt) != 0) {
         return json("prompt not found: " + skillName);
     }
 
-    Prompt prompt = *promptOpt;
     auto missing = m_depResolver->missingDependencies(prompt);
     if (!missing.empty()) {
         std::string err = "Missing dependencies: ";

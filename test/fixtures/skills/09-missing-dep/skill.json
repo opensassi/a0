@@ -1,0 +1,19 @@
+{
+  "name": "09-missing-dep",
+  "version": "1.0.0",
+  "description": "Synthetic test: prompt depends on nonexistent tool",
+  "prompts": [
+    {
+      "name": "needs_ghost",
+      "description": "Prompt with a missing dependency",
+      "dependencies": ["ghost_tool", "system:nonexistent"],
+      "prompt": "NEEDS_GHOST_TOOL"
+    },
+    {
+      "name": "uses_toolcall_ghost",
+      "description": "Prompt with tool_call to nonexistent name",
+      "dependencies": [],
+      "prompt": "Ghost {{tool_call:ghost_tool}} end"
+    }
+  ]
+}

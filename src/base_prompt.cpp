@@ -1,4 +1,5 @@
 #include "base_prompt.h"
+#include "skills/skills.h"
 #include "agent_interfaces.h"
 #include "persistence/build_identity.h"
 #include <sys/utsname.h>
@@ -36,7 +37,7 @@ static std::string getOsInfo() {
 }
 
 // ---------------------------------------------------------------------------
-// Tool parameter descriptions (matching opencode conventions)
+// Tool parameter descriptions
 // ---------------------------------------------------------------------------
 
 struct ToolParam {
@@ -108,9 +109,9 @@ static std::vector<ToolPrompt> getSystemToolDefs() {
 // Public API
 // ---------------------------------------------------------------------------
 
-std::string buildBasePrompt(const SkillRegistry* registry) {
-    (void)registry;  // Parameter descriptions are currently compiled in;
-                     // future: read tool description/params from JSON definitions
+std::string buildBasePrompt(const skills::SkillManager* skillMgr) {
+    (void)skillMgr;  // Parameter descriptions are currently compiled in;
+                     // future: read tool description/params from skill manifests
 
     std::ostringstream prompt;
 

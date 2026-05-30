@@ -2,7 +2,7 @@
 
 #include <string>
 
-class SkillRegistry;
+namespace a0 { namespace skills { class SkillManager; } }
 
 namespace a0 {
 
@@ -13,7 +13,7 @@ namespace a0 {
 /// Should be called once at startup and cached — the result is
 /// immutable for the lifetime of the process.
 ///
-/// \param registry  Loaded SkillRegistry containing system tool JSON definitions
-std::string buildBasePrompt(const SkillRegistry* registry);
+/// \param skillMgr  Loaded SkillManager for tool definition lookups
+std::string buildBasePrompt(const skills::SkillManager* skillMgr);
 
 } // namespace a0

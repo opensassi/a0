@@ -1,5 +1,6 @@
 #include "skill_runner.h"
 #include "base_prompt.h"
+#include "skills/skills.h"
 #include "trace.h"
 #include <regex>
 #include <sstream>
@@ -25,9 +26,23 @@ static json runTool(const Tool& tool, const json& params,
     return runner->run(tool, params);
 }
 
+/// Convert a SkillTool to the legacy Tool struct for runTool dispatch.
+static Tool skillToolToTool(const a0::skills::SkillTool& st) {
+    Tool t;
+    t.name = st.name;
+    t.description = st.description;
+    t.command = st.command;
+    t.inputMode = st.inputMode;
+    t.dockerImage = st.dockerImage;
+    t.trustLevel = st.trustLevel;
+    t.aptDependencies = st.aptDependencies;
+    t.timeoutSecs = st.timeoutSecs;
+    return t;
+}
+
 DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
                                         InferenceProvider* provider,
-                                        SkillRegistry* registry,
+                                        a0::skills::SkillManager* skillMgr,
                                         DependencyResolver* depResolver,
                                         SystemToolRegistry* systemTools,
                                         DockerToolRunner* dockerRunner,
@@ -37,17 +52,27 @@ DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
     , m_dockerRunner(dockerRunner)
     , m_composeMgr(composeMgr)
     , m_provider(provider)
-    , m_registry(registry)
+    , m_skillMgr(skillMgr)
     , m_depResolver(depResolver)
 {
 }
 
 void DefaultSkillRunner::xRebuildBasePrompt() {
-    m_basePrompt = a0::buildBasePrompt(m_registry);
+    m_basePrompt = a0::buildBasePrompt(m_skillMgr);
 }
 
 void DefaultSkillRunner::setSkillsDir(const std::string& path) {
     m_skillsDir = path;
+}
+
+void DefaultSkillRunner::setGlobalVar(const std::string& key, const std::string& value) {
+    m_globalVars[key] = value;
+}
+
+void DefaultSkillRunner::setGlobalVars(const std::unordered_map<std::string, std::string>& vars) {
+    for (const auto& [k, v] : vars) {
+        m_globalVars[k] = v;
+    }
 }
 
 std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& params) {
@@ -71,8 +96,19 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
         }
     }
 
-    // Pass 2: replace {{tool:name key="value" ...}} eager tool calls
-    std::regex toolRe(R"(\{\{tool:(\w+)\s+([^}]+)\}\})");
+    // Pass 1b: replace {{GLOBAL_KEY}} from global variables
+    for (const auto& [key, val] : m_globalVars) {
+        std::string placeholder = "{{" + key + "}}";
+        size_t pos = 0;
+        while ((pos = result.find(placeholder, pos)) != std::string::npos) {
+            result.replace(pos, placeholder.length(), val);
+            pos += val.length();
+        }
+    }
+
+    // Pass 2: replace {{tool:qualified_name key="value" ...}} eager tool calls
+    // Qualified names may contain colons and hyphens (e.g. local:my-pkg:tool_name)
+    std::regex toolRe(R"(\{\{tool:([\w:-]+)\s+([^}]+)\}\})");
     std::smatch match;
     while (std::regex_search(result, match, toolRe)) {
         std::string toolName = match[1];
@@ -85,7 +121,6 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
         std::string::const_iterator searchStart = argsStr.cbegin();
         while (std::regex_search(searchStart, argsStr.cend(), argMatch, argRe)) {
             std::string val = argMatch[2];
-            // Auto-convert numeric and boolean strings to match opencode params
             if (val == "true") {
                 toolParams[argMatch[1]] = true;
             } else if (val == "false") {
@@ -98,13 +133,33 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
             searchStart = argMatch.suffix().first;
         }
 
-        auto toolOpt = m_registry->getTool(toolName);
-        if (!toolOpt.has_value()) {
+        // Look up tool by qualified name via SkillManager
+        a0::skills::SkillTool skillTool;
+        Tool tool;
+        bool found = false;
+
+        // Try direct qualified lookup first
+        if (m_skillMgr && m_skillMgr->getTool(toolName, skillTool) == 0) {
+            tool = skillToolToTool(skillTool);
+            found = true;
+        }
+
+        // If the name has no ':' and we have component context, try within-component resolution
+        if (!found && toolName.find(':') == std::string::npos &&
+            !prompt.ns.empty() && !prompt.component.empty()) {
+            std::string within = a0::skills::buildQualifiedName(prompt.ns, prompt.component, toolName);
+            if (m_skillMgr && m_skillMgr->getTool(within, skillTool) == 0) {
+                tool = skillToolToTool(skillTool);
+                found = true;
+            }
+        }
+
+        if (!found) {
             result.replace(match.position(), match.length(), "ERROR: tool not found: " + toolName);
             continue;
         }
 
-        json toolResult = runTool(*toolOpt, toolParams,
+        json toolResult = runTool(tool, toolParams,
                                    m_toolRunner, m_dockerRunner, m_systemTools);
 
         std::string replacement;
@@ -117,6 +172,27 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
         result.replace(match.position(), match.length(), replacement);
     }
 
+    // Pass 3: replace {{tool_call:qualified_name args...}} — substitute short LLM-facing name
+    // and register in dispatch table. During prompt expansion, the short name is unknown yet,
+    // so we keep the qualified name as-is and let the session-level dispatch registration
+    // handle the mapping at processGoal() time.
+    // For now, just strip the {{tool_call:...}} to the base name for readability.
+    std::regex toolCallRe(R"(\{\{tool_call:([\w:-]+)\s*([^}]*)\}\})");
+    std::string pass3;
+    std::string::const_iterator pos3 = result.cbegin();
+    std::smatch tcMatch;
+    while (std::regex_search(pos3, result.cend(), tcMatch, toolCallRe)) {
+        pass3.append(pos3, tcMatch[0].first);
+        // Extract just the short name (last segment of qualified name)
+        std::string qName = tcMatch[1];
+        auto lastColon = qName.find_last_of(':');
+        std::string shortName = (lastColon != std::string::npos) ? qName.substr(lastColon + 1) : qName;
+        pass3 += shortName;
+        pos3 = tcMatch[0].second;
+    }
+    pass3.append(pos3, result.cend());
+    result = pass3;
+
     return result;
 }
 
@@ -124,8 +200,15 @@ json DefaultSkillRunner::runValidators(const Prompt& prompt, const json& input) 
     TRACE_LOG("runValidators(" << prompt.name << ")");
     json current = input;
     for (const auto& vb : prompt.validators) {
-        auto toolOpt = m_registry->getTool(vb.toolName);
-        if (!toolOpt.has_value()) {
+        a0::skills::SkillTool skillTool;
+        Tool tool;
+        bool found = false;
+        if (m_skillMgr && m_skillMgr->getTool(vb.toolName, skillTool) == 0) {
+            tool = skillToolToTool(skillTool);
+            found = true;
+        }
+
+        if (!found) {
             current = "VALIDATOR_ERROR: tool not found: " + vb.toolName;
             break;
         }
@@ -137,7 +220,7 @@ json DefaultSkillRunner::runValidators(const Prompt& prompt, const json& input) 
             params["input"] = current.dump();
         }
 
-        json validatorResult = runTool(*toolOpt, params,
+        json validatorResult = runTool(tool, params,
                                         m_toolRunner, m_dockerRunner, m_systemTools);
 
         if (validatorResult.is_string()) {

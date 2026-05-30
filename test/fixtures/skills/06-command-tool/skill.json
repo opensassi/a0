@@ -1,0 +1,27 @@
+{
+  "name": "06-command-tool",
+  "version": "1.0.0",
+  "description": "Synthetic test: tool with command field",
+  "tools": [
+    {
+      "name": "sub_tool",
+      "description": "A subprocess-based tool",
+      "command": "echo hello",
+      "inputMode": "args"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "uses_tool_expand",
+      "description": "Prompt with command-tool {{tool:...}}",
+      "dependencies": ["sub_tool"],
+      "prompt": "Before {{tool:local:06-command-tool:sub_tool arg=\"x\"}} After"
+    },
+    {
+      "name": "uses_toolcall",
+      "description": "Prompt with {{tool_call:...}} for command tool",
+      "dependencies": [],
+      "prompt": "Run {{tool_call:sub_tool}} for processing"
+    }
+  ]
+}

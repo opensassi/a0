@@ -109,11 +109,12 @@ std::string DockerContainerManager::acquireContainer(const Tool& tool) {
 std::string DockerContainerManager::execInContainer(
     const std::string& containerId,
     const std::string& command,
-    const std::string& stdinData) {
+    const std::string& stdinData,
+    int timeoutSecs) {
     TRACE_LOG("execInContainer(" << containerId << ")");
 
     try {
-        return DockerCLIWrapper::execInContainer(containerId, command, stdinData, 30);
+        return DockerCLIWrapper::execInContainer(containerId, command, stdinData, timeoutSecs);
     } catch (const std::exception& e) {
         if (std::strstr(e.what(), "timeout") != nullptr) {
             return "ERROR: timeout";

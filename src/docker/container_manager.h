@@ -25,7 +25,8 @@ public:
     std::string acquireContainer(const Tool& tool) override;
     std::string execInContainer(const std::string& containerId,
                                  const std::string& command,
-                                 const std::string& stdinData = "") override;
+                                 const std::string& stdinData = "",
+                                 int timeoutSecs = 30) override;
     void pruneIdleContainers() override;
 
 private:

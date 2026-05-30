@@ -98,7 +98,7 @@ std::string DockerToolRunnerImpl::runEphemeral(
 
     std::string dockerCmd = "docker run --rm -i" + networkFlag + " " + image +
                             " sh -c " + CommandRunner::shellEscape(command);
-    return execDockerRun(image, command, stdinData, 30);
+    return execDockerRun(image, command, stdinData, tool.timeoutSecs);
 }
 
 json DockerToolRunnerImpl::run(const Tool& tool, const json& params)

@@ -1,0 +1,25 @@
+{
+  "name": "08-circular-deps",
+  "version": "1.0.0",
+  "description": "Synthetic test: circular dependency A->B->A",
+  "prompts": [
+    {
+      "name": "prompt_a",
+      "description": "Circular test A",
+      "dependencies": ["prompt_b"],
+      "prompt": "PROMPT_A"
+    },
+    {
+      "name": "prompt_b",
+      "description": "Circular test B (depends back on A)",
+      "dependencies": ["prompt_a"],
+      "prompt": "PROMPT_B"
+    },
+    {
+      "name": "uses_toolcall",
+      "description": "Prompt with tool_call in circular chain",
+      "dependencies": [],
+      "prompt": "Try {{tool_call:prompt_a}} maybe"
+    }
+  ]
+}

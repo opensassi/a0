@@ -1,0 +1,33 @@
+{
+  "name": "03-same-package-deps",
+  "version": "1.0.0",
+  "description": "Synthetic test: prompt depends on tool in same package",
+  "tools": [
+    {
+      "name": "my_tool",
+      "description": "A test tool in the same package",
+      "command": "echo hello",
+      "inputMode": "args"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "uses_tool",
+      "description": "Prompt that depends on my_tool",
+      "dependencies": ["my_tool"],
+      "prompt": "PROMPT_THAT_USES_MY_TOOL"
+    },
+    {
+      "name": "uses_tool_expand",
+      "description": "Prompt with {{tool:...}} using qualified name",
+      "dependencies": ["my_tool"],
+      "prompt": "Before {{tool:local:03-same-package-deps:my_tool arg=\"x\"}} After"
+    },
+    {
+      "name": "uses_toolcall",
+      "description": "Prompt with {{tool_call:...}}",
+      "dependencies": [],
+      "prompt": "Call {{tool_call:my_tool}} here"
+    }
+  ]
+}

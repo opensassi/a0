@@ -1,0 +1,28 @@
+{
+  "name": "13-toolcall-substitution",
+  "version": "1.0.0",
+  "description": "Synthetic test: tool_call template substitution",
+  "prompts": [
+    {
+      "name": "uses_toolcall_simple",
+      "description": "Prompt with short-name tool_call",
+      "prompt": "Call the {{tool_call:my_tool}} to process."
+    },
+    {
+      "name": "uses_toolcall_qualified",
+      "description": "Prompt with qualified tool_call",
+      "prompt": "Use {{tool_call:local:12-tool-substitution:my_tool}} for help."
+    },
+    {
+      "name": "uses_toolcall_missing",
+      "description": "Prompt with nonexistent tool_call",
+      "prompt": "Try {{tool_call:ghost_tool}} maybe."
+    },
+    {
+      "name": "uses_mixed",
+      "description": "Prompt with both tool and tool_call",
+      "dependencies": ["system:read"],
+      "prompt": "Run {{tool:system:read filePath=\"/etc/hostname\"}} then {{tool_call:my_tool}} done."
+    }
+  ]
+}

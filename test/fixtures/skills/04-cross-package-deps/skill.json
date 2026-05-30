@@ -1,0 +1,25 @@
+{
+  "name": "04-cross-package-deps",
+  "version": "1.0.0",
+  "description": "Synthetic test: prompt depends on system:read",
+  "prompts": [
+    {
+      "name": "uses_read",
+      "description": "Prompt that depends on system:read",
+      "dependencies": ["system:read"],
+      "prompt": "READ_DEPENDENT_PROMPT"
+    },
+    {
+      "name": "uses_read_expand",
+      "description": "Prompt with cross-package {{tool:...}}",
+      "dependencies": ["system:read"],
+      "prompt": "Read {{tool:system:read filePath=\"/etc/hostname\"}} end"
+    },
+    {
+      "name": "uses_read_toolcall",
+      "description": "Prompt with cross-package {{tool_call:...}}",
+      "dependencies": ["system:read"],
+      "prompt": "Use {{tool_call:system:read}} for reading"
+    }
+  ]
+}

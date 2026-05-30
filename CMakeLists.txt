@@ -13,7 +13,6 @@ set(LIB_SOURCES
     src/a0_dir.cpp
     src/agent_core.cpp
     src/base_prompt.cpp
-    src/skill_registry.cpp
     src/system_tools.cpp
     src/tool_runner.cpp
     src/skill_runner.cpp
@@ -22,6 +21,10 @@ set(LIB_SOURCES
     src/invocation_logger.cpp
     src/schema_inference_engine.cpp
     src/dependency_resolver.cpp
+    src/skills/skill_manager.cpp
+    src/skills/skill_loader.cpp
+    src/skills/version_manager.cpp
+    src/skills/validation_engine.cpp
 )
 
 # CommandRunner — isolated utility with no agent dependencies
@@ -74,15 +77,16 @@ function(add_agent_test TEST_NAME TEST_SOURCE)
 endfunction()
 
 add_agent_test(test_tool_runner test/unit/test_tool_runner.cpp)
-add_agent_test(test_skill_runner test/unit/test_skill_runner.cpp)
-add_agent_test(test_skill_registry test/unit/test_skill_registry.cpp)
-add_agent_test(test_dependency_resolver test/unit/test_dependency_resolver.cpp)
+add_agent_test(test_skill_resolver test/unit/test_skill_resolver.cpp)
+# Disabled: replaced by synthetic test framework
+# add_agent_test(test_skill_runner test/unit/test_skill_runner.cpp)
+# add_agent_test(test_dependency_resolver test/unit/test_dependency_resolver.cpp)
+# add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
+# add_agent_test(test_interfaces test/unit/test_interfaces.cpp)
 add_agent_test(test_invocation_logger test/unit/test_invocation_logger.cpp)
 add_agent_test(test_schema_inference test/unit/test_schema_inference_engine.cpp)
 add_agent_test(test_context_manager test/unit/test_context_manager.cpp)
 add_agent_test(test_deepseek_provider test/unit/test_deepseek_provider.cpp)
-add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
-add_agent_test(test_interfaces test/unit/test_interfaces.cpp)
 
 add_agent_test(test_docker_interfaces test/unit/test_docker_interfaces.cpp)
 

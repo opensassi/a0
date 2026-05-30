@@ -53,7 +53,7 @@ json SubprocessToolRunner::run(const Tool& tool, const json& params)
         } else if (params.is_string()) {
             cmd += " " + CommandRunner::shellEscape(params.get<std::string>());
         }
-        auto result = CommandRunner::run(cmd, "", 30);
+        auto result = CommandRunner::run(cmd, "", tool.timeoutSecs);
         return formatResult(result);
     }
 
@@ -66,6 +66,6 @@ json SubprocessToolRunner::run(const Tool& tool, const json& params)
         input = params.dump();
     }
 
-    auto result = CommandRunner::run(tool.command, input, 30);
+    auto result = CommandRunner::run(tool.command, input, tool.timeoutSecs);
     return formatResult(result);
 }

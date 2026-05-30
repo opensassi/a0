@@ -1,5 +1,6 @@
 #include "tool_runner.h"
 #include <chrono>
+#include <csignal>
 #include <gtest/gtest.h>
 #include <fstream>
 #include <cstdio>
@@ -84,13 +85,16 @@ TEST_F(ToolRunnerTest, ArgsModeWithNamedArgs) {
 }
 
 TEST_F(ToolRunnerTest, TimeoutEnforced) {
+    // Ignore SIGPIPE: the child may die before we finish writing stdin
+    signal(SIGPIPE, SIG_IGN);
     Tool tool = makeBashTool();
+    tool.timeoutSecs = 2;
     auto start = std::chrono::steady_clock::now();
-    json result = runner.run(tool, {{"input", "sleep 31"}});
+    json result = runner.run(tool, {{"input", "sleep 10"}});
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - start).count();
     ASSERT_TRUE(result.is_string());
     std::string output = result.get<std::string>();
     EXPECT_TRUE(output.find("ERROR: timeout") == 0);
-    EXPECT_LE(elapsed, 32);
+    EXPECT_LE(elapsed, 5);
 }

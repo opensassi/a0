@@ -2,7 +2,7 @@
 #include "agent_core.h"
 #include "persistence/sqlite_store.h"
 #include "system_tools.h"
-#include "skill_registry.h"
+#include "skills/skills.h"
 #include "context_manager.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
@@ -93,6 +93,7 @@ int main(int argc, char* argv[]) {
     std::string runPrompt;
     std::string runSkillName;
     std::string runParamsStr = "{}";
+    std::string exportSessionId;
     bool noB1 = false;
     bool noContainerPool = false;
     bool killAll = false;
@@ -119,6 +120,8 @@ int main(int argc, char* argv[]) {
             runParamsStr = argv[++i];
         else if (arg == "--skill" && i + 1 < argc)
             runSkillName = argv[++i];
+        else if (arg == "--export-session" && i + 1 < argc)
+            exportSessionId = argv[++i];
         else if (arg == "--no-b1")
             noB1 = true;
         else if (arg == "--no-container-pool")
@@ -157,7 +160,20 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    FileSystemSkillRegistry registry;
+    // --export-session: dump session log as JSON to stdout and exit
+    if (!exportSessionId.empty()) {
+        JsonLinesLogger logger("logs");
+        std::string outPath = a0Dir + "/" + exportSessionId + ".json";
+        if (logger.exportSession(exportSessionId, outPath)) {
+            std::cout << "Exported session " << exportSessionId << " to " << outPath << std::endl;
+        } else {
+            std::cerr << "Session not found: " << exportSessionId << std::endl;
+            return 1;
+        }
+        return 0;
+    }
+
+    a0::skills::SkillManager skillMgr(skillsDir, a0Dir + "/store", a0Dir + "/logs");
     SubprocessToolRunner toolRunner;
     DeepSeekProvider provider(apiKey);
     if (!mockUrl.empty())
@@ -165,7 +181,7 @@ int main(int argc, char* argv[]) {
 
     DefaultContextManager context;
     JsonLinesLogger logger;
-    DefaultDependencyResolver depResolver(&registry);
+    DefaultDependencyResolver depResolver(&skillMgr);
     DefaultSchemaInferenceEngine inferenceEngine(&provider);
 
     a0::docker::DockerContainerManager* containerMgr = nullptr;
@@ -195,15 +211,15 @@ int main(int argc, char* argv[]) {
     // Persistence store (SQLite under .a0/db/)
     a0::persistence::SqliteStore persistence(a0Dir + "/db/sessions.db");
 
-    DefaultSkillRunner skillRunner(&toolRunner, &provider, &registry, &depResolver,
+    DefaultSkillRunner skillRunner(&toolRunner, &provider, &skillMgr, &depResolver,
                                     &systemTools, dockerRunner, composeMgr);
     skillRunner.setSkillsDir(skillsDir);
 
-    DefaultAgentCore core(&registry, &toolRunner, &skillRunner,
+    DefaultAgentCore core(&toolRunner, &skillRunner,
                           &provider, &context, &logger,
                           &depResolver, &inferenceEngine,
-                          &systemTools, &persistence,
-                          dockerRunner, composeMgr);
+                          &systemTools, &skillMgr,
+                          &persistence, dockerRunner, composeMgr);
 
     if (!resumeSessionId.empty()) {
         core.resumeSession(resumeSessionId);
@@ -262,12 +278,11 @@ int main(int argc, char* argv[]) {
         }
 
         std::string skillName = runSkillName;
-        if (skillName.empty()) {
-            for (const auto& name : registry.listPrompts()) {
-                if (runPrompt == name) {
-                    skillName = name;
-                    break;
-                }
+        if (skillName.empty() && runPrompt.find(':') != std::string::npos) {
+            // If --run text contains ':', try as qualified prompt name
+            a0::skills::SkillPrompt sp;
+            if (skillMgr.getPrompt(runPrompt, sp) == 0) {
+                skillName = runPrompt;
             }
         }
 

@@ -1,0 +1,12 @@
+{
+  "name": "hello",
+  "version": "1.0.0",
+  "description": "Example skill that responds with a greeting",
+  "prompts": [
+    {
+      "name": "hello_skill",
+      "description": "A simple skill that responds with a greeting",
+      "prompt": "Hello! How can I assist you today?"
+    }
+  ]
+}

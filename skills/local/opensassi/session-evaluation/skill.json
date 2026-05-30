@@ -1,0 +1,37 @@
+{
+  "name": "session-evaluation",
+  "version": "1.0.0",
+  "description": "Analyze conversation context, produce structured session evaluation reports, and archive session artifacts",
+  "tools": [
+    {
+      "name": "export_session",
+      "description": "Bundle a session log as .json.bz2 + .sha256 in sessions/",
+      "command": "bash skills/local/opensassi/session-evaluation/bin/export_session.sh",
+      "inputMode": "args",
+      "dockerImage": "ubuntu:22.04",
+      "aptDependencies": ["bzip2", "coreutils"],
+      "timeoutSecs": 60
+    }
+  ],
+  "prompts": [
+    {
+      "name": "session_evaluation_base",
+      "description": "Persona and general guidelines for session evaluation",
+      "promptFile": "prompts/session_evaluation_base.md"
+    },
+    {
+      "name": "generate",
+      "description": "Analyze conversation history and produce structured Session Evaluation Summary",
+      "chain": ["session_evaluation_base"],
+      "dependencies": [],
+      "promptFile": "prompts/generate.md"
+    },
+    {
+      "name": "export",
+      "description": "Save evaluation summary as markdown sidecar and create compressed JSON session archive",
+      "chain": ["session_evaluation_base"],
+      "dependencies": ["export_session", "system:write", "system:bash"],
+      "promptFile": "prompts/export.md"
+    }
+  ]
+}

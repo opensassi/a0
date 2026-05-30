@@ -1,0 +1,21 @@
+{
+  "name": "pkg_b",
+  "version": "1.0.0",
+  "description": "Package with tool also named 'parser'",
+  "tools": [
+    {
+      "name": "parser",
+      "description": "A parser tool in pkg_b",
+      "command": "echo pkg_b",
+      "inputMode": "args"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "uses_parser",
+      "description": "Prompt using parser via tool_call",
+      "dependencies": ["parser"],
+      "prompt": "Parse with {{tool_call:parser}} in pkg_b"
+    }
+  ]
+}
