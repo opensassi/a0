@@ -1,20 +1,31 @@
 #include "b1_registry.h"
 #include "c2_listener.h"
 #include "dashboard_server.h"
+#include "sse_manager.h"
+#include "c2_event_store.h"
 #include "unix_socket.h"
+#include <unistd.h>
 #include <iostream>
-#include <csignal>
+#include <fstream>
 #include <cstdlib>
+#include <csignal>
 #include <thread>
 
-static a0::c2::B1Registry* g_registry = nullptr;
-static a0::c2::C2Listener* g_listener = nullptr;
 static a0::c2::DashboardServer* g_dashboard = nullptr;
+static a0::c2::C2Listener* g_listener = nullptr;
+static std::string* g_socketPath = nullptr;
+static std::string* g_pidPath = nullptr;
 
-static void handleSignal(int sig) {
-    (void)sig;
+static void handleSignal(int) {
     if (g_dashboard) g_dashboard->shutdown();
     if (g_listener) g_listener->shutdown();
+    if (g_socketPath) a0::ipc::UnixSocket::unlinkPath(*g_socketPath);
+    if (g_pidPath) std::remove(g_pidPath->c_str());
+    _exit(0);
+}
+
+static std::string xGetWebRoot(const std::string& cwd) {
+    return cwd + "/.a0/git/opensassi/a0/c2/web";
 }
 
 int main(int argc, char* argv[]) {
@@ -22,17 +33,19 @@ int main(int argc, char* argv[]) {
     std::string socketPath;
     std::string sslKey;
     std::string sslCert;
+    std::string webRoot;
 
     const char* portEnv = std::getenv("A0_C2_PORT");
-    if (portEnv) {
-        port = std::stoi(portEnv);
-    }
+    if (portEnv) port = std::stoi(portEnv);
+
     const char* xdg = std::getenv("XDG_RUNTIME_DIR");
-    if (xdg) {
-        socketPath = std::string(xdg) + "/a0-c2.sock";
-    } else {
-        socketPath = "/tmp/a0-c2.sock";
-    }
+    std::string baseDir = xdg ? std::string(xdg) : "/tmp";
+    socketPath = baseDir + "/a0-c2.sock";
+
+    // Determine CWD for default web root
+    char cwdBuf[4096];
+    std::string cwd = (getcwd(cwdBuf, sizeof(cwdBuf))) ? cwdBuf : "";
+    webRoot = xGetWebRoot(cwd);
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -40,26 +53,44 @@ int main(int argc, char* argv[]) {
             port = std::stoi(argv[++i]);
         } else if (arg == "--socket" && i + 1 < argc) {
             socketPath = argv[++i];
+        } else if (arg == "--web-root" && i + 1 < argc) {
+            webRoot = argv[++i];
         } else if (arg == "--ssl-key" && i + 1 < argc) {
             sslKey = argv[++i];
         } else if (arg == "--ssl-cert" && i + 1 < argc) {
             sslCert = argv[++i];
         } else if (arg == "--help") {
-            std::cout << "c2 [--port <n>] [--socket <path>] [--ssl-key <file> --ssl-cert <file>]\n";
+            std::cout << "c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-cert <file>]\n";
             return 0;
         }
     }
 
+    std::string dbPath = socketPath + ".db";
+    a0::c2::EventStore eventStore(dbPath);
+    a0::c2::SseManager sse;
     a0::c2::B1Registry registry;
-    a0::c2::C2Listener listener(socketPath, &registry);
-    a0::c2::DashboardServer dashboard(port, &registry, sslKey, sslCert);
+    registry.setSseManager(&sse);
 
-    g_registry = &registry;
-    g_listener = &listener;
+    std::string pidPath = baseDir + "/a0-c2.pid";
+    std::remove(pidPath.c_str());
+    {
+        std::ofstream pf(pidPath);
+        if (pf) pf << getpid() << std::endl;
+    }
+
+    a0::c2::C2Listener listener(socketPath, &registry, &sse, &eventStore);
+    a0::c2::DashboardServer dashboard(port, &registry, &sse, &eventStore, &listener, webRoot, sslKey, sslCert);
     g_dashboard = &dashboard;
+    g_listener = &listener;
+    g_socketPath = &socketPath;
+    g_pidPath = &pidPath;
 
-    signal(SIGINT, handleSignal);
-    signal(SIGTERM, handleSignal);
+    struct sigaction sa;
+    sa.sa_handler = handleSignal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
 
     std::thread listenerThread([&listener]() {
         int rc = listener.run();
@@ -68,7 +99,8 @@ int main(int argc, char* argv[]) {
         }
     });
 
-    std::cerr << "c2: running (port=" << port << " socket=" << socketPath;
+    std::cerr << "c2: running (port=" << port << " socket=" << socketPath
+              << " web-root=" << webRoot;
     if (!sslKey.empty()) std::cerr << " ssl=enabled";
     std::cerr << ")\n";
 
@@ -81,5 +113,6 @@ int main(int argc, char* argv[]) {
     listenerThread.join();
 
     a0::ipc::UnixSocket::unlinkPath(socketPath);
+    std::remove(pidPath.c_str());
     return 0;
 }

@@ -18,6 +18,7 @@ enum class AgentState {
 
 struct AgentRecord {
     int pid = 0;
+    int fd = -1;
     std::string sessionUuid;
     AgentState state = AgentState::RUNNING;
     std::chrono::steady_clock::time_point connectedAt;
@@ -51,9 +52,14 @@ private:
 
     int xHandleRegister(const ipc::Message& msg, int peerFd);
     int xHandleHeartbeat(const ipc::Message& msg, int peerPid);
+    int xHandleUserPrompt(const ipc::Message& msg, int peerFd);
+    int xHandlePromptReply(const ipc::Message& msg);
     int xDetectCrashes();
     int xPushSnapshotToC2();
     int xLaunchC2IfNeeded();
+    int xSendToC2(const ipc::Message& msg);
+    int xSendToAgent(int agentFd, const ipc::Message& msg);
+    int xFindAgentFdBySession(const std::string& sessionUuid) const;
     void xCleanupStaleSocket();
     int xWritePidFile();
 };

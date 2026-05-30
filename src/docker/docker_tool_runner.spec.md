@@ -15,9 +15,11 @@ public:
     /**
      * @param containerManager Pooled container manager (non-owning)
      * @param composeManager   Compose stack manager (non-owning)
+     * @param poolEnabled      Enable container pooling (default: true)
      */
     DockerToolRunnerImpl(ContainerManager* containerManager,
-                         ComposeManager* composeManager);
+                         ComposeManager* composeManager,
+                         bool poolEnabled = true);
 
     /**
      * @brief  Execute a tool with the given params
@@ -56,21 +58,12 @@ private:
 };
 ```
 
-### Free functions (same file)
+### Private members
 
 ```cpp
-/**
- * @brief  Execute a docker run --rm -i command via CommandRunner.
- * @param  image       Docker image
- * @param  command     Shell command
- * @param  stdinData   Optional stdin
- * @param  timeoutSecs Max seconds
- * @return stdout + stderr
- */
-std::string execDockerRun(const std::string& image,
-                           const std::string& command,
-                           const std::string& stdinData,
-                           int timeoutSecs);
+    ContainerManager* m_containerManager;
+    ComposeManager* m_composeManager;
+    bool m_poolEnabled;
 ```
 
 ## 3. Architecture Diagram

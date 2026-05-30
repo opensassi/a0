@@ -15,6 +15,8 @@ std::string serialize(const Message& msg) {
     if (!msg.status.empty()) j["status"] = msg.status;
     if (!msg.error.empty()) j["error"] = msg.error;
     if (!msg.reason.empty()) j["reason"] = msg.reason;
+    if (!msg.toolCallId.empty()) j["toolCallId"] = msg.toolCallId;
+    if (!msg.prompt.empty()) j["prompt"] = msg.prompt;
     return j.dump() + "\n";
 }
 
@@ -57,17 +59,22 @@ int deserialize(const std::string& jsonLine, Message& msg) {
     if (j.contains("reason") && j["reason"].is_string()) {
         msg.reason = j["reason"].get<std::string>();
     }
+    if (j.contains("toolCallId") && j["toolCallId"].is_string()) {
+        msg.toolCallId = j["toolCallId"].get<std::string>();
+    }
+    if (j.contains("prompt") && j["prompt"].is_string()) {
+        msg.prompt = j["prompt"].get<std::string>();
+    }
 
     return 0;
 }
 
 int recvMessage(UnixSocket& sock, Message& msg, int timeoutMs) {
     std::string buffer;
-    // Read one byte at a time until we find '\n' or timeout
     while (true) {
         int pollRc = sock.pollReadable(timeoutMs);
-        if (pollRc < 0) return -1;   // disconnected
-        if (pollRc == 0) return -2;  // timeout
+        if (pollRc < 0) return -1;
+        if (pollRc == 0) return -2;
 
         std::vector<char> chunk(1);
         size_t received = 0;
@@ -77,7 +84,6 @@ int recvMessage(UnixSocket& sock, Message& msg, int timeoutMs) {
 
         buffer.push_back(chunk[0]);
         if (chunk[0] == '\n') {
-            // Remove trailing newline before deserializing
             if (!buffer.empty()) buffer.pop_back();
             return deserialize(buffer, msg);
         }

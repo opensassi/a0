@@ -17,14 +17,32 @@ enum class TrustLevel {
 ### `Tool` struct
 ```cpp
 struct Tool {
-    std::string name;               /**< Unique tool identifier */
-    std::string description;         /**< Human-readable description */
-    std::string command;             /**< Shell command to execute */
-    std::string inputMode = "stdin"; /**< "stdin" or "args" */
-    std::string dockerImage;         /**< Docker image (empty = run on host) */
+    std::string name;
+    std::string description;
+    std::string command;
+    std::string inputMode = "stdin";
+    std::string dockerImage;
     TrustLevel trustLevel = TrustLevel::MEDIUM;
-    bool useContainerPool = true;
     std::vector<std::string> aptDependencies;
+    int timeoutSecs = 30;
+};
+```
+
+### `ToolCall` struct
+```cpp
+struct ToolCall {
+    std::string id;
+    std::string name;
+    json arguments;
+};
+```
+
+### `ToolSchema` struct
+```cpp
+struct ToolSchema {
+    std::string name;
+    std::string description;
+    json inputSchema;
 };
 ```
 
@@ -49,32 +67,9 @@ struct Skill {
 };
 ```
 
-### `ToolSchema` struct (skills sub-module)
+### `Prompt` struct (skills sub-module)
 ```cpp
-struct ToolSchema {
-    nlohmann::json input;   /**< JSON Schema for input parameters */
-    nlohmann::json output;  /**< JSON Schema for return value */
-};
-```
-
-### `SkillTool` struct (skills sub-module)
-```cpp
-struct SkillTool {
-    std::string name;
-    std::string description;
-    std::string command;
-    std::string inputMode = "stdin";
-    ToolSchema schema;
-    std::string dockerImage;
-    TrustLevel trustLevel = TrustLevel::MEDIUM;
-    bool useContainerPool = true;
-    std::vector<std::string> aptDependencies;
-};
-```
-
-### `SkillPrompt` struct (skills sub-module)
-```cpp
-struct SkillPrompt {
+struct Prompt {
     std::string name;
     std::string description;
     std::string prompt;
@@ -114,6 +109,8 @@ public:
     virtual std::vector<std::string> listTools() const = 0;
     /** @return List of all registered skill names */
     virtual std::vector<std::string> listSkills() const = 0;
+    /** @return List of all registered prompt names */
+    virtual std::vector<std::string> listPrompts() const = 0;
     /** @param tool Tool to register
      *  @retval true  Added successfully
      *  @retval false Name conflict or invalid tool */

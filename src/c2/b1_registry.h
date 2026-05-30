@@ -8,6 +8,8 @@
 
 namespace a0::c2 {
 
+class SseManager;
+
 struct AgentSummary {
     int pid = 0;
     std::string sessionUuid;
@@ -29,6 +31,8 @@ class B1Registry {
 public:
     B1Registry() = default;
 
+    void setSseManager(SseManager* sse) { m_sse = sse; }
+
     int upsertB1(int pid, const std::string& workdir, const std::string& hostname);
     int removeB1(int pid);
     int updateAgents(int pid, const std::vector<AgentSummary>& agents);
@@ -39,6 +43,7 @@ public:
 private:
     mutable std::mutex m_mutex;
     std::unordered_map<int, B1Instance> m_b1s;
+    SseManager* m_sse = nullptr;
 };
 
 } // namespace a0::c2

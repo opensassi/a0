@@ -17,6 +17,8 @@ This document specifies a **b1 agent supervisor sub-module** for the existing a0
 - **Crash detection** — b1 tracks connected a0 PIDs via `waitpid(WNOHANG)`; disconnect from the Unix socket is an immediate crash signal
 - **c2 registration** — b1 connects to the machine-level c2 daemon on startup
 - **Self-improvement** — b1 invokes `a0 --run` as a child process to execute build/modification skills, then signals running a0 instances to restart
+- **Bidirectional IPC** — b1 monitors the c2 socket for incoming messages (prompt_reply from user responses) and forwards them to the correct a0 agent, enabling user prompt routing through the c2 web UI
+- **Binary path resolution** — b1 resolves its own path via `readlink("/proc/self/exe")` to find `c2` in the same directory; no PATH dependency. Uses `setsid()` in fork to detach c2 from the terminal process group
 - **`--no-c2` flag** — disables automatic c2 launch; run c2 independently if desired
 
 ---
@@ -49,9 +51,9 @@ enum class AgentState {
 
 /// Descriptor for a supervised a0 instance.
 struct AgentRecord {
-    int pid;                              // Process ID of the a0 instance
+    int pid = 0;                          // Process ID of the a0 instance
+    int fd = -1;                          // Peer socket fd (key in m_agents)
     std::string sessionUuid;              // Session UUID the agent reported
-    std::string workdir;                  // Working directory
     AgentState state = AgentState::RUNNING;
     std::chrono::steady_clock::time_point connectedAt;
     std::chrono::steady_clock::time_point lastHeartbeat;
@@ -94,10 +96,12 @@ public:
     /// \retval -2  PID file write failed.
     int init();
 
-    /// Main event loop. Uses poll(2) on the listening socket.
+    /// Main event loop. Uses poll(2) on the listening socket and the c2 socket.
     /// On each iteration:
     ///   - Accept new a0 connections (recv register JSON).
     ///   - Detect disconnected peers (EOF on existing connections) → mark crashed.
+    ///   - Receive messages from c2 (prompt_reply) and forward to the correct a0.
+    ///   - Receive messages from a0 (user_prompt) and forward to c2.
     ///   - waitpid(WNOHANG) for child a0 processes → update state.
     ///   - Periodically push snapshot to c2.
     /// Blocks forever. Only returns on fatal error.
@@ -112,29 +116,27 @@ public:
     size_t agentCount() const;
 
 private:
-    // Socket + event loop internals
-    int m_listenFd;
     std::string m_socketPath;
     std::string m_pidPath;
     std::string m_c2SocketPath;
     std::string m_workdir;
-    bool m_running;
-
-    // Agent tracking
-    std::unordered_map<int, AgentRecord> m_agents;  // keyed by PID
-
-    // c2 connection state
-    int m_c2Fd;                          // -1 if not connected
+    ipc::UnixSocket m_listenSocket;
+    bool m_running = false;
+    std::unordered_map<int, AgentRecord> m_agents;  // keyed by peer fd
+    int m_c2Fd = -1;                     // -1 if not connected
     std::chrono::steady_clock::time_point m_lastC2Push;
+    int m_listenFd = -1;
 
-    Supervisor(const Supervisor&) = delete;
-    Supervisor& operator=(const Supervisor&) = delete;
-
-    int xHandleRegister(const nlohmann::json& msg, int peerPid);
-    int xHandleHeartbeat(const nlohmann::json& msg, int peerPid);
-    int xDetectCrashes();                // waitpid WNOHANG for all tracked PIDs
+    int xHandleRegister(const ipc::Message& msg, int peerFd);
+    int xHandleHeartbeat(const ipc::Message& msg, int peerPid);
+    int xHandleUserPrompt(const ipc::Message& msg, int peerFd);
+    int xHandlePromptReply(const ipc::Message& msg);
+    int xDetectCrashes();
     int xPushSnapshotToC2();
     int xLaunchC2IfNeeded();
+    int xSendToC2(const ipc::Message& msg);
+    int xSendToAgent(int agentFd, const ipc::Message& msg);
+    int xFindAgentFdBySession(const std::string& sessionUuid) const;
     void xCleanupStaleSocket();
     int xWritePidFile();
 };
@@ -272,7 +274,30 @@ sequenceDiagram
     end
 ```
 
-### 4.3 Self-Improvement Loop
+### 4.3 User Prompt Forwarding
+
+```mermaid
+sequenceDiagram
+    participant A0 as a0 Agent
+    participant B1 as b1 Supervisor
+    participant C2 as c2
+
+    Note over A0: LLM returns tool_call name="user_prompt"
+
+    A0->>B1: {"type":"user_prompt","session":"ses_x","toolCallId":"c1","prompt":"?"}
+    B1->>B1: xHandleUserPrompt
+    B1->>C2: forward to c2
+
+    Note over A0: WAITING state (poll for prompt_reply)
+
+    C2->>B1: {"type":"prompt_reply","session":"ses_x","toolCallId":"c1"}
+    B1->>B1: xHandlePromptReply → xFindAgentFdBySession
+    B1->>A0: forward prompt_reply
+
+    Note over A0: Reads tool response from persistence, resumes
+```
+
+### 4.4 Self-Improvement Loop
 
 ```mermaid
 sequenceDiagram

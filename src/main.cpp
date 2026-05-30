@@ -61,12 +61,28 @@ static void killByPidFile(const std::string& path) {
     if (!f) return;
     int pid;
     f >> pid;
-    if (pid > 0) {
-        kill(pid, SIGTERM);
-        usleep(200000);
-        kill(pid, SIGKILL);
+    if (pid <= 0) { std::remove(path.c_str()); return; }
+
+    kill(pid, SIGTERM);
+    for (int i = 0; i < 10; ++i) {
+        usleep(100000);
+        if (kill(pid, 0) != 0) {
+            std::remove(path.c_str());
+            return;
+        }
     }
+    kill(pid, SIGKILL);
     std::remove(path.c_str());
+}
+
+static std::string xSelfDir() {
+    char buf[4096];
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len <= 0) return ".";
+    buf[len] = '\0';
+    std::string path(buf);
+    auto slash = path.rfind('/');
+    return (slash == std::string::npos) ? "." : path.substr(0, slash);
 }
 
 static std::string getC2PidPath() {
@@ -244,9 +260,11 @@ int main(int argc, char* argv[]) {
 
         if (!alive) {
             std::remove(b1SockPath.c_str());
+            std::string b1Path = xSelfDir() + "/b1";
             pid_t pid = fork();
             if (pid == 0) {
-                execlp("b1", "b1", "--workdir", cwd.c_str(),
+                setsid();
+                execlp(b1Path.c_str(), "b1", "--workdir", cwd.c_str(),
                        "--a0-dir", a0Dir.c_str(), nullptr);
                 _exit(127);
             }
@@ -280,7 +298,7 @@ int main(int argc, char* argv[]) {
         std::string skillName = runSkillName;
         if (skillName.empty() && runPrompt.find(':') != std::string::npos) {
             // If --run text contains ':', try as qualified prompt name
-            a0::skills::SkillPrompt sp;
+            Prompt sp;
             if (skillMgr.getPrompt(runPrompt, sp) == 0) {
                 skillName = runPrompt;
             }

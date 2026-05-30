@@ -16,14 +16,18 @@ struct Message {
     std::string status;
     std::string error;
     std::string reason;
+    std::string toolCallId;
+    std::string prompt;
 };
 
 namespace MessageType {
-    constexpr const char* REGISTER  = "register";
-    constexpr const char* ACK       = "ack";
-    constexpr const char* HEARTBEAT = "heartbeat";
-    constexpr const char* UPDATE    = "update";
-    constexpr const char* SHUTDOWN  = "shutdown";
+    constexpr const char* REGISTER     = "register";
+    constexpr const char* ACK          = "ack";
+    constexpr const char* HEARTBEAT    = "heartbeat";
+    constexpr const char* UPDATE       = "update";
+    constexpr const char* SHUTDOWN     = "shutdown";
+    constexpr const char* USER_PROMPT  = "user_prompt";
+    constexpr const char* PROMPT_REPLY = "prompt_reply";
 } // namespace MessageType
 
 std::string serialize(const Message& msg);

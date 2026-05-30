@@ -78,6 +78,16 @@ static std::string getFlag(int argc, char* argv[],
  *   toolRunner, provider, context, logger,
  *   depResolver, inferenceEngine, skillRunner → DefaultAgentCore
  *
+ * --kill-all flag:
+ *   Reads b1.pid and a0-c2.pid, sends SIGTERM, polls kill(pid,0)
+ *   every 100ms for 1s, sends SIGKILL if still alive.
+ *   Unlinks socket and PID files.
+ *
+ * b1 auto-launch:
+ *   Resolves binary path via readlink(/proc/self/exe) → finds b1
+ *   in same directory. Forks, calls setsid() to detach from terminal,
+ *   then execlp(b1Path, ...). No PATH dependency.
+ *
  * CLI subcommand routing:
  *   "a0 skill list/install/remove/gc/validate/pin" → SkillManager methods
  *   Other arguments → interactive REPL via AgentCore.run()

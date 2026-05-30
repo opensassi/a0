@@ -9,7 +9,6 @@ DefaultAgentCore is the central orchestrator of the agent system. It owns pointe
 ```cpp
 class DefaultAgentCore : public AgentCore {
 public:
-    /// \param skillManager   Skill manager (tools/skills from filesystem)
     /// \param toolRunner     Executes tool commands
     /// \param skillRunner    Executes skill pipelines
     /// \param provider       LLM inference (e.g. DeepSeek)
@@ -17,39 +16,29 @@ public:
     /// \param logger         Invocation audit log
     /// \param depResolver    Checks transitive dependencies
     /// \param inferenceEngine  Infers Skill/Tool from natural language
+    /// \param systemTools    Built-in tool registry (bash, read, glob, etc.)
+    /// \param skillMgr       Skills sub-module facade
+    /// \param persistence    Optional SQLite session persistence
     /// \param dockerRunner   Optional – runs tools in Docker containers
     /// \param composeMgr     Optional – manages Docker Compose environments
-    DefaultAgentCore(SkillManager* skillManager,
-                     ToolRunner* toolRunner,
+    DefaultAgentCore(ToolRunner* toolRunner,
                      SkillRunner* skillRunner,
                      InferenceProvider* provider,
                      ContextManager* context,
                      InvocationLogger* logger,
                      DependencyResolver* depResolver,
                      SchemaInferenceEngine* inferenceEngine,
+                     a0::SystemToolRegistry* systemTools,
+                     a0::skills::SkillManager* skillMgr,
+                     a0::persistence::PersistenceStore* persistence = nullptr,
                      DockerToolRunner* dockerRunner = nullptr,
                      ComposeManager* composeMgr = nullptr);
 
-    /// \param skillsDir  Path scanned for skill.json files
-    /// \retval true  Skills loaded, session created
-    /// \retval false Directory missing or empty
     bool init(const std::string& skillsDir) override;
-
-    /// \param goal  Natural-language goal string
-    /// \retval Execution result (JSON) – may be an error string
-    /// \throws std::logic_error if not initialized
     json processGoal(const std::string& goal) override;
-
-    /// \param sessionId  Existing session ID from a prior run
-    /// \retval true  Log found and context rebuilt
-    /// \retval false No log entries for that session
+    json runSkill(const std::string& skillName, const json& params);
     bool resumeSession(const std::string& sessionId) override;
-
-    /// \retval Current session ID string (e.g. "session_1700000000123")
     std::string currentSessionId() const override;
-
-    /// Reads stdin line-by-line, passes each to processGoal,
-    /// writes result to stdout. Exits on EOF.
     void run() override;
 
 private:

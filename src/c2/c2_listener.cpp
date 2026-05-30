@@ -1,20 +1,37 @@
 #include "c2_listener.h"
+#include "sse_manager.h"
+#include "c2_event_store.h"
 #include "ipc_protocol.h"
 #include <unistd.h>
 #include <sys/poll.h>
 #include <cerrno>
+#include <algorithm>
 #include <iostream>
 
 namespace a0::c2 {
 
-C2Listener::C2Listener(const std::string& socketPath, B1Registry* registry)
+C2Listener::C2Listener(const std::string& socketPath, B1Registry* registry,
+                        SseManager* sse, EventStore* events)
     : m_socketPath(socketPath)
     , m_registry(registry)
+    , m_sse(sse)
+    , m_events(events)
 {
 }
 
 C2Listener::~C2Listener() {
     shutdown();
+}
+
+int C2Listener::sendToB1(int b1Pid, const ipc::Message& msg) {
+    std::lock_guard<std::mutex> lock(m_b1Mutex);
+    auto it = m_b1PidToFd.find(b1Pid);
+    if (it == m_b1PidToFd.end()) return -1;
+
+    ipc::UnixSocket sock(it->second);
+    int rc = ipc::sendMessage(sock, msg);
+    sock.release();
+    return rc;
 }
 
 int C2Listener::run() {
@@ -27,7 +44,6 @@ int C2Listener::run() {
     m_running = true;
 
     std::vector<struct pollfd> pollFds;
-    std::vector<int> peerFds;
 
     while (m_running) {
         pollFds.clear();
@@ -56,6 +72,13 @@ int C2Listener::run() {
             int fd = pollFds[i].fd;
             if (pollFds[i].revents & (POLLHUP | POLLERR)) {
                 ::close(fd);
+                {
+                    std::lock_guard<std::mutex> lock(m_b1Mutex);
+                    for (auto it = m_b1PidToFd.begin(); it != m_b1PidToFd.end(); ) {
+                        if (it->second == fd) it = m_b1PidToFd.erase(it);
+                        else ++it;
+                    }
+                }
                 auto it = std::find(peerFds.begin(), peerFds.end(), fd);
                 if (it != peerFds.end()) peerFds.erase(it);
                 continue;
@@ -69,6 +92,13 @@ int C2Listener::run() {
                     xHandleMessage(nlohmann::json::parse(ipc::serialize(msg)), fd);
                 } else {
                     ::close(fd);
+                    {
+                        std::lock_guard<std::mutex> lock(m_b1Mutex);
+                        for (auto it = m_b1PidToFd.begin(); it != m_b1PidToFd.end(); ) {
+                            if (it->second == fd) it = m_b1PidToFd.erase(it);
+                            else ++it;
+                        }
+                    }
                     auto it = std::find(peerFds.begin(), peerFds.end(), fd);
                     if (it != peerFds.end()) peerFds.erase(it);
                 }
@@ -90,43 +120,65 @@ int C2Listener::xHandleMessage(const nlohmann::json& msg, int peerFd) {
 
     std::string type = msg["type"].get<std::string>();
     if (type == "register") {
-        return xHandleRegister(msg);
+        return xHandleRegister(msg, peerFd);
     } else if (type == "update") {
         return xHandleUpdate(msg);
+    } else if (type == "user_prompt") {
+        return xHandleUserPrompt(msg);
     }
 
     return -1;
 }
 
-int C2Listener::xHandleRegister(const nlohmann::json& msg) {
+int C2Listener::xHandleRegister(const nlohmann::json& msg, int peerFd) {
     if (!msg.contains("pid") || !msg["pid"].is_number_integer()) return -1;
-
     int pid = msg["pid"].get<int>();
     std::string wd = msg.value("wd", "");
     std::string hostname = msg.value("hostname", "");
+
+    {
+        std::lock_guard<std::mutex> lock(m_b1Mutex);
+        m_b1PidToFd[pid] = peerFd;
+    }
 
     return m_registry->upsertB1(pid, wd, hostname);
 }
 
 int C2Listener::xHandleUpdate(const nlohmann::json& msg) {
     if (!msg.contains("pid") || !msg["pid"].is_number_integer()) return -1;
-
     int pid = msg["pid"].get<int>();
     std::vector<AgentSummary> agents;
-
     if (msg.contains("agents") && msg["agents"].is_array()) {
         for (const auto& ag : msg["agents"]) {
             AgentSummary s;
             s.pid = ag.value("pid", 0);
             s.sessionUuid = ag.value("session", "");
             s.state = ag.value("state", "running");
-            s.connectedAt = ag.value("connectedAt", 0);
-            s.lastHeartbeat = ag.value("lastHeartbeat", 0);
             agents.push_back(s);
         }
     }
-
     return m_registry->updateAgents(pid, agents);
+}
+
+int C2Listener::xHandleUserPrompt(const nlohmann::json& msg) {
+    std::string session = msg.value("session", "");
+    std::string toolCallId = msg.value("toolCallId", "");
+    std::string prompt = msg.value("prompt", "");
+    if (session.empty() || toolCallId.empty() || prompt.empty()) return -1;
+
+    m_events->upsertPrompt(session, toolCallId, prompt, "");
+
+    if (m_sse) {
+        nlohmann::json ev;
+        ev["session"] = session;
+        ev["toolCallId"] = toolCallId;
+        ev["prompt"] = prompt;
+        ev["timestamp"] = std::to_string(
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+        m_sse->broadcast("user_prompt", ev.dump());
+    }
+    return 0;
 }
 
 void C2Listener::xCleanupStaleSocket() {

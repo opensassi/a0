@@ -70,7 +70,8 @@ public:
     // Returns stdout + stderr as a string. On timeout (30s), returns "ERROR: timeout".
     virtual std::string execInContainer(const std::string& containerId,
                                         const std::string& command,
-                                        const std::string& stdinData = "") = 0;
+                                        const std::string& stdinData = "",
+                                        int timeoutSecs = 30) = 0;
 
     // Prune idle containers according to policy (called inside acquireContainer).
     virtual void pruneIdleContainers() = 0;
@@ -96,24 +97,35 @@ class ComposeManager {
 public:
     virtual ~ComposeManager() = default;
 
-    // Starts docker-compose up -d for the skill's composeFile (if not already running).
+    // Starts docker-compose up -d for the prompt's composeFile (if not already running).
     // Returns the network name that tools should attach to.
-    virtual std::string startEnvironment(const Skill& skill, const std::string& skillDirectory) = 0;
+    virtual std::string startEnvironment(const Prompt& skill, const std::string& skillDirectory) = 0;
 
     // Stops and removes containers for the compose environment (if idle).
-    virtual void stopEnvironment(const Skill& skill) = 0;
+    virtual void stopEnvironment(const Prompt& skill) = 0;
 
-    // Updates last‑used timestamp for a skill's compose environment.
-    virtual void markUsed(const Skill& skill) = 0;
+    // Updates last‑used timestamp for a prompt's compose environment.
+    virtual void markUsed(const Prompt& skill) = 0;
+
+    // Set the current prompt for network resolution.
+    virtual void setCurrentPrompt(const Prompt& prompt) = 0;
+
+    // Get the current compose network name.
+    virtual std::string getCurrentNetwork() const = 0;
+
+    // Clear the current prompt reference.
+    virtual void clearCurrentPrompt() = 0;
 };
 ```
 
 ### 2.6 Docker Tool Runner (implements existing `ToolRunner`)
 
 ```cpp
-class DockerToolRunner : public ToolRunner {
+class DockerToolRunnerImpl : public DockerToolRunner {
 public:
-    DockerToolRunner(ContainerManager* containerManager, ComposeManager* composeManager = nullptr);
+    DockerToolRunnerImpl(ContainerManager* containerManager,
+                         ComposeManager* composeManager,
+                         bool poolEnabled = true);
     json run(const Tool& tool, const json& params) override;
 };
 ```

@@ -9,6 +9,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(uWebSockets)
 
 find_package(OpenSSL REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 set(USOCKETS_SRC_DIR "${uwebsockets_SOURCE_DIR}/uSockets/src")
 set(USOCKETS_SOURCES
@@ -43,6 +44,8 @@ add_library(c2_lib STATIC
     b1_registry.cpp
     c2_listener.cpp
     dashboard_server.cpp
+    sse_manager.cpp
+    c2_event_store.cpp
 )
 target_include_directories(c2_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -53,10 +56,12 @@ target_link_libraries(c2_lib PUBLIC
     ipc_lib
     nlohmann_json::nlohmann_json
     uSockets
+    SQLite::SQLite3
     pthread
     z
 )
 
 add_executable(c2 c2_main.cpp)
 target_link_libraries(c2 PRIVATE c2_lib)
+set_target_properties(c2 PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 install(TARGETS c2 RUNTIME DESTINATION bin)

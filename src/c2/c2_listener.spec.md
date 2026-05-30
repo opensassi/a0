@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-Listens on the c2 Unix domain socket for b1 registration and update messages. Runs in a dedicated thread alongside the HTTP dashboard server. Parses JSON-line messages and delegates to `B1Registry`.
+Listens on the c2 Unix domain socket for b1 registration, update, and user_prompt messages. Runs in a dedicated thread alongside the HTTP dashboard server. Parses JSON-line messages, delegates to `B1Registry` and `EventStore`, and broadcasts user_prompt events via `SseManager`. Also exposes `sendToB1()` for the DashboardServer to send `prompt_reply` signals to specific b1 instances.
 
-**Dependencies:** `UnixSocket`, `Message` (from ipc), `B1Registry`, POSIX (`poll`)
+**Dependencies:** `UnixSocket`, `Message` (from ipc), `B1Registry`, `SseManager`, `EventStore`, POSIX (`poll`)
 
 **Lifecycle:** Created at c2 startup, runs in a loop until shutdown signal.
 
@@ -15,21 +15,32 @@ namespace a0::c2 {
 
 class C2Listener {
 public:
-    C2Listener(const std::string& socketPath, B1Registry* registry);
+    C2Listener(const std::string& socketPath, B1Registry* registry,
+               SseManager* sse, EventStore* events);
     ~C2Listener();
 
     int run();
     void shutdown();
 
+    /// Send an IPC message to a b1 instance by PID. Thread-safe.
+    int sendToB1(int b1Pid, const ipc::Message& msg);
+
 private:
     std::string m_socketPath;
     B1Registry* m_registry;
-    int m_listenFd;
-    bool m_running;
+    SseManager* m_sse;
+    EventStore* m_events;
+    ipc::UnixSocket m_listenSocket;
+    int m_listenFd = -1;
+    bool m_running = false;
+    std::vector<int> peerFds;
+    std::unordered_map<int, int> m_b1PidToFd;
+    mutable std::mutex m_b1Mutex;
 
     int xHandleMessage(const nlohmann::json& msg, int peerFd);
-    int xHandleRegister(const nlohmann::json& msg);
+    int xHandleRegister(const nlohmann::json& msg, int peerFd);
     int xHandleUpdate(const nlohmann::json& msg);
+    int xHandleUserPrompt(const nlohmann::json& msg);
     void xCleanupStaleSocket();
 };
 
@@ -45,22 +56,32 @@ graph TB
         MSG[xHandleMessage]
         REG[xHandleRegister]
         UPD[xHandleUpdate]
+        UP[xHandleUserPrompt]
+        SEND[sendToB1]
+        P2F[m_b1PidToFd]
     end
 
     subgraph External
         B1[b1 instances]
     end
 
-    subgraph Registry
+    subgraph Dependencies
         REGISTRY[B1Registry]
+        SSE[SseManager]
+        EV[EventStore]
     end
 
-    B1 -->|unix socket| LISTEN
+    B1 -->|user_prompt IPC| UP
+    B1 -->|register IPC| LISTEN
     LISTEN --> MSG
     MSG --> REG
     MSG --> UPD
+    REG --> P2F
     REG --> REGISTRY
     UPD --> REGISTRY
+    UP --> EV
+    UP --> SSE
+    SEND -->|prompt_reply IPC| B1
 ```
 
 ## 4. Data Flow
@@ -70,59 +91,42 @@ sequenceDiagram
     participant B1 as b1
     participant L as C2Listener
     participant R as B1Registry
+    participant EV as EventStore
 
     B1->>L: connect socket
-    L->>L: accept()
 
     B1->>L: {"type":"register","pid":5678,"wd":"/p","hostname":"h"}
-    L->>L: xHandleMessage → xHandleRegister
+    L->>L: xHandleRegister(5678, peerFd)
     L->>R: upsertB1(5678, "/p", "h")
     R-->>L: 0
-    L-->>B1: {"type":"ack","status":"registered"}
+    L->>L: store 5678→peerFd in m_b1PidToFd
 
     B1->>L: {"type":"update","pid":5678,"agents":[...]}
-    L->>L: xHandleMessage → xHandleUpdate
     L->>R: updateAgents(5678, [...])
 
-    alt disconnect
-        B1-->>L: EOF
-        L->>R: removeB1(5678)
-    end
+    B1->>L: {"type":"user_prompt","session":"ses_x","toolCallId":"c1","prompt":"..."}
+    L->>EV: upsertPrompt("ses_x", "c1", "...", "")
+    L->>SSE: broadcast("user_prompt", {session, toolCallId, prompt})
 ```
 
 ## 5. Error Handling
 
 | Scenario | Behaviour |
 |----------|-----------|
-| Malformed JSON from b1 | Returns error ack, no crash |
-| Unknown message type | Ignores, sends ack with error field |
+| Malformed JSON from b1 | Returns -1, connection stays open |
+| Unknown message type | Returns -1, ignored |
 | accept() fails (EAGAIN) | Continues poll loop |
-| poll() returns error | Logs error, continues |
+| poll() returns error | Continues poll loop |
 | Socket path stale from crash | `xCleanupStaleSocket` unlinks before bind |
+| sendToB1 to disconnected b1 | Returns -1 (fd closed or not found) |
 
-## 6. Edge Cases
-
-| Case | Expected Result |
-|------|----------------|
-| Empty message (empty JSON line) | `xHandleMessage` returns error ack |
-| b1 connects but never sends | Poll loop detects timeout; close connection |
-| b1 sends partial line then disconnects | Next recv returns EOF; connection closed |
-| Multiple b1s register simultaneously | Each handled by accept→recv in sequence |
-| b1 sends update for unknown pid | updateAgents returns -1, listener logs warning |
-
-## 7. Testing Requirements
+## 6. Testing Requirements
 
 | Method | Test Case | Input | Expected |
 |--------|-----------|-------|----------|
-| `xHandleRegister` | Valid register | `{"type":"register","pid":1,"wd":"/x"}` | Calls upsertB1, returns 0 |
-| `xHandleRegister` | Missing pid | `{"type":"register"}` | Returns -1 |
-| `xHandleUpdate` | Valid update | `{"type":"update","pid":1,"agents":[]}` | Calls updateAgents, returns 0 |
-| `xHandleUpdate` | Unknown b1 pid | `{"type":"update","pid":999}` | Returns -1, no crash |
-| `xHandleMessage` | Unknown type | `{"type":"unknown"}` | Returns -1, no crash |
-| `xHandleMessage` | Malformed JSON | `{bad` | Returns -1, no crash |
-| `run` | Accept+dispatch | Connect, send register, disconnect | Registry has 1 entry after |
+| `xHandleRegister` | Valid register | `{"type":"register","pid":1,"wd":"/x"}` | Calls upsertB1, stores fd mapping |
+| `xHandleUserPrompt` | Valid user_prompt | `{"type":"user_prompt","session":"s","toolCallId":"c","prompt":"?"}` | Upserts EventStore, broadcasts SSE |
+| `xHandleUserPrompt` | Missing fields | `{"type":"user_prompt"}` | Returns -1 |
+| `sendToB1` | Known b1 pid | b1 pid, PROMPT_REPLY msg | Sends IPC message |
+| `sendToB1` | Unknown pid | pid=999 | Returns -1 |
 | `shutdown` | During poll wait | Call from another thread | run() returns 0 |
-
-## 8. Integration
-
-`C2Listener` runs in its own thread, started by `c2_main.cpp`. It shares the `B1Registry` instance with `DashboardServer`. On shutdown, `c2_main.cpp` signals the listener thread and joins before exit.

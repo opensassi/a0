@@ -55,9 +55,11 @@ int Supervisor::run() {
     std::vector<struct pollfd> pollFds;
 
     while (m_running) {
-        // Rebuild poll list: listen socket + all peer fds
         pollFds.clear();
         pollFds.push_back({m_listenFd, POLLIN, 0});
+        if (m_c2Fd >= 0) {
+            pollFds.push_back({m_c2Fd, POLLIN, 0});
+        }
         for (auto& pair : m_agents) {
             pollFds.push_back({pair.first, POLLIN, 0});
         }
@@ -68,19 +70,48 @@ int Supervisor::run() {
             continue;
         }
 
+        int idx = 0;
+
         // Accept new connections
-        if (pollFds[0].revents & POLLIN) {
+        if (pollFds[idx].revents & POLLIN) {
             ipc::UnixSocket client;
             if (m_listenSocket.accept(client) == 0 && client.isOpen()) {
                 int clientFd = client.release();
                 m_agents[clientFd] = AgentRecord{};
                 m_agents[clientFd].pid = 0;
+                m_agents[clientFd].fd = clientFd;
                 m_agents[clientFd].connectedAt = std::chrono::steady_clock::now();
             }
         }
+        ++idx;
 
-        // Handle peer messages
-        for (size_t i = 1; i < pollFds.size(); ++i) {
+        // Handle c2 messages (prompt_reply)
+        if (m_c2Fd >= 0) {
+            if (pollFds[idx].revents & (POLLIN | POLLHUP | POLLERR)) {
+                if (pollFds[idx].revents & (POLLHUP | POLLERR)) {
+                    ::close(m_c2Fd);
+                    m_c2Fd = -1;
+                } else {
+                    ipc::UnixSocket c2Sock(m_c2Fd);
+                    ipc::Message msg;
+                    int recvRc = ipc::recvMessage(c2Sock, msg, 100);
+                    if (recvRc == 0) {
+                        if (msg.type == ipc::MessageType::PROMPT_REPLY) {
+                            xHandlePromptReply(msg);
+                        }
+                    } else {
+                        ::close(m_c2Fd);
+                        m_c2Fd = -1;
+                    }
+                    c2Sock.release();
+                }
+            }
+            ++idx;
+        }
+
+        // Handle agent messages
+        size_t agentStart = idx;
+        for (size_t i = agentStart; i < pollFds.size(); ++i) {
             int fd = pollFds[i].fd;
             if (pollFds[i].revents & (POLLIN | POLLHUP | POLLERR)) {
                 if (pollFds[i].revents & (POLLHUP | POLLERR)) {
@@ -97,6 +128,8 @@ int Supervisor::run() {
                         xHandleRegister(msg, fd);
                     } else if (msg.type == ipc::MessageType::HEARTBEAT) {
                         xHandleHeartbeat(msg, fd);
+                    } else if (msg.type == ipc::MessageType::USER_PROMPT) {
+                        xHandleUserPrompt(msg, fd);
                     }
                 } else {
                     ::close(fd);
@@ -107,7 +140,6 @@ int Supervisor::run() {
         }
 
         // Detect crashes via waitpid
-        std::vector<int> toRemove;
         for (auto& pair : m_agents) {
             int pid = pair.second.pid;
             if (pid > 0) {
@@ -156,6 +188,7 @@ int Supervisor::xHandleRegister(const ipc::Message& msg, int peerFd) {
 
     it->second.pid = msg.pid;
     it->second.sessionUuid = msg.sessionUuid;
+    it->second.fd = peerFd;
     it->second.state = AgentState::RUNNING;
     it->second.lastHeartbeat = std::chrono::steady_clock::now();
 
@@ -174,6 +207,50 @@ int Supervisor::xHandleHeartbeat(const ipc::Message& msg, int peerPid) {
     if (it == m_agents.end()) return -1;
     it->second.lastHeartbeat = std::chrono::steady_clock::now();
     return 0;
+}
+
+int Supervisor::xHandleUserPrompt(const ipc::Message& msg, int peerFd) {
+    // Forward to c2
+    if (m_c2Fd < 0) return -1;
+
+    auto it = m_agents.find(peerFd);
+    int a0Pid = (it != m_agents.end()) ? it->second.pid : 0;
+
+    ipc::Message fwd;
+    fwd.type = ipc::MessageType::USER_PROMPT;
+    fwd.pid = a0Pid;
+    fwd.sessionUuid = msg.sessionUuid;
+    fwd.toolCallId = msg.toolCallId;
+    fwd.prompt = msg.prompt;
+
+    ipc::UnixSocket c2Sock(m_c2Fd);
+    int rc = ipc::sendMessage(c2Sock, fwd);
+    c2Sock.release();
+    return rc;
+}
+
+int Supervisor::xHandlePromptReply(const ipc::Message& msg) {
+    // Forward to the a0 agent with matching session
+    int agentFd = xFindAgentFdBySession(msg.sessionUuid);
+    if (agentFd < 0) {
+        std::cerr << "b1: prompt_reply for unknown session " << msg.sessionUuid << "\n";
+        return -1;
+    }
+
+    ipc::Message fwd;
+    fwd.type = ipc::MessageType::PROMPT_REPLY;
+    fwd.sessionUuid = msg.sessionUuid;
+    fwd.toolCallId = msg.toolCallId;
+
+    ipc::UnixSocket agentSock(agentFd);
+    int rc = ipc::sendMessage(agentSock, fwd);
+    agentSock.release();
+
+    if (rc < 0) {
+        ::close(agentFd);
+        m_agents.erase(agentFd);
+    }
+    return rc;
 }
 
 int Supervisor::xDetectCrashes() {
@@ -224,6 +301,36 @@ int Supervisor::xPushSnapshotToC2() {
     return 0;
 }
 
+int Supervisor::xSendToC2(const ipc::Message& msg) {
+    if (m_c2Fd < 0) return -1;
+
+    ipc::UnixSocket c2Sock(m_c2Fd);
+    int rc = ipc::sendMessage(c2Sock, msg);
+    if (rc < 0) {
+        ::close(m_c2Fd);
+        m_c2Fd = -1;
+        return -1;
+    }
+    c2Sock.release();
+    return 0;
+}
+
+int Supervisor::xSendToAgent(int agentFd, const ipc::Message& msg) {
+    ipc::UnixSocket sock(agentFd);
+    int rc = ipc::sendMessage(sock, msg);
+    sock.release();
+    return rc;
+}
+
+int Supervisor::xFindAgentFdBySession(const std::string& sessionUuid) const {
+    for (const auto& pair : m_agents) {
+        if (pair.second.sessionUuid == sessionUuid) {
+            return pair.first;
+        }
+    }
+    return -1;
+}
+
 int Supervisor::xLaunchC2IfNeeded() {
     ipc::UnixSocket c2Sock;
     int rc = c2Sock.connect(m_c2SocketPath, 100);
@@ -243,10 +350,25 @@ int Supervisor::xLaunchC2IfNeeded() {
         }
     }
 
-    // Launch c2
+    // Resolve c2 path from own binary location
+    std::string c2Path;
+    {
+        char buf[4096];
+        ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (len > 0) {
+            buf[len] = '\0';
+            std::string self(buf);
+            auto slash = self.rfind('/');
+            if (slash != std::string::npos)
+                c2Path = self.substr(0, slash) + "/c2";
+        }
+    }
+    if (c2Path.empty()) c2Path = "c2";
+
     pid_t pid = fork();
     if (pid == 0) {
-        execlp("c2", "c2", "--socket", m_c2SocketPath.c_str(), nullptr);
+        setsid();
+        execlp(c2Path.c_str(), "c2", "--socket", m_c2SocketPath.c_str(), nullptr);
         _exit(127);
     } else if (pid > 0) {
         for (int i = 0; i < 30; ++i) {
