@@ -72,6 +72,21 @@ export function connectHost(hostId, url) {
         );
     });
 
+    es.addEventListener('stream_chunk', e => {
+        const data = JSON.parse(e.data);
+        Store._notify('stream_chunk', data);
+    });
+
+    es.addEventListener('stream_end', e => {
+        const data = JSON.parse(e.data);
+        Store._notify('stream_end', data);
+    });
+
+    es.addEventListener('terminal_ready', e => {
+        const data = JSON.parse(e.data);
+        Store._notify('terminal_ready', data);
+    });
+
     _eventSources[hostId] = es;
     return es;
 }

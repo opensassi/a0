@@ -10,11 +10,12 @@ namespace a0 {
 namespace docker {
 
 using a0::CommandRunner;
+using a0::StreamHandle;
 
 static std::string execDockerRun(const std::string& image,
-                                  const std::string& command,
-                                  const std::string& stdinData,
-                                  int timeoutSecs)
+                                   const std::string& command,
+                                   const std::string& stdinData,
+                                   int timeoutSecs)
 {
     std::string cmd = "docker run --rm -i " + image + " sh -c " +
                       CommandRunner::shellEscape(command);
@@ -23,6 +24,22 @@ static std::string execDockerRun(const std::string& image,
         return "ERROR: timeout";
     }
     return result.stdout;
+}
+
+static StreamHandle execDockerRunStreaming(const std::string& image,
+                                            const std::string& command,
+                                            const std::string& stdinData,
+                                            int timeoutSecs,
+                                            const std::string& networkFlag,
+                                            a0::StreamCallback onChunk)
+{
+    std::string dockerCmd = "docker run --rm -i" + networkFlag + " " + image +
+                            " sh -c " + CommandRunner::shellEscape(command);
+    auto handle = CommandRunner::runStreaming(dockerCmd, std::move(onChunk), timeoutSecs);
+    if (!stdinData.empty()) {
+        handle.sendInput(stdinData);
+    }
+    return handle;
 }
 
 DockerToolRunnerImpl::DockerToolRunnerImpl(
@@ -108,23 +125,51 @@ json DockerToolRunnerImpl::run(const Tool& tool, const json& params)
     std::string stdinData;
     std::string command = buildCommand(tool, params, stdinData);
 
-    if (m_poolEnabled) {
+    if (m_poolEnabled && m_containerManager) {
         std::string containerId = m_containerManager->acquireContainer(tool);
-
-        std::string networkFlag;
-        if (m_composeManager) {
-            std::string network = m_composeManager->getCurrentNetwork();
-            if (!network.empty()) {
-                (void)network;
-            }
-        }
-
         std::string output = m_containerManager->execInContainer(
             containerId, command, stdinData);
         return output;
     }
 
     return runEphemeral(tool, command, stdinData);
+}
+
+StreamHandle DockerToolRunnerImpl::runStreaming(
+    const Tool& tool,
+    const json& params,
+    a0::StreamCallback onChunk)
+{
+    std::string stdinData;
+    std::string command = buildCommand(tool, params, stdinData);
+
+    std::string image = tool.dockerImage.empty() ? "ubuntu:22.04" : tool.dockerImage;
+
+    std::string networkFlag;
+    if (m_composeManager) {
+        std::string network = m_composeManager->getCurrentNetwork();
+        if (!network.empty()) {
+            networkFlag = " --network=" + network;
+        }
+    }
+
+    if (m_poolEnabled && m_containerManager) {
+        // Pooled container: use docker exec with streaming
+        std::string containerId = m_containerManager->acquireContainer(tool);
+        std::string dockerCmd = "docker exec -i " + containerId +
+                                " sh -c " + CommandRunner::shellEscape(command);
+        auto handle = CommandRunner::runStreaming(dockerCmd, std::move(onChunk),
+                                                    tool.timeoutSecs);
+        if (!stdinData.empty()) {
+            handle.sendInput(stdinData);
+        }
+        return handle;
+    }
+
+    // Ephemeral: docker run --rm with streaming
+    return execDockerRunStreaming(image, command, stdinData,
+                                   tool.timeoutSecs, networkFlag,
+                                   std::move(onChunk));
 }
 
 } // namespace docker

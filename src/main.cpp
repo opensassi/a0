@@ -15,12 +15,19 @@
 #include "docker/docker_tool_runner.h"
 #include "unix_socket.h"
 #include "ipc_protocol.h"
+#include "stream_registry.h"
 #include <cstdlib>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <vector>
+#include <atomic>
 #include <csignal>
+#include <thread>
+#include <chrono>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 
 static void loadEnvFile(const std::string& path) {
@@ -75,6 +82,71 @@ static void killByPidFile(const std::string& path) {
     std::remove(path.c_str());
 }
 
+/// Read a c2 process's cmdline to find its --socket argument.
+static std::string xC2SocketFromProc(int pid) {
+    std::string cmdlinePath = "/proc/" + std::to_string(pid) + "/cmdline";
+    std::ifstream f(cmdlinePath, std::ios::binary);
+    if (!f) return "";
+    std::vector<char> buf(4096, 0);
+    f.read(buf.data(), buf.size() - 1);
+    f.close();
+    // cmdline is NUL-delimited; walk args looking for --socket
+    const char* p = buf.data();
+    while (p && *p) {
+        std::string arg(p);
+        if (arg == "--socket" || arg == "-s") {
+            p += arg.size() + 1; // skip past NUL
+            if (p && *p) return std::string(p);
+        }
+        p += arg.size() + 1;
+        // Safety: don't walk past buffer
+        if (p >= buf.data() + buf.size()) break;
+    }
+    return "";
+}
+
+/// Kill all processes with the given comm name using pgrep.
+/// For c2 processes, also discover and return the socket paths that need cleanup.
+/// Returns the number of processes killed.
+static int killByProcessName(const std::string& name,
+                              std::vector<std::string>* outSockets = nullptr,
+                              int sigterm = SIGTERM) {
+    std::string cmd = "pgrep -x " + name + " 2>/dev/null";
+    FILE* fp = popen(cmd.c_str(), "r");
+    if (!fp) return 0;
+
+    std::vector<int> pids;
+    char line[64];
+    while (fgets(line, sizeof(line), fp)) {
+        int pid = atoi(line);
+        if (pid > 0) pids.push_back(pid);
+    }
+    int rc = pclose(fp);
+    (void)rc;
+
+    for (int pid : pids) {
+        if (outSockets && name == "c2") {
+            std::string sock = xC2SocketFromProc(pid);
+            if (!sock.empty()) outSockets->push_back(sock);
+        }
+    }
+
+    int killed = 0;
+    for (int pid : pids) {
+        if (kill(pid, sigterm) == 0) ++killed;
+    }
+
+    if (killed > 0) {
+        usleep(500000);
+        for (int pid : pids) {
+            if (kill(pid, 0) == 0) {
+                kill(pid, SIGKILL);
+            }
+        }
+    }
+    return killed;
+}
+
 static std::string xSelfDir() {
     char buf[4096];
     ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
@@ -113,6 +185,8 @@ int main(int argc, char* argv[]) {
     bool noB1 = false;
     bool noContainerPool = false;
     bool killAll = false;
+    bool terminalMode = false;
+    std::string terminalId;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -144,6 +218,17 @@ int main(int argc, char* argv[]) {
             noContainerPool = true;
         else if (arg == "--kill-all")
             killAll = true;
+        else if (arg == "--terminal")
+            terminalMode = true;
+        else if (arg == "--terminal-id" && i + 1 < argc)
+            terminalId = argv[++i];
+        else if (arg == "--cwd" && i + 1 < argc) {
+            // Change to the requested directory before terminal init
+            const char* dir = argv[++i];
+            if (chdir(dir) != 0) {
+                std::cerr << "a0: warning: could not chdir to " << dir << std::endl;
+            }
+        }
     }
 
     if (apiKey.empty()) {
@@ -171,8 +256,15 @@ int main(int argc, char* argv[]) {
         std::string b1SockPath = a0Dir + "/b1.sock";
         killByPidFile(b1PidPath);
         killByPidFile(getC2PidPath());
+        // Scan /proc for orphaned c2 processes and discover their sockets
+        std::vector<std::string> c2Sockets;
+        killByProcessName("c2", &c2Sockets);
+        killByProcessName("b1");
         a0::ipc::UnixSocket::unlinkPath(b1SockPath);
         a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
+        for (const auto& sock : c2Sockets) {
+            a0::ipc::UnixSocket::unlinkPath(sock);
+        }
         return 0;
     }
 
@@ -247,8 +339,9 @@ int main(int argc, char* argv[]) {
     }
 
     // ---- b1 auto-launch ----
+    bool needsB1 = !noB1 && (terminalMode || (runPrompt.empty() && runSkillName.empty()));
     int b1Fd = -1;
-    if (!noB1 && runPrompt.empty() && runSkillName.empty()) {
+    if (needsB1) {
         std::string b1SockPath = a0Dir + "/b1.sock";
         std::string b1PidPath = a0Dir + "/b1.pid";
         std::string cwd = ".";
@@ -287,6 +380,147 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // ---- terminal mode ----
+    if (terminalMode && b1Fd >= 0) {
+        // Create persistence store
+        a0::persistence::SqliteStore persistence(a0Dir + "/db/sessions.db");
+
+        // Create a session for this terminal
+        a0::persistence::BuildFingerprint fp;
+        fp.binarySha1 = "terminal";
+        int agentId = persistence.registerAgent(fp);
+        int64_t sessionId = persistence.createSession(0, 0, agentId);
+
+        // PTY allocation
+        int master = posix_openpt(O_RDWR | O_NOCTTY);
+        if (master < 0) {
+            std::cerr << "a0: terminal: posix_openpt failed\n";
+            return 1;
+        }
+        grantpt(master);
+        unlockpt(master);
+
+        // Fork shell
+        pid_t shellPid = fork();
+        if (shellPid == 0) {
+            setsid();
+            int slave = open(ptsname(master), O_RDWR);
+            if (slave < 0) _exit(1);
+            dup2(slave, STDIN_FILENO);
+            dup2(slave, STDOUT_FILENO);
+            dup2(slave, STDERR_FILENO);
+            if (slave > 2) close(slave);
+            close(master);
+            const char* shell = getenv("SHELL");
+            if (!shell) shell = "/bin/bash";
+            execl(shell, shell, "--login", nullptr);
+            _exit(127);
+        }
+
+        if (shellPid < 0) {
+            std::cerr << "a0: terminal: fork failed\n";
+            return 1;
+        }
+
+        // Create stream record with terminalId for c2 DB discovery
+        int64_t streamId = persistence.createStream(sessionId, "",
+            "terminal", "host", "", ".", terminalId);
+
+        // Send TERMINAL_READY via b1 socket
+        {
+            a0::ipc::UnixSocket b1Sock(b1Fd);
+            a0::ipc::Message ready;
+            ready.type = a0::ipc::MessageType::TERMINAL_READY;
+            ready.streamId = streamId;
+            ready.pid = getpid();
+            ready.sessionUuid = "";
+            ready.terminalId = terminalId;
+            a0::ipc::sendMessage(b1Sock, ready);
+            b1Sock.release();
+        }
+
+        // Streaming loop: read PTY master, persist + IPC
+        {
+            a0::ipc::UnixSocket b1Sock(b1Fd);
+            char buf[4096];
+            int seq = 0;
+            std::atomic<bool> done{false};
+
+            // Reader thread for PTY input from b1 (STREAM_INPUT)
+            std::thread inputThread([&]() {
+                while (!done) {
+                    a0::ipc::Message inputMsg;
+                    int rc = a0::ipc::recvMessage(b1Sock, inputMsg, 100);
+                    if (rc == 0 && inputMsg.type == a0::ipc::MessageType::STREAM_INPUT
+                        && inputMsg.streamId == streamId) {
+                        write(master, inputMsg.chunkData.data(),
+                              inputMsg.chunkData.size());
+                    }
+                    // rc == -2 (timeout) is normal — no input available
+                    // rc < -2 is an actual error
+                }
+            });
+
+            // Main thread: read PTY output and send via IPC
+            fd_set rdfs;
+            struct timeval tv;
+            while (!done) {
+                FD_ZERO(&rdfs);
+                FD_SET(master, &rdfs);
+                tv.tv_sec = 0;
+                tv.tv_usec = 100000;
+
+                if (select(master + 1, &rdfs, nullptr, nullptr, &tv) < 0) break;
+                if (FD_ISSET(master, &rdfs)) {
+                    ssize_t n = read(master, buf, sizeof(buf));
+                    if (n > 0) {
+                        std::string data(buf, static_cast<size_t>(n));
+                        // Persist chunk
+                        persistence.appendChunk(streamId, seq++, "stdout", data);
+                        // Send via IPC
+                        a0::ipc::Message chunk;
+                        chunk.type = a0::ipc::MessageType::STREAM_DATA;
+                        chunk.streamId = streamId;
+                        chunk.chunkSeq = seq;
+                        chunk.chunkDirection = "stdout";
+                        chunk.chunkData = data;
+                        a0::ipc::sendMessage(b1Sock, chunk);
+                    } else {
+                        done = true;
+                    }
+                }
+
+                // Check if shell has exited
+                int status;
+                pid_t wpid = waitpid(shellPid, &status, WNOHANG);
+                if (wpid == shellPid) {
+                    done = true;
+                }
+            }
+
+            done = true;
+            int exitCode = 0;
+            int status;
+            if (waitpid(shellPid, &status, 0) > 0) {
+                if (WIFEXITED(status)) exitCode = WEXITSTATUS(status);
+            }
+            persistence.endStream(streamId, exitCode);
+
+            // Send STREAM_END
+            a0::ipc::Message end;
+            end.type = a0::ipc::MessageType::STREAM_END;
+            end.streamId = streamId;
+            end.pid = exitCode;
+            a0::ipc::sendMessage(b1Sock, end);
+
+            if (inputThread.joinable()) inputThread.join();
+            b1Sock.release();
+        }
+
+        close(master);
+        return 0;
+    }
+
     // ---- --run mode (non-interactive) ----
     if (!runPrompt.empty() || !runSkillName.empty()) {
         json params;
@@ -315,7 +549,12 @@ int main(int argc, char* argv[]) {
         if (killAll) {
             killByPidFile(a0Dir + "/b1.pid");
             killByPidFile(getC2PidPath());
+            std::vector<std::string> c2Socks;
+            killByProcessName("c2", &c2Socks);
+            killByProcessName("b1");
             a0::ipc::UnixSocket::unlinkPath(a0Dir + "/b1.sock");
+            a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
+            for (const auto& s : c2Socks) a0::ipc::UnixSocket::unlinkPath(s);
         }
         delete dockerRunner;
         delete composeMgr;
@@ -329,7 +568,12 @@ int main(int argc, char* argv[]) {
     if (killAll) {
         killByPidFile(a0Dir + "/b1.pid");
         killByPidFile(getC2PidPath());
+        std::vector<std::string> c2Socks;
+        killByProcessName("c2", &c2Socks);
+        killByProcessName("b1");
         a0::ipc::UnixSocket::unlinkPath(a0Dir + "/b1.sock");
+        a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
+        for (const auto& s : c2Socks) a0::ipc::UnixSocket::unlinkPath(s);
     }
 
     delete dockerRunner;

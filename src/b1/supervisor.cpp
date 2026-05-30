@@ -98,6 +98,11 @@ int Supervisor::run() {
                     if (recvRc == 0) {
                         if (msg.type == ipc::MessageType::PROMPT_REPLY) {
                             xHandlePromptReply(msg);
+                        } else if (msg.type == ipc::MessageType::STREAM_INPUT) {
+                            xHandleStreamInput(msg);
+                        } else if (msg.type == ipc::MessageType::TERMINAL_OPEN) {
+                            // c2 requests a terminal → forward to first connected a0
+                            xHandleTerminalOpen(msg, -1);
                         }
                     } else {
                         ::close(m_c2Fd);
@@ -130,6 +135,16 @@ int Supervisor::run() {
                         xHandleHeartbeat(msg, fd);
                     } else if (msg.type == ipc::MessageType::USER_PROMPT) {
                         xHandleUserPrompt(msg, fd);
+                    } else if (msg.type == ipc::MessageType::STREAM_DATA) {
+                        // Track stream owner and forward to c2
+                        m_streamOwners[msg.streamId] = fd;
+                        xSendToC2(msg);
+                    } else if (msg.type == ipc::MessageType::STREAM_END) {
+                        m_streamOwners.erase(msg.streamId);
+                        xSendToC2(msg);
+                    } else if (msg.type == ipc::MessageType::TERMINAL_READY) {
+                        // a0 opened a terminal → notify c2
+                        xSendToC2(msg);
                     }
                 } else {
                     ::close(fd);
@@ -320,6 +335,79 @@ int Supervisor::xSendToAgent(int agentFd, const ipc::Message& msg) {
     int rc = ipc::sendMessage(sock, msg);
     sock.release();
     return rc;
+}
+
+int Supervisor::xHandleStreamData(const ipc::Message& msg, int peerFd) {
+    m_streamOwners[msg.streamId] = peerFd;
+    return xSendToC2(msg);
+}
+
+int Supervisor::xHandleStreamEnd(const ipc::Message& msg, int peerFd) {
+    (void)peerFd;
+    m_streamOwners.erase(msg.streamId);
+    return xSendToC2(msg);
+}
+
+int Supervisor::xHandleStreamInput(const ipc::Message& msg) {
+    auto it = m_streamOwners.find(msg.streamId);
+    if (it == m_streamOwners.end()) return -1;
+    int agentFd = it->second;
+    return xSendToAgent(agentFd, msg);
+}
+
+int Supervisor::xHandleTerminalOpen(const ipc::Message& msg, int peerFd) {
+    (void)peerFd;
+    // Resolve cwd to an absolute path so the terminal a0 finds the right b1 socket
+    // c2 sends an absolute cwd, but resolve it here too for safety
+    std::string cwd = m_workdir;
+    if (!msg.cwd.empty()) {
+        char resolved[4096];
+        if (realpath(msg.cwd.c_str(), resolved)) {
+            cwd = resolved;
+        }
+    } else {
+        char resolved[4096];
+        if (realpath(cwd.c_str(), resolved)) {
+            cwd = resolved;
+        }
+    }
+
+    // Resolve a0 binary path from own binary location
+    std::string a0Path;
+    {
+        char buf[4096];
+        ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (len > 0) {
+            buf[len] = '\0';
+            std::string self(buf);
+            auto slash = self.rfind('/');
+            if (slash != std::string::npos)
+                a0Path = self.substr(0, slash) + "/a0";
+        }
+    }
+    if (a0Path.empty()) a0Path = "a0";
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child: launch a0 --terminal in the requested directory
+        setsid();
+        std::string a0Dir = cwd + "/.a0";
+        if (!msg.terminalId.empty()) {
+            execlp(a0Path.c_str(), "a0", "--terminal", "--cwd", cwd.c_str(),
+                   "--a0-dir", a0Dir.c_str(), "--terminal-id", msg.terminalId.c_str(), nullptr);
+        } else {
+            execlp(a0Path.c_str(), "a0", "--terminal", "--cwd", cwd.c_str(),
+                   "--a0-dir", a0Dir.c_str(), nullptr);
+        }
+        _exit(127);
+    }
+    return (pid > 0) ? 0 : -1;
+}
+
+int Supervisor::xFindAgentFdByStream(int64_t streamId) const {
+    auto it = m_streamOwners.find(streamId);
+    if (it != m_streamOwners.end()) return it->second;
+    return -1;
 }
 
 int Supervisor::xFindAgentFdBySession(const std::string& sessionUuid) const {

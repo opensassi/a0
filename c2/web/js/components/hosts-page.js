@@ -12,6 +12,11 @@ template.innerHTML = `
     <input type="text" id="new-url" placeholder="URL (e.g. https://c2.example.com)" />
     <button id="add-btn">Add</button>
   </div>
+  <div class="terminal-launch">
+    <h3>Terminal</h3>
+    <input type="text" id="terminal-cwd" placeholder="Working directory (default: current dir)" />
+    <button id="launch-terminal-btn">Launch Terminal</button>
+  </div>
 </div>
 `;
 
@@ -25,6 +30,10 @@ class HostsPage extends HTMLElement {
             this._urlInput = this.shadowRoot.getElementById('new-url');
 
             this.shadowRoot.getElementById('add-btn').addEventListener('click', () => this._add());
+            this.shadowRoot.getElementById('launch-terminal-btn').addEventListener('click', () => this._launchTerminal());
+            this.shadowRoot.getElementById('terminal-cwd').addEventListener('keydown', e => {
+                if (e.key === 'Enter') this._launchTerminal();
+            });
             this._unsub = Store.on('hosts', () => this._render());
         }
         this._render();
@@ -84,6 +93,13 @@ class HostsPage extends HTMLElement {
         disconnectHost(id);
         Store.update('hosts', hosts => hosts.filter(h => h.id !== id));
         Store.saveHosts();
+    }
+
+    _launchTerminal() {
+        const cwd = this.shadowRoot.getElementById('terminal-cwd').value.trim() || '.';
+        window.dispatchEvent(new CustomEvent('navigate', {
+            detail: '/terminal#cwd=' + encodeURIComponent(cwd) + '&contextType=host'
+        }));
     }
 }
 

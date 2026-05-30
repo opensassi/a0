@@ -26,6 +26,22 @@ static json runTool(const Tool& tool, const json& params,
     return runner->run(tool, params);
 }
 
+static a0::StreamHandle runToolStreaming(const Tool& tool, const json& params,
+                                           a0::StreamCallback onChunk,
+                                           ToolRunner* hostRunner,
+                                           DockerToolRunner* dockerRunner,
+                                           SystemToolRegistry* systemTools) {
+    if (systemTools && SystemToolRegistry::isSystemTool(tool.name)) {
+        // System tools don't support streaming yet; run synchronously
+        auto result = systemTools->execute(tool.name, params);
+        // Create a completed handle
+        a0::StreamHandle h;
+        return h;
+    }
+    ToolRunner* runner = selectRunner(tool, hostRunner, dockerRunner);
+    return runner->runStreaming(tool, params, std::move(onChunk));
+}
+
 /// Convert a SkillTool to the legacy Tool struct for runTool dispatch.
 static Tool skillToolToTool(const a0::skills::SkillTool& st) {
     Tool t;
@@ -233,6 +249,43 @@ json DefaultSkillRunner::runValidators(const Prompt& prompt, const json& input) 
         current = validatorResult;
     }
     return current;
+}
+
+a0::StreamHandle DefaultSkillRunner::executeStreaming(
+    const Prompt& prompt, const json& params, a0::StreamCallback onChunk)
+{
+    TRACE_LOG("executeStreaming(" << prompt.name << ")");
+    auto missing = m_depResolver->missingDependencies(prompt);
+    if (!missing.empty()) {
+        // Return a no-op handle (already done)
+        a0::StreamHandle h;
+        return h;
+    }
+
+    if (!prompt.composeFile.empty() && m_composeMgr) {
+        m_composeMgr->startEnvironment(prompt, m_skillsDir);
+    }
+
+    // Check if params specify a direct tool invocation
+    std::string toolName = params.value("_tool", "");
+    bool streaming = params.value("streaming", false);
+
+    if (!toolName.empty() && streaming) {
+        a0::skills::SkillTool skillTool;
+        if (m_skillMgr && m_skillMgr->getTool(toolName, skillTool) == 0) {
+            Tool tool = skillToolToTool(skillTool);
+            json toolParams = params;
+            toolParams.erase("_tool");
+            toolParams.erase("streaming");
+            return runToolStreaming(tool, toolParams,
+                                     std::move(onChunk),
+                                     m_toolRunner, m_dockerRunner, m_systemTools);
+        }
+    }
+
+    // Default: no streaming tool found, return empty handle
+    a0::StreamHandle h;
+    return h;
 }
 
 json DefaultSkillRunner::execute(const Prompt& prompt, const json& params) {

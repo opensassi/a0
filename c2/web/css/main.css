@@ -295,6 +295,35 @@ prompt-banner .prompt-banner {
     border-radius: var(--radius);
     color: var(--text);
 }
+
+.terminal-launch {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-top: 16px;
+}
+.terminal-launch h3 { margin-bottom: 12px; }
+.terminal-launch input {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+}
+#launch-terminal-btn {
+    padding: 8px 20px;
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+#launch-terminal-btn:hover { opacity: 0.85; }
+
 #add-btn {
     padding: 8px 20px;
     background: var(--accent);

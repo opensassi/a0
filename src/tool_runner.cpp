@@ -4,6 +4,7 @@
 
 using a0::CommandRunner;
 using a0::CommandResult;
+using a0::StreamHandle;
 
 static std::string formatResult(const CommandResult& res)
 {
@@ -22,19 +23,20 @@ static std::string formatResult(const CommandResult& res)
     return output;
 }
 
-json SubprocessToolRunner::run(const Tool& tool, const json& params)
+// Build the shell command and extract stdin payload from tool params
+static void buildToolCommand(const Tool& tool, const json& params,
+                             std::string& outCmd, std::string& outStdin)
 {
-    TRACE_LOG("run(" << tool.name << ")");
-
     if (tool.inputMode == "args") {
-        std::string cmd = tool.command;
+        outCmd = tool.command;
+        outStdin = "";
         if (params.is_object()) {
             for (auto& [key, value] : params.items()) {
                 if (key == "_") {
                     if (value.is_string()) {
-                        cmd += " " + CommandRunner::shellEscape(value.get<std::string>());
+                        outCmd += " " + CommandRunner::shellEscape(value.get<std::string>());
                     } else {
-                        cmd += " " + CommandRunner::shellEscape(value.dump());
+                        outCmd += " " + CommandRunner::shellEscape(value.dump());
                     }
                 } else {
                     std::string val;
@@ -47,25 +49,58 @@ json SubprocessToolRunner::run(const Tool& tool, const json& params)
                     } else {
                         val = value.dump();
                     }
-                    cmd += " --" + key + "=" + CommandRunner::shellEscape(val);
+                    outCmd += " --" + key + "=" + CommandRunner::shellEscape(val);
                 }
             }
         } else if (params.is_string()) {
-            cmd += " " + CommandRunner::shellEscape(params.get<std::string>());
+            outCmd += " " + CommandRunner::shellEscape(params.get<std::string>());
         }
-        auto result = CommandRunner::run(cmd, "", tool.timeoutSecs);
-        return formatResult(result);
+        return;
     }
 
-    std::string input;
+    // stdin mode
+    outCmd = tool.command;
     if (params.is_object() && params.contains("input") && params["input"].is_string()) {
-        input = params["input"].get<std::string>();
+        outStdin = params["input"].get<std::string>();
     } else if (params.is_string()) {
-        input = params.get<std::string>();
+        outStdin = params.get<std::string>();
     } else {
-        input = params.dump();
+        outStdin = params.dump();
     }
+}
 
-    auto result = CommandRunner::run(tool.command, input, tool.timeoutSecs);
+// Base class default streaming implementation
+// Subclasses (like DockerToolRunnerImpl) may override with container-specific logic
+a0::StreamHandle ToolRunner::runStreaming(const Tool& tool,
+                                           const json& params,
+                                           a0::StreamCallback onChunk)
+{
+    std::string cmd, input;
+    buildToolCommand(tool, params, cmd, input);
+
+    // Wrap shell command to also accept stdin via redirect
+    auto handle = CommandRunner::runStreaming(cmd, onChunk, tool.timeoutSecs);
+    // Send the initial input
+    if (!input.empty()) {
+        handle.sendInput(input);
+    }
+    return handle;
+}
+
+json SubprocessToolRunner::run(const Tool& tool, const json& params)
+{
+    TRACE_LOG("run(" << tool.name << ")");
+
+    std::string cmd, input;
+    buildToolCommand(tool, params, cmd, input);
+    auto result = CommandRunner::run(cmd, input, tool.timeoutSecs);
     return formatResult(result);
+}
+
+StreamHandle SubprocessToolRunner::runStreaming(const Tool& tool,
+                                                 const json& params,
+                                                 a0::StreamCallback onChunk)
+{
+    // Reuse base class default implementation
+    return ToolRunner::runStreaming(tool, params, std::move(onChunk));
 }

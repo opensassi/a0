@@ -16,6 +16,9 @@ class SseProvider extends HTMLElement {
         Store.on('agent_update', d => this._dispatch('agent_update', d));
         Store.on('user_prompt', d => this._dispatch('user_prompt', d));
         Store.on('prompt_resolved', d => this._dispatch('prompt_resolved', d));
+        Store.on('stream_chunk', d => this._dispatch('stream_chunk', d));
+        Store.on('stream_end', d => this._dispatch('stream_end', d));
+        Store.on('terminal_ready', d => this._dispatch('terminal_ready', d));
     }
 
     _dispatch(type, data) {

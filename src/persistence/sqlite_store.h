@@ -24,6 +24,22 @@ public:
     int64_t findSessionByUuid(const std::string& uuid) const override;
     void flush() override;
 
+    int64_t createStream(int64_t sessionId,
+                          const std::string& toolCallId,
+                          const std::string& name,
+                          const std::string& contextType,
+                          const std::string& contextId,
+                          const std::string& cwd,
+                          const std::string& terminalId = "") override;
+    int appendChunk(int64_t streamId, int seq,
+                    const std::string& direction,
+                    const std::string& data) override;
+    int endStream(int64_t streamId, int exitCode) override;
+    std::vector<StreamChunk> loadStreamChunks(int64_t streamId,
+                                               int offset = 0,
+                                               int limit = -1) override;
+    std::vector<Stream> listSessionStreams(int64_t sessionId) override;
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;

@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <algorithm>
 #include <iostream>
+#include <chrono>
 
 namespace a0::c2 {
 
@@ -125,6 +126,19 @@ int C2Listener::xHandleMessage(const nlohmann::json& msg, int peerFd) {
         return xHandleUpdate(msg);
     } else if (type == "user_prompt") {
         return xHandleUserPrompt(msg);
+    } else if (type == "stream_data") {
+        return xHandleStreamData(msg);
+    } else if (type == "stream_end") {
+        return xHandleStreamEnd(msg);
+    } else if (type == "terminal_ready") {
+        if (m_sse) {
+            nlohmann::json ev;
+            ev["terminalId"] = msg.value("terminalId", "");
+            ev["streamId"] = msg.value("streamId", 0);
+            ev["pid"] = msg.value("pid", 0);
+            m_sse->broadcast("terminal_ready", ev.dump());
+        }
+        return 0;
     }
 
     return -1;
@@ -178,6 +192,29 @@ int C2Listener::xHandleUserPrompt(const nlohmann::json& msg) {
                 std::chrono::system_clock::now().time_since_epoch()).count());
         m_sse->broadcast("user_prompt", ev.dump());
     }
+    return 0;
+}
+
+int C2Listener::xHandleStreamData(const nlohmann::json& msg) {
+    if (!m_sse) return -1;
+    nlohmann::json ev;
+    ev["streamId"] = msg.value("streamId", 0);
+    ev["seq"] = msg.value("chunkSeq", 0);
+    ev["direction"] = msg.value("chunkDirection", "stdout");
+    ev["data"] = msg.value("chunkData", "");
+    ev["timestamp"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    m_sse->broadcast("stream_chunk", ev.dump());
+    return 0;
+}
+
+int C2Listener::xHandleStreamEnd(const nlohmann::json& msg) {
+    if (!m_sse) return -1;
+    nlohmann::json ev;
+    ev["streamId"] = msg.value("streamId", 0);
+    ev["exitCode"] = msg.value("pid", 0);
+    m_sse->broadcast("stream_end", ev.dump());
     return 0;
 }
 

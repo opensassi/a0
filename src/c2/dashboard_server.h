@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <libusockets.h>
 
 namespace a0::c2 {
@@ -34,6 +35,9 @@ private:
     bool m_running = false;
     bool m_shutdownRequested = false;
     struct us_listen_socket_t* m_listenToken = nullptr;
+
+    // Track terminals launched directly (no b1) for status polling
+    std::unordered_map<std::string, std::string> m_directTerminals;
 
     template<typename App>
     void xSetupRoutes(App* app);

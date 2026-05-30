@@ -40,6 +40,8 @@ private:
     int xHandleRegister(const nlohmann::json& msg, int peerFd);
     int xHandleUpdate(const nlohmann::json& msg);
     int xHandleUserPrompt(const nlohmann::json& msg);
+    int xHandleStreamData(const nlohmann::json& msg);
+    int xHandleStreamEnd(const nlohmann::json& msg);
     void xCleanupStaleSocket();
 };
 

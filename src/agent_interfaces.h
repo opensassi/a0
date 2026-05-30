@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "command_runner.h"
+
 using json = nlohmann::json;
 
 enum class TrustLevel {
@@ -65,6 +67,13 @@ class ToolRunner {
 public:
     virtual ~ToolRunner() = default;
     virtual json run(const Tool& tool, const json& params) = 0;
+
+    /// Streaming variant: returns immediately with a StreamHandle.
+    /// onChunk is called from a background thread with (data, direction).
+    /// Default implementation delegates to CommandRunner::runStreaming.
+    virtual a0::StreamHandle runStreaming(const Tool& tool,
+                                           const json& params,
+                                           a0::StreamCallback onChunk);
 };
 
 struct ToolCall {
@@ -166,6 +175,13 @@ public:
     virtual json execute(const Prompt& prompt, const json& params) = 0;
     virtual void setGlobalVar(const std::string& key, const std::string& value) = 0;
     virtual void setGlobalVars(const std::unordered_map<std::string, std::string>& vars) = 0;
+
+    /// Streaming variant: executes the skill with streaming tool invocations.
+    /// onChunk is called for each chunk of streaming tool output.
+    /// Returns a StreamHandle that can be polled/interacted with.
+    virtual a0::StreamHandle executeStreaming(const Prompt& prompt,
+                                               const json& params,
+                                               a0::StreamCallback onChunk) = 0;
 };
 
 class SchemaInferenceEngine {
@@ -183,6 +199,11 @@ public:
     virtual bool resumeSession(const std::string& sessionId) = 0;
     virtual std::string currentSessionId() const = 0;
     virtual void run() = 0;
+
+    /// Streaming goal processing: processes a goal with streaming tool invocations.
+    /// onChunk receives streaming output from tool invocations.
+    virtual a0::StreamHandle processGoalStreaming(const std::string& goal,
+                                                   a0::StreamCallback onChunk) = 0;
 };
 
 // === Docker Integration Interfaces ===

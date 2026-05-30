@@ -18,6 +18,7 @@ import './components/message-bubble.js';
 import './components/prompt-banner.js';
 import './components/settings-page.js';
 import './components/sse-provider.js';
+import './components/terminal-view.js';
 
 let appShell = null;
 let currentPage = null;
@@ -28,16 +29,19 @@ const routes = [
     { pattern: '/hosts', Component: 'hosts-page' },
     { pattern: '/projects', Component: 'projects-page' },
     { pattern: '/settings', Component: 'settings-page' },
+    { pattern: '/terminal', Component: 'terminal-view' },
     { pattern: '/agent/:uuid', Component: 'agent-page', paramKey: 'uuid' },
 ];
 
 function matchRoute(path) {
+    // Strip hash fragment for pattern matching
+    const clean = path.split('#')[0];
     for (const route of routes) {
-        if (route.pattern === path) return { route, params: {} };
+        if (route.pattern === clean) return { route, params: {} };
         if (route.paramKey) {
             const prefix = route.pattern.replace(`:${route.paramKey}`, '');
-            if (path.startsWith(prefix)) {
-                const uuid = path.substring(prefix.length);
+            if (clean.startsWith(prefix)) {
+                const uuid = clean.substring(prefix.length);
                 if (uuid) return { route, params: { [route.paramKey]: uuid } };
             }
         }
@@ -89,6 +93,9 @@ function bootstrap() {
     appShell = document.createElement('app-shell');
     document.body.appendChild(appShell);
     document.body.appendChild(document.createElement('sse-provider'));
+
+    // Establish SSE before rendering so terminal_ready events aren't missed
+    connectHost('local', '/api/events');
 
     initRouter();
 }

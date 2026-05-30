@@ -13,6 +13,9 @@ public:
                          bool poolEnabled = true);
 
     json run(const Tool& tool, const json& params) override;
+    a0::StreamHandle runStreaming(const Tool& tool,
+                                   const json& params,
+                                   a0::StreamCallback onChunk) override;
 
 private:
     std::string buildCommand(const Tool& tool,

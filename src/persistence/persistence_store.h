@@ -25,6 +25,29 @@ struct Message {
     int64_t createdAt;
 };
 
+struct Stream {
+    int64_t id;
+    int64_t sessionId;
+    std::string toolCallId;
+    std::string terminalId;
+    std::string name;
+    std::string contextType;
+    std::string contextId;
+    std::string cwd;
+    int64_t createdAt;
+    int64_t endedAt;
+    int exitCode;
+};
+
+struct StreamChunk {
+    int64_t id;
+    int64_t streamId;
+    int seq;
+    std::string direction;
+    std::string data;
+    int64_t timestamp;
+};
+
 class PersistenceStore {
 public:
     virtual ~PersistenceStore() = default;
@@ -59,6 +82,33 @@ public:
 
     /// Flush pending writes to disk.
     virtual void flush() = 0;
+
+    // --- Streaming ---
+
+    /// Create a new stream. Returns stream.id.
+    virtual int64_t createStream(int64_t sessionId,
+                                  const std::string& toolCallId,
+                                  const std::string& name,
+                                  const std::string& contextType,
+                                  const std::string& contextId,
+                                  const std::string& cwd,
+                                  const std::string& terminalId = "") = 0;
+
+    /// Append a chunk to a stream.
+    virtual int appendChunk(int64_t streamId, int seq,
+                             const std::string& direction,
+                             const std::string& data) = 0;
+
+    /// Mark a stream as ended with an exit code.
+    virtual int endStream(int64_t streamId, int exitCode) = 0;
+
+    /// Load all chunks for a stream, ordered by seq.
+    virtual std::vector<StreamChunk> loadStreamChunks(int64_t streamId,
+                                                       int offset = 0,
+                                                       int limit = -1) = 0;
+
+    /// List all streams for a session.
+    virtual std::vector<Stream> listSessionStreams(int64_t sessionId) = 0;
 };
 
 /// No-op implementation for testing.
@@ -80,6 +130,20 @@ public:
     std::vector<Message> loadMessages(int64_t) override { return {}; }
     int64_t findSessionByUuid(const std::string&) const override { return 0; }
     void flush() override {}
+
+    int64_t createStream(int64_t, const std::string&, const std::string&,
+                          const std::string&, const std::string&,
+                          const std::string&, const std::string& = "") override {
+        static int64_t nextStream = 200;
+        return nextStream++;
+    }
+    int appendChunk(int64_t, int, const std::string&,
+                     const std::string&) override { return 0; }
+    int endStream(int64_t, int) override { return 0; }
+    std::vector<StreamChunk> loadStreamChunks(int64_t, int, int) override {
+        return {};
+    }
+    std::vector<Stream> listSessionStreams(int64_t) override { return {}; }
 
 private:
     int64_t m_nextRoot = 0;

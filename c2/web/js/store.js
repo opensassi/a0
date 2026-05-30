@@ -1,6 +1,6 @@
 const Store = {
     _state: {
-        hosts: [{ id: 'local', name: 'localhost', url: '', connected: false, b1s: [], agents: [] }],
+        hosts: [{ id: 'local', name: 'localhost', url: '', connected: false, b1s: [] }],
         stats: { totalB1s: 0, totalAgents: 0, crashedCount: 0 },
         pendingPrompts: [],
         events: [],

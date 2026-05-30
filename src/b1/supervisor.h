@@ -54,14 +54,22 @@ private:
     int xHandleHeartbeat(const ipc::Message& msg, int peerPid);
     int xHandleUserPrompt(const ipc::Message& msg, int peerFd);
     int xHandlePromptReply(const ipc::Message& msg);
+    int xHandleStreamData(const ipc::Message& msg, int peerFd);
+    int xHandleStreamEnd(const ipc::Message& msg, int peerFd);
+    int xHandleStreamInput(const ipc::Message& msg);
+    int xHandleTerminalOpen(const ipc::Message& msg, int peerFd);
     int xDetectCrashes();
     int xPushSnapshotToC2();
     int xLaunchC2IfNeeded();
     int xSendToC2(const ipc::Message& msg);
     int xSendToAgent(int agentFd, const ipc::Message& msg);
     int xFindAgentFdBySession(const std::string& sessionUuid) const;
+    int xFindAgentFdByStream(int64_t streamId) const;
     void xCleanupStaleSocket();
     int xWritePidFile();
+
+    // streamId → agent fd mapping for routing STREAM_INPUT
+    std::unordered_map<int64_t, int> m_streamOwners;
 };
 
 } // namespace a0::b1

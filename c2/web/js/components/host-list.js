@@ -29,7 +29,7 @@ class HostList extends HTMLElement {
             div.innerHTML = `
                 <span class="host-indicator ${h.connected ? 'green' : 'red'}"></span>
                 <span class="host-name">${h.name}</span>
-                <span class="host-count">${h.b1s.length} b1 &middot; ${h.agents.reduce((a, b) => a + b, 0)} a0</span>
+                <span class="host-count">${h.b1s.length} b1 &middot; ${h.b1s.reduce((total, b) => total + (b.agents || []).length, 0)} a0</span>
             `;
             container.appendChild(div);
         });

@@ -19,6 +19,10 @@ public:
     json runValidators(const Prompt& prompt, const json& input) override;
     json execute(const Prompt& prompt, const json& params) override;
 
+    a0::StreamHandle executeStreaming(const Prompt& prompt,
+                                       const json& params,
+                                       a0::StreamCallback onChunk) override;
+
     void setSkillsDir(const std::string& path);
     void setGlobalVar(const std::string& key, const std::string& value);
     void setGlobalVars(const std::unordered_map<std::string, std::string>& vars);

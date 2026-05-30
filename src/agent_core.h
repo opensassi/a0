@@ -27,6 +27,8 @@ public:
     bool resumeSession(const std::string& sessionId) override;
     std::string currentSessionId() const override;
     void run() override;
+    a0::StreamHandle processGoalStreaming(const std::string& goal,
+                                           a0::StreamCallback onChunk) override;
 
 private:
     void xLogAndPush(const std::string& goal, const json& result);

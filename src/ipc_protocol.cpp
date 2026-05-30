@@ -17,6 +17,14 @@ std::string serialize(const Message& msg) {
     if (!msg.reason.empty()) j["reason"] = msg.reason;
     if (!msg.toolCallId.empty()) j["toolCallId"] = msg.toolCallId;
     if (!msg.prompt.empty()) j["prompt"] = msg.prompt;
+    if (msg.streamId != 0) j["streamId"] = msg.streamId;
+    if (msg.chunkSeq != 0) j["chunkSeq"] = msg.chunkSeq;
+    if (!msg.chunkDirection.empty()) j["chunkDirection"] = msg.chunkDirection;
+    if (!msg.chunkData.empty()) j["chunkData"] = msg.chunkData;
+    if (!msg.terminalId.empty()) j["terminalId"] = msg.terminalId;
+    if (!msg.contextType.empty()) j["contextType"] = msg.contextType;
+    if (!msg.contextId.empty()) j["contextId"] = msg.contextId;
+    if (!msg.cwd.empty()) j["cwd"] = msg.cwd;
     return j.dump() + "\n";
 }
 
@@ -64,6 +72,30 @@ int deserialize(const std::string& jsonLine, Message& msg) {
     }
     if (j.contains("prompt") && j["prompt"].is_string()) {
         msg.prompt = j["prompt"].get<std::string>();
+    }
+    if (j.contains("streamId") && j["streamId"].is_number_integer()) {
+        msg.streamId = j["streamId"].get<int64_t>();
+    }
+    if (j.contains("chunkSeq") && j["chunkSeq"].is_number_integer()) {
+        msg.chunkSeq = j["chunkSeq"].get<int>();
+    }
+    if (j.contains("chunkDirection") && j["chunkDirection"].is_string()) {
+        msg.chunkDirection = j["chunkDirection"].get<std::string>();
+    }
+    if (j.contains("chunkData") && j["chunkData"].is_string()) {
+        msg.chunkData = j["chunkData"].get<std::string>();
+    }
+    if (j.contains("terminalId") && j["terminalId"].is_string()) {
+        msg.terminalId = j["terminalId"].get<std::string>();
+    }
+    if (j.contains("contextType") && j["contextType"].is_string()) {
+        msg.contextType = j["contextType"].get<std::string>();
+    }
+    if (j.contains("contextId") && j["contextId"].is_string()) {
+        msg.contextId = j["contextId"].get<std::string>();
+    }
+    if (j.contains("cwd") && j["cwd"].is_string()) {
+        msg.cwd = j["cwd"].get<std::string>();
     }
 
     return 0;

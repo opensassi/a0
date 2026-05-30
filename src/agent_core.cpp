@@ -431,3 +431,57 @@ void DefaultAgentCore::run() {
         std::cout << result.dump() << std::endl;
     }
 }
+
+a0::StreamHandle DefaultAgentCore::processGoalStreaming(
+    const std::string& goal, a0::StreamCallback onChunk)
+{
+    TRACE_LOG("processGoalStreaming(" << goal << ")");
+
+    // Log the user input
+    if (m_logger) {
+        m_logger->log({m_sessionId, 0, "user_input", goal});
+    }
+
+    // Persist user message
+    if (m_persistence && m_sessionDbId > 0) {
+        m_persistence->appendMessage(m_sessionDbId, "user", goal, "", "", "", "");
+    }
+
+    // Check for exact prompt match first
+    if (m_skillMgr) {
+        Prompt sp;
+        std::string qualified;
+        if (goal.find(':') != std::string::npos) {
+            qualified = goal;
+        } else {
+            for (const auto& name : m_skillMgr->listSkills(std::nullopt)) {
+                if (name.find(goal) != std::string::npos ||
+                    goal.find(name) != std::string::npos) {
+                    qualified = name;
+                    break;
+                }
+            }
+        }
+
+        if (!qualified.empty() && m_skillMgr->getPrompt(qualified, sp) == 0) {
+            json params;
+            params["goal"] = goal;
+            params["streaming"] = true;
+            params["_tool"] = goal;
+
+            return m_skillRunner->executeStreaming(sp, params, std::move(onChunk));
+        }
+    }
+
+    // Fall back: create a synthetic prompt for streaming mode
+    Prompt inferredPrompt;
+    inferredPrompt.name = "_streaming";
+    inferredPrompt.prompt = goal;
+
+    json params;
+    params["goal"] = goal;
+    params["streaming"] = true;
+    params["_tool"] = goal;
+
+    return m_skillRunner->executeStreaming(inferredPrompt, params, std::move(onChunk));
+}

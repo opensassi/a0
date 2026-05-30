@@ -21,6 +21,7 @@ set(LIB_SOURCES
     src/invocation_logger.cpp
     src/schema_inference_engine.cpp
     src/dependency_resolver.cpp
+    src/stream_registry.cpp
     src/skills/skill_manager.cpp
     src/skills/skill_loader.cpp
     src/skills/version_manager.cpp
