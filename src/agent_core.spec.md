@@ -183,4 +183,4 @@ sequenceDiagram
 | `resumeSession` | Non-existent session | `"nosession"` | Returns `false` |
 | `run` | REPL one line | Stdin `"test\n"` | processGoal called, result printed |
 | `run` | EOF | Ctrl+D | Exits cleanly |
-| `currentSessionId` | After init | – | Returns `"session_<epoch_ms>"` format |
+| `currentSessionId` | After init | – | Returns `"<32-char hex>"` format |

@@ -83,7 +83,7 @@ CREATE INDEX idx_invocation_message ON invocation(message_id);
 |------|-------------|
 | registerAgent new | Returns unique agent id |
 | registerAgent duplicate | Returns existing agent id |
-| createSession | Returns session id, uuid set |
+| createSession | Returns session id, provided uuid stored |
 | appendMessage then loadMessages | Returns matching message list, sub_session_id and seq preserved |
 | flush | WAL checkpoint runs without error |
 | createStream + appendChunk + loadStreamChunks | Round-trip: chunks stored and retrieved in order |

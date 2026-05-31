@@ -400,10 +400,11 @@ sequenceDiagram
     Note over A0: LLM returns tool_call\nname="user_prompt"\nargs={prompt:"..."}
 
     A0->>A0: persist assistant+tool_call to SQLite
-    A0->>B1: IPC {"type":"user_prompt","session":"ses_x","toolCallId":"c1","promtip":"..."}
-    B1->>L: IPC {"type":"user_prompt","session":"ses_x","toolCallId":"c1","prompt":"..."}
-    L->>EV: upsertPrompt("ses_x", "c1", "...")
-    L->>SSE: broadcast("user_prompt", {session:"ses_x",toolCallId:"c1",prompt:"..."})
+    A0->>B1: IPC {"type":"user_prompt","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1","promtip":"..."}
+
+    B1->>L: IPC {"type":"user_prompt","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1","prompt":"..."}
+    L->>EV: upsertPrompt("d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5", "c1", "...")
+    L->>SSE: broadcast("user_prompt", {session:"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5",toolCallId:"c1",prompt:"..."})
 
     SSE->>Browser: user_prompt event
 
@@ -411,14 +412,14 @@ sequenceDiagram
 
     Note over Browser: User types response
 
-    Browser->>D: POST /api/agent/ses_x/messages\n{role:"tool",tool_call_id:"c1",content:"..."}
-    D->>EV: resolvePrompt("ses_x", "c1")
+    Browser->>D: POST /api/agent/d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5/messages\n{role:"tool",tool_call_id:"c1",content:"..."}
+    D->>EV: resolvePrompt("d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5", "c1")
     EV-->>D: 0
     D->>L: sendToB1(b1Pid, PROMPT_REPLY)
-    D->>SSE: broadcast("prompt_resolved", {session:"ses_x"})
+    D->>SSE: broadcast("prompt_resolved", {session:"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5"})
 
-    L->>B1: IPC {"type":"prompt_reply","session":"ses_x","toolCallId":"c1"}
-    B1->>A0: IPC {"type":"prompt_reply","session":"ses_x"}
+    L->>B1: IPC {"type":"prompt_reply","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1"}
+    B1->>A0: IPC {"type":"prompt_reply","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5"}
 
     Note over A0: Reads tool response from persistence, resumes
 
@@ -608,12 +609,12 @@ struct Message {
 
 **user_prompt** (a0→b1→c2):
 ```json
-{"type":"user_prompt","session":"ses_xxx","toolCallId":"call_abc","prompt":"Enter file path:"}
+{"type":"user_prompt","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"call_abc","prompt":"Enter file path:"}
 ```
 
 **prompt_reply** (c2→b1→a0):
 ```json
-{"type":"prompt_reply","session":"ses_xxx","toolCallId":"call_abc"}
+{"type":"prompt_reply","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"call_abc"}
 ```
 
 The prompt_reply IPC is a lightweight signal — the actual response content is read by a0 from the persistence layer (SQLite).
@@ -770,7 +771,7 @@ Both access `B1Registry` under a mutex (low contention). `SseManager` has its ow
 │  Hosts              │ Event Log               │
 │  ● localhost (2b)   │ [13:45] b1 connected /p1│
 │  ● devbox (3b)      │ [13:46] a0 crashed pid5 │
-│                     │ [13:47] user_prompt ses_│
+│                     │ [13:47] user_prompt d4a7│
 │                     │ ...                     │
 ├────────────────────┴─────────────────────────┤
 │  Prompt: "What files to process?" [________] │

@@ -11,7 +11,7 @@ public:
     ~SqliteStore() override;
 
     int registerAgent(const BuildFingerprint& fp) override;
-    int64_t createSession(int64_t rootId, int64_t parentId, int agentId) override;
+    int64_t createSession(const std::string& uuid, int64_t rootId, int64_t parentId, int agentId) override;
     void endSession(int64_t sessionId) override;
     int64_t appendMessage(int64_t sessionId,
                            std::optional<int64_t> subSessionId,

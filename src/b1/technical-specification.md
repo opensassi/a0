@@ -289,13 +289,13 @@ sequenceDiagram
 
     Note over A0: LLM returns tool_call name="user_prompt"
 
-    A0->>B1: {"type":"user_prompt","session":"ses_x","toolCallId":"c1","prompt":"?"}
+    A0->>B1: {"type":"user_prompt","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1","prompt":"?"}
     B1->>B1: xHandleUserPrompt
     B1->>C2: forward to c2
 
     Note over A0: WAITING state (poll for prompt_reply)
 
-    C2->>B1: {"type":"prompt_reply","session":"ses_x","toolCallId":"c1"}
+    C2->>B1: {"type":"prompt_reply","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1"}
     B1->>B1: xHandlePromptReply → xFindAgentFdBySession
     B1->>A0: forward prompt_reply
 

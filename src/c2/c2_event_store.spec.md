@@ -67,8 +67,8 @@ sequenceDiagram
     participant L as C2Listener
     participant ES as EventStore
 
-    B1->>L: IPC {"type":"user_prompt","session":"ses_x","toolCallId":"c1","prompt":"..."}
-    L->>ES: upsertPrompt("ses_x", "c1", "...", "")
+    B1->>L: IPC {"type":"user_prompt","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1","prompt":"..."}
+    L->>ES: upsertPrompt("d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5", "c1", "...", "")
     ES->>ES: INSERT OR REPLACE INTO pending_prompts
     ES-->>L: 0
 ```

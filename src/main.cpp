@@ -17,6 +17,7 @@
 #include "unix_socket.h"
 #include "ipc_protocol.h"
 #include "stream_registry.h"
+#include "hex_session_id.h"
 #include <cstdlib>
 #include <cstdio>
 #include <fstream>
@@ -516,7 +517,8 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId) 
     a0::persistence::BuildFingerprint fp;
     fp.binarySha1 = "terminal";
     int agentId = persistence.registerAgent(fp);
-    int64_t sessionId = persistence.createSession(0, 0, agentId);
+    std::string sessionUuid = generateHexSessionId();
+    int64_t sessionId = persistence.createSession(sessionUuid, 0, 0, agentId);
 
     int master = posix_openpt(O_RDWR | O_NOCTTY);
     if (master < 0) {

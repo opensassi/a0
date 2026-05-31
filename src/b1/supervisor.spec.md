@@ -110,11 +110,11 @@ sequenceDiagram
     A0->>Sup: {"type":"register","pid":1234,"session":"uuid"}
     Sup->>Sup: xHandleRegister → track AgentRecord
 
-    A0->>Sup: {"type":"user_prompt","session":"ses_x","toolCallId":"c1","prompt":"?"}
+    A0->>Sup: {"type":"user_prompt","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1","prompt":"?"}
     Sup->>Sup: xHandleUserPrompt
     Sup->>C2: forward user_prompt
 
-    C2->>Sup: {"type":"prompt_reply","session":"ses_x","toolCallId":"c1"}
+    C2->>Sup: {"type":"prompt_reply","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1"}
     Sup->>Sup: xHandlePromptReply → find agent by session
     Sup->>A0: forward prompt_reply
 

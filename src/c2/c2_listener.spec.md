@@ -106,8 +106,8 @@ sequenceDiagram
     B1->>L: {"type":"update","pid":5678,"agents":[...]}
     L->>R: updateAgents(5678, [...])
 
-    B1->>L: {"type":"user_prompt","session":"ses_x","toolCallId":"c1","prompt":"..."}
-    L->>EV: upsertPrompt("ses_x", "c1", "...", "")
+    B1->>L: {"type":"user_prompt","session":"d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5","toolCallId":"c1","prompt":"..."}
+    L->>EV: upsertPrompt("d4a7f2c1b3e809f7a2c4d6e8f0a1b3c5", "c1", "...", "")
     L->>SSE: broadcast("user_prompt", {session, toolCallId, prompt})
 
     B1->>L: {"type":"stream_data","streamId":42,"chunkSeq":1,"chunkDirection":"stdout","chunkData":"..."}

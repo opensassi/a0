@@ -67,7 +67,8 @@ public:
 
     virtual int registerAgent(const BuildFingerprint& fp) = 0;
 
-    virtual int64_t createSession(int64_t rootId,
+    virtual int64_t createSession(const std::string& uuid,
+                                   int64_t rootId,
                                    int64_t parentId,
                                    int agentId) = 0;
 
@@ -129,7 +130,7 @@ public:
 class NullStore : public PersistenceStore {
 public:
     int registerAgent(const BuildFingerprint&) override { return 1; }
-    int64_t createSession(int64_t rootId, int64_t, int) override {
+    int64_t createSession(const std::string&, int64_t rootId, int64_t, int) override {
         static int64_t nextId = 100;
         if (m_nextRoot) { nextId = m_nextRoot; m_nextRoot = 0; }
         return nextId++;

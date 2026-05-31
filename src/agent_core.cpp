@@ -3,6 +3,7 @@
 #include "skills/skills.h"
 #include "persistence/persistence_store.h"
 #include "persistence/build_identity.h"
+#include "hex_session_id.h"
 #include "trace.h"
 #include <unistd.h>
 #include <chrono>
@@ -88,12 +89,7 @@ bool DefaultAgentCore::init(const std::string& skillsDir) {
         std::cerr << "Warning: SkillManager::loadAll() returned non-zero" << std::endl;
     }
 
-    auto now = std::chrono::system_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()).count();
-    std::ostringstream ss;
-    ss << "session_" << ms;
-    m_sessionId = ss.str();
+    m_sessionId = generateHexSessionId();
 
     // Build base prompt once at init
     m_basePrompt = a0::buildBasePrompt(m_skillMgr);
@@ -348,7 +344,7 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
     m_context->push({"user", goal});
 
     if (m_persistence && m_agentDbId > 0) {
-        m_sessionDbId = m_persistence->createSession(0, 0, m_agentDbId);
+        m_sessionDbId = m_persistence->createSession(m_sessionId, 0, 0, m_agentDbId);
         m_persistence->appendMessage(m_sessionDbId, std::nullopt, 0,
             "user", goal, "", "", "", "");
     }

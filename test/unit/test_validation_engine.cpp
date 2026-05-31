@@ -1,6 +1,7 @@
 #include "skills/validation_engine.h"
 #include "skills/skills.h"
 #include "persistence/sqlite_store.h"
+#include "hex_session_id.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>
@@ -41,7 +42,8 @@ protected:
         BuildFingerprint fp;
         fp.binarySha1 = "test";
         int agentId = m_store->registerAgent(fp);
-        int64_t sessionId = m_store->createSession(0, 0, agentId);
+        std::string sessionUuid = generateHexSessionId();
+        int64_t sessionId = m_store->createSession(sessionUuid, 0, 0, agentId);
         int64_t msgId = m_store->appendMessage(sessionId, std::nullopt, 0,
             "tool", "dummy", "", "", toolName, output.dump());
         m_store->appendInvocation(msgId, skillId, toolName,

@@ -193,19 +193,15 @@ int SqliteStore::registerAgent(const BuildFingerprint& fp)
     return id;
 }
 
-int64_t SqliteStore::createSession(int64_t rootId, int64_t parentId, int agentId)
+int64_t SqliteStore::createSession(const std::string& uuid, int64_t rootId, int64_t parentId, int agentId)
 {
     sqlite3_stmt* stmt;
-    // Generate UUID
-    std::ostringstream uuid;
-    uuid << "ses_" << std::time(nullptr) << "_" << rootId;
-
     const char* sql = "INSERT INTO session (uuid, agent_id, root_session_id, parent_session_id, started_at)"
           " VALUES (?, ?, ?, ?, ?)";
     if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         throw std::runtime_error(sqlite3_errmsg(m_impl->db));
     }
-    sqlite3_bind_text(stmt, 1, uuid.str().c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 1, uuid.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 2, agentId);
     if (rootId > 0)
         sqlite3_bind_int64(stmt, 3, rootId);
