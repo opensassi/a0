@@ -183,12 +183,15 @@ std::string DefaultAgentCore::xRunForkedLoop(
     int64_t subSessionId = m_nextSubSession++;
     int subSeq = 0;
 
-    // Auto-analyze: inject tools_for_prompt result as the second message.
+    // Auto-analyze: inject tools_for_prompt result and accumulate validated tools.
+    m_accumulatedTools.clear();
     if (m_systemTools) {
         auto analysis = m_systemTools->execute(
             "tools_for_prompt", {{"prompt", userInput}});
         if (!analysis.output.empty()) {
             messages.push_back({"assistant", analysis.output});
+            for (const auto& t : analysis.recommendedTools)
+                m_accumulatedTools.insert(t);
         }
     }
 
@@ -197,28 +200,30 @@ std::string DefaultAgentCore::xRunForkedLoop(
     for (int turn = 0; turn < maxTurns; ++turn) {
         std::vector<ToolSchema> combinedSchemas = tools;
 
-        // Add dispatch table entries (skill tools/prompts not already in schemas)
-        for (const auto& [shortName, qualifiedName] : m_dispatch) {
-            if (m_systemTools && m_systemTools->isSystemTool(shortName)) continue;
+        // Add accumulated (validated via tools_for_prompt) tools not already in schemas
+        for (const auto& shortName : m_accumulatedTools) {
             bool alreadyIn = false;
             for (const auto& ts : combinedSchemas) {
                 if (ts.name == shortName) { alreadyIn = true; break; }
             }
             if (alreadyIn) continue;
 
-            ToolSchema ts;
-            ts.name = shortName;
-            a0::skills::SkillTool st;
-            if (m_skillMgr && m_skillMgr->getTool(qualifiedName, st) == 0) {
-                ts.description = st.description;
-            } else {
-                Prompt sp;
-                if (m_skillMgr && m_skillMgr->getPrompt(qualifiedName, sp) == 0) {
-                    ts.description = sp.description;
+            auto dit = m_dispatch.find(shortName);
+            if (dit != m_dispatch.end()) {
+                ToolSchema ts;
+                ts.name = shortName;
+                a0::skills::SkillTool st;
+                if (m_skillMgr && m_skillMgr->getTool(dit->second, st) == 0) {
+                    ts.description = st.description;
+                } else {
+                    Prompt sp;
+                    if (m_skillMgr && m_skillMgr->getPrompt(dit->second, sp) == 0) {
+                        ts.description = sp.description;
+                    }
                 }
-            }
                 ts.inputSchema = {{"type", "object"}, {"properties", json::object()}, {"required", json::array()}};
                 combinedSchemas.push_back(ts);
+            }
         }
 
         auto response = m_provider->complete(m_basePrompt, messages, combinedSchemas);

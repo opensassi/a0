@@ -4,6 +4,7 @@
 #include <sstream>
 #include <algorithm>
 #include <regex>
+#include <unordered_set>
 
 namespace a0 {
 
@@ -194,7 +195,7 @@ SystemToolResult SystemToolRegistry::xShowSkillTools(const json& params) {
 SystemToolResult SystemToolRegistry::xToolsForPrompt(const json& params) {
     auto promptIt = params.find("prompt");
     if (promptIt == params.end() || !promptIt->is_string()) {
-        return {"ERROR: missing required string parameter 'prompt'"};
+        return {"ERROR: missing required string parameter 'prompt'", {}};
     }
     std::string promptText = promptIt->get<std::string>();
 
@@ -209,7 +210,6 @@ SystemToolResult SystemToolRegistry::xToolsForPrompt(const json& params) {
                 if (m_skillManager->getManifest(ns, comp, manifest) == 0) {
                     std::string nsName = (ns == a0::skills::SkillNamespace::SYSTEM) ? "system" : "local";
 
-                    // Prompts (multi-step skills)
                     if (!manifest.prompts.empty()) {
                         toolInv << "Skills under /" << nsName << "/" << comp << ":\n";
                         for (const auto& p : manifest.prompts) {
@@ -220,7 +220,6 @@ SystemToolResult SystemToolRegistry::xToolsForPrompt(const json& params) {
                         }
                     }
 
-                    // Tools (individual commands)
                     if (!manifest.tools.empty()) {
                         toolInv << "Tools under /" << nsName << "/" << comp << ":\n";
                         std::vector<std::string> toolNames;
@@ -242,31 +241,145 @@ SystemToolResult SystemToolRegistry::xToolsForPrompt(const json& params) {
         }
     }
 
+    // Include actual schemas so the LLM can generate matching ones
+    auto actualSchemas = this->schemas();
+    std::ostringstream schemaBlock;
+    schemaBlock << "Available tool schemas:\n";
+    for (const auto& s : actualSchemas) {
+        schemaBlock << "  \"" << s.name << "\": " << s.inputSchema.dump(2) << "\n";
+    }
+
     std::string analysisPrompt =
         "Analyze the user's request and recommend skills/tools.\n\n"
         "User request: \"" + promptText + "\"\n\n"
-        "Determine the user's intent: requesting a specific action, asking a question, "
-        "making an observation, venting frustration, reporting a problem, etc.\n\n"
         + toolInv.str() + "\n"
-        "If the user is requesting a specific action:\n"
-        "1. Review the recommended skills and tools.\n"
-        "2. Call the recommended skill by its short name (e.g. create_local_cli_skill, start_session) "
-        "or tool by its full path name (e.g. system_fs_read, system_git_status).\n"
-        "3. Formulate a step-by-step plan.\n\n"
-        "Output format:\n"
-        "Intent: <one line>\n"
-        "Plan: <step-by-step>\n\n"
-        "If the request is not an action, state the intent and suggest available options.";
+        + schemaBlock.str() + "\n"
+        "Output JSON with this structure:\n"
+        "```json\n"
+        "{\n"
+        "  \"intent\": \"<one-line summary>\",\n"
+        "  \"plan\": \"<step-by-step execution plan>\",\n"
+        "  \"tools\": [\n"
+        "    {\n"
+        "      \"name\": \"<tool_name>\",\n"
+        "      \"schema\": {\n"
+        "        \"type\": \"object\",\n"
+        "        \"properties\": {\n"
+        "          \"<param_name>\": { \"type\": \"<string|boolean|number>\", \"description\": \"<purpose>\" }\n"
+        "        },\n"
+        "        \"required\": [\"<param_name>\", ...]\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "```\n\n"
+        "Each tool's schema must exactly match the actual parameter structure of that tool.\n"
+        "Tool names must come from the available skills/tools listed above.";
 
-    if (m_inferenceProvider) {
-        std::string result = m_inferenceProvider->complete(analysisPrompt, "");
-        return {result};
+    if (!m_inferenceProvider) {
+        return {"Intent analysis unavailable (no inference provider configured).\n\n"
+            "User request: \"" + promptText + "\"\n\n"
+            + toolInv.str() + "\n"
+            "Use show_skills('/') to browse skills.", {}};
     }
 
-    return {"Intent analysis unavailable (no inference provider configured).\n\n"
-        "User request: \"" + promptText + "\"\n\n"
-        + toolInv.str() + "\n"
-        "Use show_skills('/') to browse skills."};
+    std::string raw = m_inferenceProvider->complete(analysisPrompt, "");
+
+    // Extract JSON block from response (fenced ```json ... ``` or raw)
+    std::string jsonStr;
+    std::smatch match;
+    static const std::regex jsonFence(R"(```(?:json)?\s*\n(.+?)```)");
+    if (std::regex_search(raw, match, jsonFence)) {
+        jsonStr = match[1].str();
+    } else {
+        jsonStr = raw;
+    }
+
+    // Trim whitespace
+    auto trim = [](std::string& s) {
+        s.erase(0, s.find_first_not_of(" \t\n\r"));
+        s.erase(s.find_last_not_of(" \t\n\r") + 1);
+    };
+    trim(jsonStr);
+
+    json parsed;
+    try {
+        parsed = json::parse(jsonStr);
+    } catch (...) {
+        return {raw, {}};
+    }
+
+    std::string plan = parsed.value("plan", raw);
+    SystemToolResult sr;
+    sr.output = plan;
+
+    // Validate each recommended tool
+    if (parsed.contains("tools") && parsed["tools"].is_array()) {
+        bool allValid = true;
+        for (const auto& entry : parsed["tools"]) {
+            if (!entry.contains("name") || !entry["name"].is_string()) {
+                allValid = false;
+                break;
+            }
+            std::string toolName = entry["name"].get<std::string>();
+
+            const ToolSchema* actual = nullptr;
+            for (const auto& s : actualSchemas) {
+                if (s.name == toolName) { actual = &s; break; }
+            }
+            if (!actual) {
+                allValid = false;
+                break;
+            }
+
+            if (!entry.contains("schema") || !entry["schema"].is_object()) {
+                allValid = false;
+                break;
+            }
+            json genSchema = entry["schema"];
+            json actualSchema = actual->inputSchema;
+
+            if (genSchema.value("type", "") != actualSchema.value("type", "")) {
+                allValid = false;
+                break;
+            }
+
+            json genProps = genSchema.value("properties", json::object());
+            json actualProps = actualSchema.value("properties", json::object());
+            for (auto it = genProps.begin(); it != genProps.end(); ++it) {
+                auto actualIt = actualProps.find(it.key());
+                if (actualIt == actualProps.end()) {
+                    allValid = false;
+                    break;
+                }
+                if (it.value().value("type", "") != actualIt->value("type", "")) {
+                    allValid = false;
+                    break;
+                }
+            }
+            if (!allValid) break;
+
+            json genRequired = genSchema.value("required", json::array());
+            json actualRequired = actualSchema.value("required", json::array());
+            std::unordered_set<std::string> genReqSet;
+            for (const auto& r : genRequired) genReqSet.insert(r.get<std::string>());
+            for (const auto& r : actualRequired) {
+                if (genReqSet.find(r.get<std::string>()) == genReqSet.end()) {
+                    allValid = false;
+                    break;
+                }
+            }
+            if (!allValid) break;
+
+            sr.recommendedTools.push_back(toolName);
+        }
+
+        if (!allValid) {
+            sr.recommendedTools.clear();
+        }
+    }
+
+    return sr;
 }
 
 } // namespace a0

@@ -18,6 +18,7 @@ namespace a0 {
 
 struct SystemToolResult {
     std::string output;
+    std::vector<std::string> recommendedTools;
 };
 
 struct ParsedToolPath {

@@ -6,7 +6,7 @@ Registry of built-in system tools available to the LLM agent in every session. M
 
 **Source files:** `src/system_tools.h/.cpp`
 
-**Default schema (9 tools, always present in main loop):**
+**Anchor schema (9 tools, always present in main loop):**
 - `bash` — Executes commands (REJECTS git commands with error)
 - `read` — Read files/directories
 - `glob` — File pattern matching
@@ -15,11 +15,11 @@ Registry of built-in system tools available to the LLM agent in every session. M
 - `write` — Write files
 - `show_skills` — Browse the skill tree by path
 - `show_skill_tools` — Browse the tool tree by path
-- `tools_for_prompt` — Analyze user intent and recommend skills/tools
+- `tools_for_prompt` — Analyze user intent and recommend skills/tools (returns structured JSON + validated tool list)
 
-**Additional registered handlers (not in default schema):**
+**Additional registered handlers (not in anchor schema):**
 - 120+ `git_*` tools (git_commit, git_push, etc.) — dispatched via xGitCommand
-- Only available inside skill template expansion ({{tool:git_...}}) or after discovery
+- Only available via `{{tool:git_...}}` in skill templates, or after `tools_for_prompt` validation and dynamic accumulation
 
 ## 2. Component Specifications
 
@@ -87,8 +87,7 @@ private:
 ```mermaid
 graph TB
     subgraph "SystemToolRegistry"
-        SCHEMA[schemas → 10 tools]
-        isSys[isSystemTool → 130+ tools]
+        SCHEMA[schemas → 9 anchor tools]
         EXEC[execute → dispatch]
 
         BASH[xBash → git rejection]
@@ -100,12 +99,18 @@ graph TB
 
         SKILLS[xShowSkills → skill tree]
         TOOLS[xShowSkillTools → tool tree]
-        PROMPT[xToolsForPrompt → inference analysis]
+        PROMPT[xToolsForPrompt → structured JSON output + schema validation → recommendedTools]
 
         GIT[xGitCommand → CommandRunner]
     end
 
-    LLM[LLM Agent] -->|9-tool schema| SCHEMA
+    subgraph "Dynamic Accumulation"
+        ACCUM[AgentCore.m_accumulatedTools]
+    end
+
+    LLM[LLM Agent] -->|9-tool anchor schema| SCHEMA
+    PROMPT -->|validated tool names| ACCUM
+    ACCUM -->|added to combinedSchemas| LLM
     PROMPT -->|inference| INF[InferenceProvider]
     SKILLS -->|skill data| MGR[SkillManager]
 ```

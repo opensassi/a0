@@ -141,7 +141,7 @@ SystemToolResult SystemToolRegistry::execute(const std::string& toolPath, const 
 }
 
 // ---------------------------------------------------------------------------
-// schemas — returns 10 default tools for the LLM function calling schema
+// schemas — returns 9 default tools for the LLM function calling schema
 // ---------------------------------------------------------------------------
 
 static json xParam(const std::string& type, const std::string& desc,
@@ -168,7 +168,69 @@ std::vector<ToolSchema> SystemToolRegistry::schemas() const {
          {"required", {"command", "description"}}}
     });
 
-    // read — schema omitted, see fs manifest for full parameter definitions
+    // read
+    result.push_back({
+        "read",
+        "Read files or directories from the local filesystem",
+        {{"type", "object"},
+         {"properties", {
+             {"file_path", xParam("string", "The absolute path to the file or directory to read", true, {})},
+             {"offset", xParam("number", "The line number to start reading from (1-indexed)", false, 1)},
+             {"limit", xParam("number", "Maximum number of lines to read", false, 2000)}
+         }},
+         {"required", {"file_path"}}}
+    });
+
+    // glob
+    result.push_back({
+        "glob",
+        "Fast file pattern matching tool",
+        {{"type", "object"},
+         {"properties", {
+             {"pattern", xParam("string", "Glob pattern (e.g. **/*.js)", true, {})},
+             {"path", xParam("string", "Directory to search in", false, {})}
+         }},
+         {"required", {"pattern"}}}
+    });
+
+    // grep
+    result.push_back({
+        "grep",
+        "Fast content search using regular expressions",
+        {{"type", "object"},
+         {"properties", {
+             {"pattern", xParam("string", "The regex pattern to search for", true, {})},
+             {"path", xParam("string", "Directory to search in", false, {})},
+             {"include", xParam("string", "File pattern (e.g. *.cpp, *.{ts,tsx})", false, {})}
+         }},
+         {"required", {"pattern"}}}
+    });
+
+    // edit
+    result.push_back({
+        "edit",
+        "Performs exact string replacements in files",
+        {{"type", "object"},
+         {"properties", {
+             {"file_path", xParam("string", "The absolute path to the file to modify", true, {})},
+             {"old_string", xParam("string", "The text to replace", true, {})},
+             {"new_string", xParam("string", "The text to replace it with", true, {})},
+             {"replace_all", xParam("boolean", "Replace all occurrences (default false)", false, false)}
+         }},
+         {"required", {"file_path", "old_string", "new_string"}}}
+    });
+
+    // write
+    result.push_back({
+        "write",
+        "Writes content to a file on the local filesystem",
+        {{"type", "object"},
+         {"properties", {
+             {"file_path", xParam("string", "The absolute path to the file to write", true, {})},
+             {"content", xParam("string", "The content to write to the file", true, {})}
+         }},
+         {"required", {"file_path", "content"}}}
+    });
 
     // show_skills
     result.push_back({

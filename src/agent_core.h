@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_set>
 #include "agent_interfaces.h"
 #include "system_tools.h"
 #include "skills/skills.h"
@@ -59,4 +60,5 @@ private:
     bool m_initialized;
 
     std::unordered_map<std::string, std::string> m_dispatch;
+    std::unordered_set<std::string> m_accumulatedTools;
 };

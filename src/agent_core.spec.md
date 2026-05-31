@@ -55,6 +55,7 @@ private:
     std::string m_sessionId;
     bool m_initialized;
     int m_nextSubSession = 1;
+    std::unordered_set<std::string> m_accumulatedTools;
 
     void xPushToContext(const std::string& goal, const json& result);
     std::string sanitizeUtf8(const std::string& input);
@@ -124,10 +125,11 @@ sequenceDiagram
     else No exact match
         AC->>AC: xBuildDispatchTable()
         AC->>ST: schemas()
-        ST-->>AC: toolSchemas
+        ST-->>AC: toolSchemas (9 anchor tools)
         AC->>AC: xRunForkedLoop(goal, toolSchemas)
-        Note over AC: forked tool-calling loop with max 20 turns
+        Note over AC: Turn 0: tools_for_prompt auto-injected\n→ validated tools added to m_accumulatedTools
         loop each turn
+            Note over AC: combinedSchemas = schemas() + m_accumulatedTools
             AC->>SR: expandPrompt / tool dispatch
             SR-->>AC: tool result or LLM response
             AC->>PS: appendMessage per turn
@@ -176,6 +178,9 @@ sequenceDiagram
 | `processGoal` | Forked loop total payload exceeds limit | Each turn adds large content | Returns `"ERROR: cumulative message payload exceeds limit"` |
 | `processGoal` | LLM returns empty response | All tool calls done, no content | Returns `"ERROR: LLM returned empty response"` |
 | `xRunForkedLoop` | System tool dispatch | `m_systemTools->isSystemTool()` true | Uses system tool registry |
+| `xRunForkedLoop` | Accumulated tool dispatch | `m_accumulatedTools` contains name | Added to combinedSchemas, resolved via m_dispatch |
+| `xRunForkedLoop` | tools_for_prompt returns validated tools | `analysis.recommendedTools` non-empty | Tools inserted into m_accumulatedTools |
+| `xRunForkedLoop` | tools_for_prompt returns empty set | `analysis.recommendedTools` empty | Only 9 anchor tools available |
 | `xRunForkedLoop` | Qualified tool dispatch | `m_dispatch` contains name | Resolves via SkillManager, runs tool |
 | `xRunForkedLoop` | Prompt dispatch | `getPromptResolved` succeeds | Executes via SkillRunner |
 | `xRunForkedLoop` | Unknown dispatch target | Name not in dispatch or system tools | Returns `"ERROR: unknown tool: <name>"` |
