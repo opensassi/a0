@@ -1,5 +1,5 @@
 {
-  "name": "system-design",
+  "name": "system_design",
   "version": "1.0.0",
   "description": "Specification-driven system design with C4/sequence diagrams, class specs, D3 animations, and test plans",
   "tools": [

@@ -8,53 +8,6 @@
 namespace a0 {
 
 // ---------------------------------------------------------------------------
-// run_skill — load and return skill prompt text
-// Path: /system/git/start_session → lookup via SkillManager
-// ---------------------------------------------------------------------------
-
-SystemToolResult SystemToolRegistry::xRunSkill(const json& params) {
-    auto pathIt = params.find("path");
-    if (pathIt == params.end() || !pathIt->is_string()) {
-        return {"ERROR: missing required string parameter 'path'"};
-    }
-    std::string path = pathIt->get<std::string>();
-
-    std::string rest = path;
-    if (rest.front() == '/') rest = rest.substr(1);
-    std::vector<std::string> parts;
-    std::istringstream ss(rest);
-    std::string seg;
-    while (std::getline(ss, seg, '/')) {
-        if (!seg.empty()) parts.push_back(seg);
-    }
-
-    if (parts.size() < 3) {
-        return {"ERROR: invalid skill path: " + path + ". Expected /namespace/component/name"};
-    }
-
-    std::string ns = parts[0];
-    std::string component = parts[1];
-    std::string name = parts[2];
-    for (size_t i = 3; i < parts.size(); ++i) name += ":" + parts[i];
-
-    if (m_skillManager) {
-        std::string qualifiedName = ns + ":" + component + ":" + name;
-        Prompt resolved;
-        if (m_skillManager->getPromptResolved(qualifiedName, resolved) == 0) {
-            return {resolved.prompt};
-        }
-        for (const auto& tryNs : {"system", "local"}) {
-            std::string qn = std::string(tryNs) + ":" + component + ":" + name;
-            if (qn != qualifiedName && m_skillManager->getPromptResolved(qn, resolved) == 0) {
-                return {resolved.prompt};
-            }
-        }
-        return {"ERROR: skill not found: " + qualifiedName};
-    }
-    return {"ERROR: no skill manager available. Cannot execute: " + path};
-}
-
-// ---------------------------------------------------------------------------
 // show_skills — navigate the skill tree
 // ---------------------------------------------------------------------------
 
@@ -127,7 +80,7 @@ SystemToolResult SystemToolRegistry::xShowSkills(const json& params) {
         out << "(no skill manager)\n";
     }
 
-    out << "\nUse run_skill('/path/to/skill') to execute a skill.";
+    out << "\nSkills are invoked by their short name as tool calls (e.g. create_local_cli_skill, start_session).";
     return {out.str()};
 }
 
@@ -145,7 +98,7 @@ SystemToolResult SystemToolRegistry::xShowSkillTools(const json& params) {
 
     if (path == "/" || path.empty()) {
         out << "System tool categories:\n";
-        out << "  /system/ — core tools (bash, read, glob, grep, edit, write, run_skill, etc.)\n";
+        out << "  /system/ — core tools (bash, read, glob, grep, edit, write, etc.)\n";
         out << "  /git/ — git version control tools (120+ commands)\n";
         out << "\nUse show_skill_tools('/system') or show_skill_tools('/git') to browse.";
         return {out.str()};
@@ -226,9 +179,9 @@ SystemToolResult SystemToolRegistry::xShowSkillTools(const json& params) {
     // Fallback
     if (firstPart == "git") {
         out << "Git tools: 120+ commands available via {{tool:commit ...}} in skill templates.\n";
-        out << "Use run_skill('/system/git/start_session') for the standard workflow.\n";
+        out << "Use git_start_session for the standard workflow.\n";
     } else if (firstPart == "system") {
-        out << "Core system tools: bash, read, glob, grep, edit, write, run_skill, show_skills, show_skill_tools, tools_for_prompt\n";
+        out << "Core system tools: bash, read, glob, grep, edit, write, show_skills, show_skill_tools, tools_for_prompt\n";
     }
 
     return {out.str()};
@@ -297,11 +250,9 @@ SystemToolResult SystemToolRegistry::xToolsForPrompt(const json& params) {
         + toolInv.str() + "\n"
         "If the user is requesting a specific action:\n"
         "1. Review the recommended skills and tools.\n"
-        "2. Call run_skill('/path/to/skill') for multi-step workflows.\n"
-        "3. For individual operations, call the tool directly by its full path name "
-        "(e.g. use system_fs_read for reading files, system_git_status for git status, "
-        "system_docker_ps for docker ps).\n"
-        "4. Formulate a step-by-step plan.\n\n"
+        "2. Call the recommended skill by its short name (e.g. create_local_cli_skill, start_session) "
+        "or tool by its full path name (e.g. system_fs_read, system_git_status).\n"
+        "3. Formulate a step-by-step plan.\n\n"
         "Output format:\n"
         "Intent: <one line>\n"
         "Plan: <step-by-step>\n\n"

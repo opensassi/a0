@@ -58,7 +58,6 @@ private:
     static SystemToolResult xEdit(const json& params);
     static SystemToolResult xWrite(const json& params);
 
-    SystemToolResult xRunSkill(const json& params);
     SystemToolResult xShowSkills(const json& params);
     SystemToolResult xShowSkillTools(const json& params);
     SystemToolResult xToolsForPrompt(const json& params);

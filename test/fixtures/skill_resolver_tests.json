@@ -856,24 +856,24 @@
     ]
   },
   {
-    "id": "19-session-evaluation",
+    "id": "19-session_evaluation",
     "description": "Session-evaluation: chain resolves, export prompt expanded with short-name tool resolution",
     "fixtures": [
-      "skills/local/opensassi/session-evaluation/"
+      "skills/local/opensassi/session_evaluation/"
     ],
     "steps": [
       {
         "action": "load",
-        "source": "skills/local/opensassi/session-evaluation/"
+        "source": "skills/local/opensassi/session_evaluation/"
       },
       {
         "action": "resolve_prompt",
-        "name": "local:session-evaluation:generate",
+        "name": "local:session_evaluation:generate",
         "expect": 0
       },
       {
         "action": "assert_prompt_contains",
-        "name": "local:session-evaluation:generate",
+        "name": "local:session_evaluation:generate",
         "strings": [
           "Session Evaluation Summary",
           "Aggregation Tags"
@@ -881,12 +881,12 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:session-evaluation:export",
+        "name": "local:session_evaluation:export",
         "expect": 0
       },
       {
         "action": "assert_prompt_contains",
-        "name": "local:session-evaluation:export",
+        "name": "local:session_evaluation:export",
         "strings": [
           "SESSION_ID",
           "export_session"
@@ -894,7 +894,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:session-evaluation:export",
+        "name": "local:session_evaluation:export",
         "expect": 0
       },
       {

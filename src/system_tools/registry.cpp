@@ -47,7 +47,6 @@ SystemToolRegistry::SystemToolRegistry() {
     m_handlerGroups["edit"] = [](const std::string&, const json& p) { return xEdit(p); };
     m_handlerGroups["write"] = [](const std::string&, const json& p) { return xWrite(p); };
 
-    m_handlerGroups["run_skill"] = [this](const std::string&, const json& p) { return xRunSkill(p); };
     m_handlerGroups["show_skills"] = [this](const std::string&, const json& p) { return xShowSkills(p); };
     m_handlerGroups["show_skill_tools"] = [this](const std::string&, const json& p) { return xShowSkillTools(p); };
     m_handlerGroups["tools_for_prompt"] = [this](const std::string&, const json& p) { return xToolsForPrompt(p); };
@@ -67,7 +66,7 @@ bool SystemToolRegistry::isSystemTool(const std::string& path) {
     // Accept short names for core tools (backward compat)
     static const std::vector<std::string> coreTools = {
         "bash", "read", "glob", "grep", "edit", "write",
-        "run_skill", "show_skills", "show_skill_tools", "tools_for_prompt"
+        "show_skills", "show_skill_tools", "tools_for_prompt"
     };
     for (const auto& t : coreTools) {
         if (path == t) return true;
@@ -132,7 +131,7 @@ SystemToolResult SystemToolRegistry::execute(const std::string& toolPath, const 
         if (it != m_handlerGroups.end()) return it->second(name.substr(3), params);
     }
 
-    // Direct handler group lookup: bash, read, run_skill, etc.
+    // Direct handler group lookup: bash, read, show_skills, etc.
     auto it = m_handlerGroups.find(name);
     if (it != m_handlerGroups.end()) {
         return it->second(name, params);
@@ -158,7 +157,7 @@ std::vector<ToolSchema> SystemToolRegistry::schemas() const {
     // bash — the only general-purpose execution tool
     result.push_back({
         "bash",
-        "Executes a given bash command. IMPORTANT: git and docker commands are rejected — use run_skill with the appropriate skill path instead.",
+        "Executes a given bash command. IMPORTANT: git and docker commands are rejected — use the appropriate system tool (e.g. git_*, docker_*) instead.",
         {{"type", "object"},
          {"properties", {
              {"command", xParam("string", "The command to execute", true, {})},
@@ -170,17 +169,6 @@ std::vector<ToolSchema> SystemToolRegistry::schemas() const {
     });
 
     // read — schema omitted, see fs manifest for full parameter definitions
-
-    // run_skill
-    result.push_back({
-        "run_skill",
-        "Execute a skill template. Expands {{tool:...}} calls eagerly and returns the result.",
-        {{"type", "object"},
-         {"properties", {
-             {"path", xParam("string", "Skill path (e.g. /system/git/start_session)", true, {})}
-         }},
-         {"required", {"path"}}}
-    });
 
     // show_skills
     result.push_back({

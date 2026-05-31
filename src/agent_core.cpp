@@ -224,6 +224,38 @@ std::string DefaultAgentCore::xRunForkedLoop(
         auto response = m_provider->complete(m_basePrompt, messages, combinedSchemas);
 
         if (!response.toolCalls.empty()) {
+            // First, check if any tool call resolves to a prompt expansion.
+            // If so, expand the prompt and replace the user message with it,
+            // then continue the loop — the LLM will see the expanded instructions
+            // and can respond with tool calls.
+            bool promptExpanded = false;
+            std::string expandedText;
+            for (const auto& tc : response.toolCalls) {
+                if (!m_systemTools || !m_systemTools->isSystemTool(tc.name)) {
+                    auto dit = m_dispatch.find(tc.name);
+                    if (dit != m_dispatch.end()) {
+                        a0::skills::SkillTool st;
+                        if (!(m_skillMgr && m_skillMgr->getTool(dit->second, st) == 0)) {
+                            Prompt resolved;
+                            if (m_skillMgr && m_skillMgr->getPromptResolved(dit->second, resolved) == 0) {
+                                expandedText = m_skillRunner->expandPrompt(resolved, tc.arguments);
+                                promptExpanded = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (promptExpanded) {
+                // Reset messages to just the expanded prompt — start fresh
+                // so tools_for_prompt re-analyzes the skill instructions correctly
+                // rather than re-recommending the same prompt.
+                messages.clear();
+                messages.push_back({"user", expandedText});
+                continue;
+            }
+
             json tcsJson = json::array();
             for (const auto& tc : response.toolCalls) {
                 json j;
@@ -270,13 +302,8 @@ std::string DefaultAgentCore::xRunForkedLoop(
                             auto r = runner->run(t, tc.arguments);
                             result = r.is_string() ? r.get<std::string>() : r.dump();
                         } else {
-                            Prompt resolved;
-                            if (m_skillMgr && m_skillMgr->getPromptResolved(qualifiedName, resolved) == 0) {
-                                auto r = m_skillRunner->execute(resolved, tc.arguments);
-                                result = r.is_string() ? r.get<std::string>() : r.dump();
-                            } else {
-                                result = "ERROR: dispatch target not found: " + tc.name;
-                            }
+                            // Already handled via promptExpanded above — should not reach here
+                            result = "ERROR: dispatch target not found: " + tc.name;
                         }
                     } else {
                         result = "ERROR: unknown tool: " + tc.name;
@@ -333,6 +360,10 @@ std::string DefaultAgentCore::xRunForkedLoop(
 }
 
 json DefaultAgentCore::processGoal(const std::string& goal) {
+    return processGoal(goal, json::object());
+}
+
+json DefaultAgentCore::processGoal(const std::string& goal, const json& params) {
     TRACE_LOG("processGoal(" << goal << ")");
     if (!m_initialized) {
         throw std::logic_error("AgentCore not initialized");
@@ -351,19 +382,28 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
 
     int mainSeq = 1;
 
-    // Phase 1: Check for exact goal → prompt match in SkillManager
+    // Phase 1: Check for exact goal → prompt match in SkillManager.
+    // If matched, expand the prompt with params and run it through the
+    // tool-calling forked loop so the LLM can execute tools to fulfill
+    // the skill instructions.
     if (m_skillMgr) {
         Prompt resolved;
         if (m_skillMgr->getPromptResolved(goal, resolved) == 0) {
-            auto result = m_skillRunner->execute(resolved, {{"goal", goal}});
-            xPushToContext(goal, result);
+            std::string expanded = m_skillRunner->expandPrompt(resolved, params);
+            xBuildDispatchTable();
+            auto toolSchemas = m_systemTools ? m_systemTools->schemas()
+                                              : std::vector<ToolSchema>();
+            std::string result = toolSchemas.empty()
+                ? expanded
+                : xRunForkedLoop(expanded, toolSchemas, 25);
+            json finalResult = json(result);
+            xPushToContext(goal, finalResult);
             if (m_persistence && m_sessionDbId > 0) {
                 m_persistence->appendMessage(m_sessionDbId, std::nullopt, mainSeq++,
-                    "assistant", result.is_string() ? result.get<std::string>() : result.dump(),
-                    "", "", "", "");
+                    "assistant", result, "", "", "", "");
                 m_persistence->endSession(m_sessionDbId);
             }
-            return result;
+            return finalResult;
         }
 
         auto allSkills = m_skillMgr->listSkills(std::nullopt);
@@ -371,15 +411,21 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
             for (const auto& ns : {"local", "system"}) {
                 std::string qn = std::string(ns) + ":" + comp + ":" + goal;
                 if (m_skillMgr->getPromptResolved(qn, resolved) == 0) {
-                    auto result = m_skillRunner->execute(resolved, {{"goal", goal}});
-                    xPushToContext(goal, result);
+                    std::string expanded = m_skillRunner->expandPrompt(resolved, params);
+                    xBuildDispatchTable();
+                    auto toolSchemas = m_systemTools ? m_systemTools->schemas()
+                                                      : std::vector<ToolSchema>();
+                    std::string result = toolSchemas.empty()
+                        ? expanded
+                        : xRunForkedLoop(expanded, toolSchemas, 25);
+                    json finalResult = json(result);
+                    xPushToContext(goal, finalResult);
                     if (m_persistence && m_sessionDbId > 0) {
                         m_persistence->appendMessage(m_sessionDbId, std::nullopt, mainSeq++,
-                            "assistant", result.is_string() ? result.get<std::string>() : result.dump(),
-                            "", "", "", "");
+                            "assistant", result, "", "", "", "");
                         m_persistence->endSession(m_sessionDbId);
                     }
-                    return result;
+                    return finalResult;
                 }
             }
         }
@@ -392,7 +438,7 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
                                       : std::vector<ToolSchema>();
 
     if (!toolSchemas.empty()) {
-        std::string result = xRunForkedLoop(goal, toolSchemas, 10);
+        std::string result = xRunForkedLoop(goal, toolSchemas, 25);
         json finalResult = json(result);
         xPushToContext(goal, finalResult);
         if (m_persistence && m_sessionDbId > 0) {

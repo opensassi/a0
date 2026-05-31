@@ -22,6 +22,7 @@ public:
 
     bool init(const std::string& skillsDir) override;
     json processGoal(const std::string& goal) override;
+    json processGoal(const std::string& goal, const json& params);
     json runSkill(const std::string& skillName, const json& params);
     bool resumeSession(const std::string& sessionId) override;
     std::string currentSessionId() const override;

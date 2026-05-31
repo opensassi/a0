@@ -1,15 +1,13 @@
 {
-  "name": "session-evaluation",
+  "name": "session_evaluation",
   "version": "1.0.0",
   "description": "Analyze conversation context, produce structured session evaluation reports, and archive session artifacts",
   "tools": [
     {
       "name": "export_session",
-      "description": "Bundle a session log as .json.bz2 + .sha256 in sessions/",
-      "command": "bash skills/local/opensassi/session-evaluation/bin/export_session.sh",
+      "description": "Bundle a session log as .jsonl.gz + .sha256 in sessions/",
+      "command": "bash skills/local/opensassi/session_evaluation/bin/export_session.sh",
       "inputMode": "args",
-      "dockerImage": "ubuntu:22.04",
-      "aptDependencies": ["bzip2", "coreutils"],
       "timeoutSecs": 60
     }
   ],

@@ -149,10 +149,9 @@ SystemToolResult SystemToolRegistry::xBash(const json& params) {
     };
 
     if (hasTool("git")) {
-        return {"ERROR: git commands must use the start_session skill prompt or "
-                "run_skill with a git skill path. "
+        return {"ERROR: git commands must use the git_* system tools. "
                 "Browse skills: show_skills('/system/git'). "
-                "Use run_skill('/system/git/start_session') for the standard workflow."};
+                "Use git_start_session for the standard workflow."};
     }
 
     if (hasTool("docker") || hasTool("docker-compose")) {

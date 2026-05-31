@@ -1,0 +1,35 @@
+{
+  "name": "cmd_skill_creator",
+  "version": "1.0.0",
+  "description": "Create either local or system skill from command line program",
+  "prompts": [
+    {
+      "name": "base",
+      "description": "Common interrogation methodology and output conventions",
+      "dependencies": ["system:bash", "system:glob"],
+      "promptFile": "prompts/base.md"
+    },
+    {
+      "name": "local",
+      "description": "Local-tier scaffolding: manifest generation, gen script, build/test",
+      "dependencies": ["system:bash", "system:read", "system:write", "system:edit"],
+      "promptFile": "prompts/local.md"
+    },
+    {
+      "name": "system",
+      "description": "System-tier scaffolding: manifest generation, gen script, C++ handlers, build/test",
+      "dependencies": ["system:bash", "system:read", "system:write", "system:edit", "system:grep", "system:glob"],
+      "promptFile": "prompts/system.md"
+    },
+    {
+      "name": "create_local_cli_skill",
+      "description": "Given a CLI program name, scaffold a local-tier skill.json manifest",
+      "chain": ["base", "local"]
+    },
+    {
+      "name": "create_system_cli_skill",
+      "description": "Given a CLI program name, scaffold a system-tier skill.json manifest with C++ handler",
+      "chain": ["base", "system"]
+    }
+  ]
+}

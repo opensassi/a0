@@ -120,9 +120,9 @@ protected:
 TEST_F(AgentIntegrationTest, BuildBasePrompt) {
     loadSkills();
     std::string prompt = a0::buildBasePrompt(m_mgr);
-    EXPECT_NE(prompt.find("a0 build"), std::string::npos);
+    EXPECT_NE(prompt.find("system agent"), std::string::npos);
     EXPECT_NE(prompt.find("Linux"), std::string::npos);
-    EXPECT_NE(prompt.find("cwd:"), std::string::npos);
+    EXPECT_NE(prompt.find("system_bash"), std::string::npos);
 }
 
 TEST_F(AgentIntegrationTest, ProcessGoalEmpty) {

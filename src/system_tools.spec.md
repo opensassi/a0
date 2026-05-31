@@ -6,14 +6,13 @@ Registry of built-in system tools available to the LLM agent in every session. M
 
 **Source files:** `src/system_tools.h/.cpp`
 
-**Default schema (10 tools, always present in main loop):**
+**Default schema (9 tools, always present in main loop):**
 - `bash` — Executes commands (REJECTS git commands with error)
 - `read` — Read files/directories
 - `glob` — File pattern matching
 - `grep` — Content search
 - `edit` — String replacements in files
 - `write` — Write files
-- `run_skill` — Execute a skill template eagerly
 - `show_skills` — Browse the skill tree by path
 - `show_skill_tools` — Browse the tool tree by path
 - `tools_for_prompt` — Analyze user intent and recommend skills/tools
@@ -64,7 +63,6 @@ private:
     static SystemToolResult xWrite(const json& params);
 
     // Discovery handlers
-    SystemToolResult xRunSkill(const json& params);
     SystemToolResult xShowSkills(const json& params);
     SystemToolResult xShowSkillTools(const json& params);
     SystemToolResult xToolsForPrompt(const json& params);
@@ -100,7 +98,6 @@ graph TB
         EDIT[xEdit]
         WRITE[xWrite]
 
-        RUN[xRunSkill → eager expansion]
         SKILLS[xShowSkills → skill tree]
         TOOLS[xShowSkillTools → tool tree]
         PROMPT[xToolsForPrompt → inference analysis]
@@ -108,8 +105,7 @@ graph TB
         GIT[xGitCommand → CommandRunner]
     end
 
-    LLM[LLM Agent] -->|10-tool schema| SCHEMA
-    RUN -->|{{tool:git_...}}| GIT
+    LLM[LLM Agent] -->|9-tool schema| SCHEMA
     PROMPT -->|inference| INF[InferenceProvider]
     SKILLS -->|skill data| MGR[SkillManager]
 ```
@@ -141,17 +137,14 @@ sequenceDiagram
     Bash->>Bash: xIsGitCommand → true
     Bash-->>LLM: "ERROR: use git_* tools instead"
 
-    Note over LLM,Git: Within skill template expansion:
+    Note over LLM,Git: Tools invoked by short name via dispatch table:
 
-    LLM->>Registry: run_skill(path: "/system/git/start_session")
-    Registry->>Registry: load prompt template
-    Registry->>Registry: expand {{tool:git_status}}
-    Registry->>Git: git_status(args: [])
+    LLM->>Registry: git_status(args: [])
+    Registry->>Git: xGitCommand("status", {})
     Git->>CR: git status
     CR-->>Git: output
     Git-->>Registry: result
-    Registry->>Registry: substitute into template
-    Registry-->>LLM: expanded template text
+    Registry-->>LLM: output
 ```
 
 ## 6. Testing Requirements
@@ -161,7 +154,7 @@ sequenceDiagram
 | bash git rejection | `bash(command: "git status")` returns error with git_* recommendation |
 | isSystemTool("git_commit") | Returns true |
 | schemas() has 10 tools | Returns exactly 10 entries, no git_* tools |
-| run_skill returns prompt | Returns skill prompt text for valid path |
+| git tool dispatch | Returns git command output for valid path |
 | show_skills("/") | Returns root skill tree |
 | show_skill_tools("/git") | Returns git tool categories |
 | xGitCommand basic | Executes git with subcommand + args |

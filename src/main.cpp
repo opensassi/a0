@@ -433,7 +433,7 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
     if (!skillName.empty())
         result = stack.core->runSkill(skillName, params);
     else
-        result = stack.core->processGoal(runPrompt);
+        result = stack.core->processGoal(runPrompt, params);
 
     std::cout << result.dump() << std::endl;
     return 0;
