@@ -5,7 +5,6 @@
 #include "context_manager.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
-#include "invocation_logger.h"
 #include "schema_inference_engine.h"
 #include "skill_runner.h"
 #include "tool_runner.h"
@@ -24,9 +23,6 @@ TEST(InterfaceTest, DeleteThroughBasePointer) {
 
     ContextManager* cm = new DefaultContextManager();
     delete cm;
-
-    InvocationLogger* il = new JsonLinesLogger("/tmp");
-    delete il;
 
     DependencyResolver* dr = new DefaultDependencyResolver(
         new FileSystemSkillRegistry());
@@ -47,13 +43,10 @@ TEST(InterfaceTest, DeleteThroughBasePointer) {
 }
 
 TEST(InterfaceTest, VirtualDestructors) {
-    // Just instantiate and destroy through concrete types
-    // to verify vtable linkage is correct
     FileSystemSkillRegistry reg;
     SubprocessToolRunner tr;
     DeepSeekProvider ip("test");
     DefaultContextManager cm;
-    JsonLinesLogger il("/tmp/logs");
     FileSystemSkillRegistry reg2;
     DefaultDependencyResolver dr(&reg2);
     DefaultSchemaInferenceEngine sie(&ip);

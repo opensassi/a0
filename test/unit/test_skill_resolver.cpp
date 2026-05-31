@@ -57,7 +57,7 @@ protected:
         std::string skillsRoot = "/tmp/a0_test_skills_" + std::to_string(::getpid());
         m_mgr = new SkillManager(skillsRoot,
                                  "/tmp/a0_test_store_" + std::to_string(::getpid()),
-                                 "/tmp/a0_test_logs_" + std::to_string(::getpid()));
+                                 nullptr);
         m_toolRunner = new SubprocessToolRunner();
         m_systemTools = new a0::SystemToolRegistry();
         m_depResolver = new DefaultDependencyResolver(m_mgr);

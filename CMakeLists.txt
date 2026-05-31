@@ -17,7 +17,6 @@ set(LIB_SOURCES
     src/skill_runner.cpp
     src/deepseek_provider.cpp
     src/context_manager.cpp
-    src/invocation_logger.cpp
     src/schema_inference_engine.cpp
     src/dependency_resolver.cpp
     src/stream_registry.cpp
@@ -52,6 +51,7 @@ add_subdirectory(src/system_tools)
 target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib skills_lib persistence_lib cmd_runner_lib ipc_lib system_tools_lib)
 
 add_executable(a0 src/main.cpp)
+target_include_directories(a0 PRIVATE thirdparty)
 target_link_libraries(a0 PRIVATE a0_lib system_tools_lib persistence_lib cmd_runner_lib)
 
 option(ENABLE_TRACE "Enable trace logging" OFF)
@@ -90,7 +90,6 @@ add_agent_test(test_dependency_resolver test/unit/test_dependency_resolver.cpp)
 # Disabled: replaced by synthetic test framework
 # add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
 # add_agent_test(test_interfaces test/unit/test_interfaces.cpp)
-add_agent_test(test_invocation_logger test/unit/test_invocation_logger.cpp)
 add_agent_test(test_schema_inference test/unit/test_schema_inference_engine.cpp)
 add_agent_test(test_skill_manager test/unit/test_skill_manager.cpp)
 add_agent_test(test_context_manager test/unit/test_context_manager.cpp)

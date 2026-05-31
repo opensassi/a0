@@ -60,7 +60,6 @@ DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
                                     SkillRunner* skillRunner,
                                     InferenceProvider* provider,
                                     ContextManager* context,
-                                    InvocationLogger* logger,
                                     DependencyResolver* depResolver,
                                     SchemaInferenceEngine* inferenceEngine,
                                     a0::SystemToolRegistry* systemTools,
@@ -77,7 +76,6 @@ DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
     , m_skillRunner(skillRunner)
     , m_provider(provider)
     , m_context(context)
-    , m_logger(logger)
     , m_depResolver(depResolver)
     , m_inferenceEngine(inferenceEngine)
     , m_initialized(false) {}
@@ -102,7 +100,6 @@ bool DefaultAgentCore::init(const std::string& skillsDir) {
 
     // Set global template variables
     m_skillRunner->setGlobalVar("SESSION_ID", m_sessionId);
-    m_skillRunner->setGlobalVar("LOGS_DIR", "logs");
     m_skillRunner->setGlobalVar("SESSIONS_DIR", "sessions");
     m_skillRunner->setGlobalVar("A0_DIR", ".a0");
     char cwdBuf[4096];
@@ -127,16 +124,9 @@ bool DefaultAgentCore::init(const std::string& skillsDir) {
     return true;
 }
 
-void DefaultAgentCore::xLogAndPush(const std::string& goal, const json& result) {
+void DefaultAgentCore::xPushToContext(const std::string& goal, const json& result) {
+    (void)goal;
     m_context->push({"assistant", result.is_string() ? result.get<std::string>() : result.dump()});
-
-    LogEntry entry;
-    entry.sessionId = m_sessionId;
-    entry.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    entry.eventType = "process_goal";
-    entry.data = json{{"goal", goal}, {"result", result}}.dump();
-    m_logger->log(entry);
 }
 
 // Truncate a tool result for LLM consumption to avoid blowing up context
@@ -162,6 +152,27 @@ void DefaultAgentCore::xBuildDispatchTable() {
 // processGoal
 // ---------------------------------------------------------------------------
 
+static int xNsToType(const std::string& ns) {
+    if (ns == "system") return 0;
+    if (ns == "local") return 1;
+    return 2; // github_*
+}
+
+static void xParseQualified(const std::string& qn,
+                             std::string& ns, std::string& comp, std::string& name) {
+    auto first = qn.find(':');
+    if (first == std::string::npos) { ns = qn; comp = qn; name = qn; return; }
+    ns = qn.substr(0, first);
+    auto second = qn.find(':', first + 1);
+    if (second == std::string::npos) {
+        comp = qn.substr(first + 1);
+        name = comp;
+    } else {
+        comp = qn.substr(first + 1, second - first - 1);
+        name = qn.substr(second + 1);
+    }
+}
+
 std::string DefaultAgentCore::xRunForkedLoop(
     const std::string& userInput,
     const std::vector<ToolSchema>& tools,
@@ -172,9 +183,11 @@ std::string DefaultAgentCore::xRunForkedLoop(
     std::vector<Message> messages;
     messages.push_back({"user", userInput});
 
+    // Fork sub-session: persist each turn to SQLite for traceability
+    int64_t subSessionId = m_nextSubSession++;
+    int subSeq = 0;
+
     // Auto-analyze: inject tools_for_prompt result as the second message.
-    // The analysis text guides the LLM to the right skills/tools for this input.
-    // This message is rewound when the fork completes.
     if (m_systemTools) {
         auto analysis = m_systemTools->execute(
             "tools_for_prompt", {{"prompt", userInput}});
@@ -215,9 +228,24 @@ std::string DefaultAgentCore::xRunForkedLoop(
         auto response = m_provider->complete(m_basePrompt, messages, combinedSchemas);
 
         if (!response.toolCalls.empty()) {
+            json tcsJson = json::array();
+            for (const auto& tc : response.toolCalls) {
+                json j;
+                j["id"] = tc.id;
+                j["name"] = tc.name;
+                j["arguments"] = tc.arguments;
+                tcsJson.push_back(j);
+            }
+            std::string tcsJsonStr = tcsJson.dump();
             Message asstMsg("assistant", "");
             asstMsg.toolCalls = response.toolCalls;
             messages.push_back(asstMsg);
+
+            // Persist assistant turn in fork branch
+            if (m_persistence && m_sessionDbId > 0) {
+                m_persistence->appendMessage(m_sessionDbId, subSessionId, subSeq++,
+                    "assistant", "", tcsJsonStr, "", "", "");
+            }
 
             for (auto& tc : response.toolCalls) {
                 TRACE_LOG("forked_tool_call[" << turn << "]: " << tc.name
@@ -260,6 +288,25 @@ std::string DefaultAgentCore::xRunForkedLoop(
                 }
 
                 std::string safeOutput = sanitizeUtf8(truncateForLLM(result));
+
+                // Persist tool result in fork branch
+                int64_t msgId = 0;
+                if (m_persistence && m_sessionDbId > 0) {
+                    msgId = m_persistence->appendMessage(m_sessionDbId,
+                        subSessionId, subSeq++, "tool", safeOutput, "", tc.id, tc.name, "");
+
+                    // Write invocation record for ValidationEngine
+                    auto dit = m_dispatch.find(tc.name);
+                    if (dit != m_dispatch.end()) {
+                        std::string ns, comp, tName;
+                        xParseQualified(dit->second, ns, comp, tName);
+                        int sType = xNsToType(ns);
+                        int skillId = m_persistence->ensureSkill(sType, comp);
+                        m_persistence->appendInvocation(msgId, skillId,
+                            tc.name, tc.arguments.dump(), result);
+                    }
+                }
+
                 messages.push_back({"tool", safeOutput, tc.id});
 
                 size_t totalBytes = 0;
@@ -274,6 +321,12 @@ std::string DefaultAgentCore::xRunForkedLoop(
         }
 
         if (!response.content.empty()) {
+            // Persist final answer in fork branch
+            if (m_persistence && m_sessionDbId > 0) {
+                m_persistence->appendMessage(m_sessionDbId,
+                    subSessionId, subSeq++, "assistant",
+                    sanitizeUtf8(response.content), "", "", "", "");
+            }
             return sanitizeUtf8(response.content);
         }
 
@@ -296,17 +349,24 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
 
     if (m_persistence && m_agentDbId > 0) {
         m_sessionDbId = m_persistence->createSession(0, 0, m_agentDbId);
-        m_persistence->appendMessage(m_sessionDbId, "user", goal, "", "", "", "");
+        m_persistence->appendMessage(m_sessionDbId, std::nullopt, 0,
+            "user", goal, "", "", "", "");
     }
+
+    int mainSeq = 1;
 
     // Phase 1: Check for exact goal → prompt match in SkillManager
     if (m_skillMgr) {
         Prompt resolved;
         if (m_skillMgr->getPromptResolved(goal, resolved) == 0) {
             auto result = m_skillRunner->execute(resolved, {{"goal", goal}});
-            xLogAndPush(goal, result);
-            if (m_persistence && m_sessionDbId > 0)
+            xPushToContext(goal, result);
+            if (m_persistence && m_sessionDbId > 0) {
+                m_persistence->appendMessage(m_sessionDbId, std::nullopt, mainSeq++,
+                    "assistant", result.is_string() ? result.get<std::string>() : result.dump(),
+                    "", "", "", "");
                 m_persistence->endSession(m_sessionDbId);
+            }
             return result;
         }
 
@@ -316,17 +376,20 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
                 std::string qn = std::string(ns) + ":" + comp + ":" + goal;
                 if (m_skillMgr->getPromptResolved(qn, resolved) == 0) {
                     auto result = m_skillRunner->execute(resolved, {{"goal", goal}});
-                    xLogAndPush(goal, result);
-                    if (m_persistence && m_sessionDbId > 0)
+                    xPushToContext(goal, result);
+                    if (m_persistence && m_sessionDbId > 0) {
+                        m_persistence->appendMessage(m_sessionDbId, std::nullopt, mainSeq++,
+                            "assistant", result.is_string() ? result.get<std::string>() : result.dump(),
+                            "", "", "", "");
                         m_persistence->endSession(m_sessionDbId);
+                    }
                     return result;
                 }
             }
         }
     }
 
-    // Phase 2: Forked tool-calling loop with 10 default tools
-    // All intermediate messages stay in the local fork and get rewound.
+    // Phase 2: Forked tool-calling loop
     xBuildDispatchTable();
 
     auto toolSchemas = m_systemTools ? m_systemTools->schemas()
@@ -335,9 +398,12 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
     if (!toolSchemas.empty()) {
         std::string result = xRunForkedLoop(goal, toolSchemas, 10);
         json finalResult = json(result);
-        xLogAndPush(goal, finalResult);
-        if (m_persistence && m_sessionDbId > 0)
+        xPushToContext(goal, finalResult);
+        if (m_persistence && m_sessionDbId > 0) {
+            m_persistence->appendMessage(m_sessionDbId, std::nullopt, mainSeq++,
+                "assistant", result, "", "", "", "");
             m_persistence->endSession(m_sessionDbId);
+        }
         return finalResult;
     }
 
@@ -352,9 +418,13 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
     } catch (const std::exception& e) {
         result = json("failed to infer prompt: " + std::string(e.what()));
     }
-    xLogAndPush(goal, result);
-    if (m_persistence && m_sessionDbId > 0)
+    xPushToContext(goal, result);
+    if (m_persistence && m_sessionDbId > 0) {
+        m_persistence->appendMessage(m_sessionDbId, std::nullopt, mainSeq++,
+            "assistant", result.is_string() ? result.get<std::string>() : result.dump(),
+            "", "", "", "");
         m_persistence->endSession(m_sessionDbId);
+    }
     return result;
 }
 
@@ -387,14 +457,6 @@ json DefaultAgentCore::runSkill(const std::string& skillName, const json& params
     json execParams = params;
     json result = m_skillRunner->execute(prompt, execParams);
 
-    LogEntry entry;
-    entry.sessionId = m_sessionId;
-    entry.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    entry.eventType = "run_skill";
-    entry.data = json{{"skill", skillName}, {"params", params}, {"result", result}}.dump();
-    m_logger->log(entry);
-
     return result;
 }
 
@@ -402,25 +464,30 @@ std::string DefaultAgentCore::currentSessionId() const {
     return m_sessionId;
 }
 
-bool DefaultAgentCore::resumeSession(const std::string& sessionId) {
-    TRACE_LOG("resumeSession(" << sessionId << ")");
-    m_sessionId = sessionId;
-    bool found = false;
-    m_logger->replay(sessionId, [this, &found](const LogEntry& entry) {
-        found = true;
-        try {
-            json j = json::parse(entry.data);
-            if (j.contains("goal")) {
-                m_context->push({"user", j["goal"].get<std::string>()});
-            }
-            if (j.contains("result")) {
-                std::string res = j["result"].is_string() ? j["result"].get<std::string>() : j["result"].dump();
-                m_context->push({"assistant", res});
-            }
-        } catch (...) {}
-    });
+bool DefaultAgentCore::resumeSession(const std::string& uuid) {
+    TRACE_LOG("resumeSession(" << uuid << ")");
+    m_sessionId = uuid;
+    if (!m_persistence) {
+        m_initialized = true;
+        return false;
+    }
+    m_sessionDbId = m_persistence->findSessionByUuid(uuid);
+    if (m_sessionDbId <= 0) {
+        m_initialized = true;
+        return false;
+    }
+    auto messages = m_persistence->loadMessages(m_sessionDbId, std::nullopt);
+    if (messages.empty()) {
+        m_initialized = true;
+        return false;
+    }
+    for (const auto& msg : messages) {
+        if (msg.role == "user" || msg.role == "assistant") {
+            m_context->push({msg.role, msg.content});
+        }
+    }
     m_initialized = true;
-    return found;
+    return true;
 }
 
 void DefaultAgentCore::run() {
@@ -439,14 +506,10 @@ a0::StreamHandle DefaultAgentCore::processGoalStreaming(
 {
     TRACE_LOG("processGoalStreaming(" << goal << ")");
 
-    // Log the user input
-    if (m_logger) {
-        m_logger->log({m_sessionId, 0, "user_input", goal});
-    }
-
-    // Persist user message
     if (m_persistence && m_sessionDbId > 0) {
-        m_persistence->appendMessage(m_sessionDbId, "user", goal, "", "", "", "");
+        int seq = 0;
+        m_persistence->appendMessage(m_sessionDbId, std::nullopt, seq,
+            "user", goal, "", "", "", "");
     }
 
     // Check for exact prompt match first

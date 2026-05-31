@@ -1,40 +1,51 @@
 #include "skills/validation_engine.h"
 #include "skills/skills.h"
+#include "persistence/sqlite_store.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>
 
 namespace fs = std::filesystem;
 using namespace a0::skills;
+using namespace a0::persistence;
 
 class ValidationEngineTest : public ::testing::Test {
 protected:
-    std::string m_logDir;
-    std::string m_skillsDir;
+    std::string m_dbPath;
+    SqliteStore* m_store = nullptr;
     ValidationEngine* m_engine = nullptr;
 
     void SetUp() override {
-        std::string pid = std::to_string(::getpid());
-        m_logDir = "/tmp/a0_val_test_logs_" + pid;
-        m_skillsDir = "/tmp/a0_val_test_skills_" + pid;
-        fs::remove_all(m_logDir);
-        fs::remove_all(m_skillsDir);
-        fs::create_directories(m_logDir);
-        fs::create_directories(m_skillsDir);
-        m_engine = new ValidationEngine(m_logDir);
+        std::string pid = std::to_string(::getpid()) + "_" + std::to_string(rand());
+        std::string tmpDir = "/tmp/a0_val_test_" + pid;
+        fs::create_directories(tmpDir);
+        m_dbPath = tmpDir + "/test.db";
+        m_store = new SqliteStore(m_dbPath);
+        m_engine = new ValidationEngine(m_store);
     }
 
     void TearDown() override {
         delete m_engine;
-        fs::remove_all(m_logDir);
-        fs::remove_all(m_skillsDir);
+        delete m_store;
+        std::string dir = m_dbPath.substr(0, m_dbPath.rfind('/'));
+        fs::remove_all(dir);
     }
 
-    void writeLog(const std::string& ns, const std::string& component,
-                  const std::string& sessionId, const std::string& line) {
-        fs::create_directories(m_logDir + "/" + ns + ":" + component);
-        std::ofstream f(m_logDir + "/" + ns + ":" + component + "/" + sessionId + ".jsonl", std::ios::app);
-        f << line << "\n";
+    /// Insert a historical invocation into the store
+    void addInvocation(const std::string& ns, const std::string& component,
+                       const std::string& toolName,
+                       const json& params,
+                       const json& output) {
+        int type = (ns == "system") ? 0 : (ns == "local" ? 1 : 2);
+        int skillId = m_store->ensureSkill(type, component);
+        BuildFingerprint fp;
+        fp.binarySha1 = "test";
+        int agentId = m_store->registerAgent(fp);
+        int64_t sessionId = m_store->createSession(0, 0, agentId);
+        int64_t msgId = m_store->appendMessage(sessionId, std::nullopt, 0,
+            "tool", "dummy", "", "", toolName, output.dump());
+        m_store->appendInvocation(msgId, skillId, toolName,
+                                  params.dump(), output.dump());
     }
 
     SkillManifest makeManifest(const std::string& name) {
@@ -67,8 +78,7 @@ TEST_F(ValidationEngineTest, ReplayMatchSucceeds) {
     tool.inputMode = "stdin";
     SkillManifest m = makeManifestWithTool("test_comp", tool);
 
-    writeLog("local", "test_comp", "session1",
-             R"({"tool":"echo_tool","params":"","output":"hello\n","ts":1000})");
+    addInvocation("local", "test_comp", "echo_tool", json(), json("hello\n"));
 
     std::string report;
     int rc = m_engine->validate(SkillNamespace::LOCAL, "test_comp", m, "abc123", report);
@@ -82,8 +92,7 @@ TEST_F(ValidationEngineTest, ReplayMismatchFails) {
     tool.inputMode = "stdin";
     SkillManifest m = makeManifestWithTool("test_comp", tool);
 
-    writeLog("local", "test_comp", "session1",
-             R"({"tool":"echo_tool2","params":"","output":"wrong_output","ts":1000})");
+    addInvocation("local", "test_comp", "echo_tool2", json(), json("wrong_output"));
 
     std::string report;
     int rc = m_engine->validate(SkillNamespace::LOCAL, "test_comp", m, "abc123", report);
@@ -92,15 +101,12 @@ TEST_F(ValidationEngineTest, ReplayMismatchFails) {
 }
 
 TEST_F(ValidationEngineTest, BridgeResolvesMismatch) {
-    // New tool produces "raw" but old logs expect "transformed"
     SkillTool tool;
     tool.name = "old_tool";
     tool.command = "echo '{\"result\":\"raw\"}'";
     tool.inputMode = "stdin";
     SkillManifest m = makeManifestWithTool("bridge_comp", tool);
 
-    // Bridge transforms input (old params) to produce expected output
-    // Bridge command: echo '{"result":"transformed"}' (replaces raw with transformed)
     CompatBridge bridge;
     bridge.toolName = "old_tool";
     bridge.bridgeCommand = "echo '{\"result\":\"transformed\"}'";
@@ -108,18 +114,17 @@ TEST_F(ValidationEngineTest, BridgeResolvesMismatch) {
     bridge.description = "adapts raw output format";
     m.compat.push_back(bridge);
 
-    writeLog("local", "bridge_comp", "session1",
-             R"({"tool":"old_tool","params":"","output":{"result":"transformed"},"ts":1000})");
+    addInvocation("local", "bridge_comp", "old_tool", json(),
+                  json::parse("{\"result\":\"transformed\"}"));
 
     std::string report;
     int rc = m_engine->validate(SkillNamespace::LOCAL, "bridge_comp", m, "abc123", report);
-    EXPECT_EQ(rc, 1);  // bridges were used
+    EXPECT_EQ(rc, 1);
 }
 
 TEST_F(ValidationEngineTest, UnknownToolInLogSkipped) {
     SkillManifest m = makeManifest("no_tools");
-    writeLog("local", "no_tools", "session1",
-             R"({"tool":"ghost_tool","params":"","output":"xyz","ts":1000})");
+    addInvocation("local", "no_tools", "ghost_tool", json(), json("xyz"));
 
     std::string report;
     int rc = m_engine->validate(SkillNamespace::LOCAL, "no_tools", m, "abc123", report);
@@ -133,8 +138,8 @@ TEST_F(ValidationEngineTest, JsonOutputHandled) {
     tool.inputMode = "stdin";
     SkillManifest m = makeManifestWithTool("json_comp", tool);
 
-    writeLog("local", "json_comp", "session1",
-             R"({"tool":"json_tool","params":"","output":{"key":"value"},"ts":1000})");
+    addInvocation("local", "json_comp", "json_tool", json(),
+                  json::parse("{\"key\":\"value\"}"));
 
     std::string report;
     int rc = m_engine->validate(SkillNamespace::LOCAL, "json_comp", m, "abc123", report);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# export_session.sh — Bundle a session log as .json.bz2 + .sha256 in sessions/
+# export_session.sh — Export a session via a0 CLI as .jsonl.gz + .sha256 in sessions/
 set -euo pipefail
 
 TITLE_SLUG=""
@@ -21,37 +21,26 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_DIR="$(cd "$SKILL_DIR/../../../.." && pwd)"
-LOGS_DIR="$PROJECT_DIR/logs"
 SESSIONS_DIR="$PROJECT_DIR/sessions"
-LOG_FILE="$LOGS_DIR/$SESSION_ID.jsonl"
 BASE_FILE="$SESSIONS_DIR/${TITLE_SLUG}-${SESSION_ID}"
-
-if [ ! -f "$LOG_FILE" ]; then
-  echo "ERROR: session log not found: $LOG_FILE"
-  exit 1
-fi
+A0_BIN="${PROJECT_DIR}/build/a0"
 
 mkdir -p "$SESSIONS_DIR"
 
-JSON_FILE="${BASE_FILE}.json"
-echo '[' > "$JSON_FILE"
-FIRST=true
-while IFS= read -r LINE; do
-  if [ "$FIRST" = true ]; then FIRST=false; else echo ',' >> "$JSON_FILE"; fi
-  echo "$LINE" >> "$JSON_FILE"
-done < "$LOG_FILE"
-echo ']' >> "$JSON_FILE"
+JSONL_FILE="${BASE_FILE}.jsonl"
+"$A0_BIN" --a0-dir "$PROJECT_DIR/.a0" session export \
+    --session-id "$SESSION_ID" --output "$JSONL_FILE"
 
-RAW_SIZE=$(wc -c < "$JSON_FILE")
+RAW_SIZE=$(wc -c < "$JSONL_FILE")
 
 echo "=> Computing content hash..."
-sha256sum "$JSON_FILE" | cut -d' ' -f1 > "${BASE_FILE}.sha256"
+sha256sum "$JSONL_FILE" | cut -d' ' -f1 > "${BASE_FILE}.sha256"
 echo "   Hash: $(cat "${BASE_FILE}.sha256")"
 
-echo "=> Compressing with bzip2 (max)..."
-bzip2 -9 "$JSON_FILE"
-COMP_SIZE=$(wc -c < "${BASE_FILE}.json.bz2")
+echo "=> Compressing with gzip (max)..."
+gzip -9 "$JSONL_FILE"
+COMP_SIZE=$(wc -c < "${BASE_FILE}.jsonl.gz")
 PCT=$(( (RAW_SIZE - COMP_SIZE) * 100 / RAW_SIZE ))
 echo "   ${RAW_SIZE} -> ${COMP_SIZE} bytes (${PCT}% saved)"
 
-echo "=> Done: ${BASE_FILE}.json.bz2"
+echo "=> Done: ${BASE_FILE}.jsonl.gz"

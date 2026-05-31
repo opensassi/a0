@@ -12,7 +12,6 @@ public:
                      SkillRunner* skillRunner,
                      InferenceProvider* provider,
                      ContextManager* context,
-                     InvocationLogger* logger,
                      DependencyResolver* depResolver,
                      SchemaInferenceEngine* inferenceEngine,
                      a0::SystemToolRegistry* systemTools,
@@ -31,7 +30,7 @@ public:
                                            a0::StreamCallback onChunk) override;
 
 private:
-    void xLogAndPush(const std::string& goal, const json& result);
+    void xPushToContext(const std::string& goal, const json& result);
     void xBuildDispatchTable();
 
     std::string xRunForkedLoop(
@@ -42,6 +41,7 @@ private:
     std::string m_basePrompt;
     int m_agentDbId = -1;
     int64_t m_sessionDbId = 0;
+    int64_t m_nextSubSession = 1;
 
     a0::skills::SkillManager* m_skillMgr;
     ToolRunner* m_toolRunner;
@@ -52,7 +52,6 @@ private:
     SkillRunner* m_skillRunner;
     InferenceProvider* m_provider;
     ContextManager* m_context;
-    InvocationLogger* m_logger;
     DependencyResolver* m_depResolver;
     SchemaInferenceEngine* m_inferenceEngine;
     std::string m_sessionId;

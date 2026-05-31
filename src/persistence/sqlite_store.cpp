@@ -28,16 +28,13 @@ public:
             throw std::runtime_error(err);
         }
 
-        // Enable WAL mode
         exec("PRAGMA journal_mode=WAL");
         exec("PRAGMA foreign_keys=ON");
         exec(
             "CREATE TABLE IF NOT EXISTS agent ("
             "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
             "  binary_sha1 TEXT NOT NULL UNIQUE,"
-            "  repo_url TEXT,"
-            "  commit_hash TEXT,"
-            "  dirty_hash TEXT,"
+            "  repo_url TEXT, commit_hash TEXT, dirty_hash TEXT,"
             "  built_at INTEGER"
             ")"
         );
@@ -56,13 +53,16 @@ public:
             "CREATE TABLE IF NOT EXISTS message ("
             "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
             "  session_id INTEGER NOT NULL REFERENCES session(id),"
+            "  sub_session_id INTEGER,"
+            "  seq INTEGER NOT NULL DEFAULT 0,"
             "  role TEXT NOT NULL,"
             "  content TEXT NOT NULL DEFAULT '',"
             "  tool_calls_json TEXT,"
             "  tool_call_id TEXT,"
             "  name TEXT,"
             "  result_json TEXT,"
-            "  created_at INTEGER NOT NULL"
+            "  created_at INTEGER NOT NULL,"
+            "  UNIQUE(session_id, sub_session_id, seq)"
             ")"
         );
         exec(
@@ -73,52 +73,70 @@ public:
             "CREATE TABLE IF NOT EXISTS stream ("
             "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
             "  session_id INTEGER NOT NULL REFERENCES session(id),"
-            "  tool_call_id TEXT,"
-            "  terminal_id TEXT,"
-            "  name TEXT NOT NULL,"
-            "  context_type TEXT NOT NULL,"
-            "  context_id TEXT,"
-            "  cwd TEXT,"
-            "  created_at INTEGER NOT NULL,"
-            "  ended_at INTEGER,"
-            "  exit_code INTEGER"
+            "  tool_call_id TEXT, terminal_id TEXT,"
+            "  name TEXT NOT NULL, context_type TEXT NOT NULL,"
+            "  context_id TEXT, cwd TEXT,"
+            "  created_at INTEGER NOT NULL, ended_at INTEGER, exit_code INTEGER"
             ")"
         );
         exec(
             "CREATE TABLE IF NOT EXISTS stream_chunk ("
             "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
             "  stream_id INTEGER NOT NULL REFERENCES stream(id),"
-            "  seq INTEGER NOT NULL,"
-            "  direction TEXT NOT NULL,"
-            "  data TEXT NOT NULL,"
-            "  timestamp INTEGER NOT NULL"
+            "  seq INTEGER NOT NULL, direction TEXT NOT NULL,"
+            "  data TEXT NOT NULL, timestamp INTEGER NOT NULL"
             ")"
         );
-        exec(
-            "CREATE INDEX IF NOT EXISTS idx_stream_session"
-            "  ON stream(session_id)"
-        );
-        exec(
-            "CREATE INDEX IF NOT EXISTS idx_stream_chunk_stream"
-            "  ON stream_chunk(stream_id, seq)"
-        );
-        exec(
-            "CREATE INDEX IF NOT EXISTS idx_stream_tool_call"
-            "  ON stream(tool_call_id)"
-        );
+        exec("CREATE INDEX IF NOT EXISTS idx_stream_session ON stream(session_id)");
+        exec("CREATE INDEX IF NOT EXISTS idx_stream_chunk_stream ON stream_chunk(stream_id, seq)");
+        exec("CREATE INDEX IF NOT EXISTS idx_stream_tool_call ON stream(tool_call_id)");
+        exec("CREATE TABLE IF NOT EXISTS skill ("
+            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  type INTEGER NOT NULL,"
+            "  name TEXT NOT NULL,"
+            "  UNIQUE(type, name)"
+            ")");
+        exec("CREATE TABLE IF NOT EXISTS invocation ("
+            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  message_id INTEGER NOT NULL REFERENCES message(id),"
+            "  skill_id INTEGER NOT NULL REFERENCES skill(id),"
+            "  tool_name TEXT NOT NULL,"
+            "  params_json TEXT,"
+            "  output_json TEXT,"
+            "  timestamp INTEGER NOT NULL"
+            ")");
+        exec("CREATE INDEX IF NOT EXISTS idx_invocation_skill ON invocation(skill_id, tool_name)");
+        exec("CREATE INDEX IF NOT EXISTS idx_invocation_message ON invocation(message_id)");
+
         // Migration: add terminal_id column for existing databases
         {
             char* err = nullptr;
             sqlite3_exec(db, "ALTER TABLE stream ADD COLUMN terminal_id TEXT",
                          nullptr, nullptr, &err);
-            sqlite3_free(err); // ignore if column already exists
+            sqlite3_free(err);
+        }
+        // Migration: add sub_session_id + seq for existing databases
+        {
+            char* err = nullptr;
+            int rc2 = sqlite3_exec(db, "ALTER TABLE message ADD COLUMN sub_session_id INTEGER",
+                                    nullptr, nullptr, &err);
+            if (rc2 == SQLITE_OK) {
+                sqlite3_exec(db, "ALTER TABLE message ADD COLUMN seq INTEGER NOT NULL DEFAULT 0",
+                             nullptr, nullptr, nullptr);
+                // Backfill seq for existing rows (ordered by session_id, id)
+                sqlite3_exec(db,
+                    "UPDATE message SET seq = ("
+                    "  SELECT COUNT(*) FROM message AS m2"
+                    "  WHERE m2.session_id = message.session_id"
+                    "  AND m2.id <= message.id"
+                    ")", nullptr, nullptr, nullptr);
+            }
+            sqlite3_free(err);
         }
     }
 
     ~Impl() {
-        if (db) {
-            sqlite3_close(db);
-        }
+        if (db) sqlite3_close(db);
     }
 
     void exec(const std::string& sql) {
@@ -223,6 +241,8 @@ void SqliteStore::endSession(int64_t sessionId)
 
 int64_t SqliteStore::appendMessage(
     int64_t sessionId,
+    std::optional<int64_t> subSessionId,
+    int seq,
     const std::string& role,
     const std::string& content,
     const std::string& toolCallsJson,
@@ -232,19 +252,25 @@ int64_t SqliteStore::appendMessage(
 {
     sqlite3_stmt* stmt;
     const char* sql = "INSERT INTO message"
-          " (session_id, role, content, tool_calls_json, tool_call_id, name, result_json, created_at)"
-          " VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+          " (session_id, sub_session_id, seq, role, content, tool_calls_json,"
+          "  tool_call_id, name, result_json, created_at)"
+          " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return -1;
     }
     sqlite3_bind_int64(stmt, 1, sessionId);
-    sqlite3_bind_text(stmt, 2, role.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, content.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 4, toolCallsJson.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 5, toolCallId.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 6, name.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 7, resultJson.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 8, static_cast<sqlite3_int64>(std::time(nullptr)));
+    if (subSessionId.has_value())
+        sqlite3_bind_int64(stmt, 2, subSessionId.value());
+    else
+        sqlite3_bind_null(stmt, 2);
+    sqlite3_bind_int(stmt, 3, seq);
+    sqlite3_bind_text(stmt, 4, role.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, content.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, toolCallsJson.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, toolCallId.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 8, name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 9, resultJson.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 10, static_cast<sqlite3_int64>(std::time(nullptr)));
 
     if (sqlite3_step(stmt) != SQLITE_DONE) {
         sqlite3_finalize(stmt);
@@ -255,17 +281,29 @@ int64_t SqliteStore::appendMessage(
     return id;
 }
 
-std::vector<Message> SqliteStore::loadMessages(int64_t sessionId)
+std::vector<Message> SqliteStore::loadMessages(int64_t sessionId,
+                                                std::optional<int64_t> subSessionId)
 {
     std::vector<Message> messages;
     sqlite3_stmt* stmt;
-    const char* sql = "SELECT id, session_id, role, content, tool_calls_json,"
-          " tool_call_id, name, result_json, created_at"
-          " FROM message WHERE session_id = ? ORDER BY id";
-    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    std::string sql = "SELECT id, session_id, role, content, tool_calls_json,"
+          " tool_call_id, name, result_json, created_at,"
+          " COALESCE(sub_session_id, 0), seq"
+          " FROM message WHERE session_id = ?";
+    if (!subSessionId.has_value()) {
+        sql += " AND sub_session_id IS NULL";
+    } else if (subSessionId.value() >= 0) {
+        sql += " AND COALESCE(sub_session_id, 0) = ?";
+    }
+    sql += " ORDER BY seq";
+    if (sqlite3_prepare_v2(m_impl->db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
         return messages;
     }
     sqlite3_bind_int64(stmt, 1, sessionId);
+    int bindIdx = 2;
+    if (subSessionId.has_value() && subSessionId.value() >= 0) {
+        sqlite3_bind_int64(stmt, bindIdx++, subSessionId.value());
+    }
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Message msg;
@@ -284,10 +322,107 @@ std::vector<Message> SqliteStore::loadMessages(int64_t sessionId)
         if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)))
             msg.resultJson = s;
         msg.createdAt = sqlite3_column_int64(stmt, 8);
+        msg.subSessionId = sqlite3_column_int64(stmt, 9);
+        msg.seq = sqlite3_column_int(stmt, 10);
         messages.push_back(msg);
     }
     sqlite3_finalize(stmt);
     return messages;
+}
+
+int SqliteStore::ensureSkill(int type, const std::string& name)
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT id FROM skill WHERE type = ? AND name = ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int(stmt, 1, type);
+    sqlite3_bind_text(stmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+    int id = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        id = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    if (id > 0) return id;
+
+    const char* ins = "INSERT INTO skill (type, name) VALUES (?, ?)";
+    if (sqlite3_prepare_v2(m_impl->db, ins, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int(stmt, 1, type);
+    sqlite3_bind_text(stmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    id = static_cast<int>(sqlite3_last_insert_rowid(m_impl->db));
+    sqlite3_finalize(stmt);
+    return id;
+}
+
+int64_t SqliteStore::appendInvocation(int64_t messageId,
+                                       int skillId,
+                                       const std::string& toolName,
+                                       const std::string& paramsJson,
+                                       const std::string& outputJson)
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "INSERT INTO invocation"
+          " (message_id, skill_id, tool_name, params_json, output_json, timestamp)"
+          " VALUES (?, ?, ?, ?, ?, ?)";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, messageId);
+    sqlite3_bind_int(stmt, 2, skillId);
+    sqlite3_bind_text(stmt, 3, toolName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, paramsJson.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, outputJson.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 6, static_cast<sqlite3_int64>(std::time(nullptr)));
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(m_impl->db);
+    sqlite3_finalize(stmt);
+    return id;
+}
+
+std::vector<InvocationRow> SqliteStore::loadInvocations(int type,
+                                                         const std::string& name) const
+{
+    std::vector<InvocationRow> rows;
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT inv.id, inv.message_id, inv.skill_id,"
+          " inv.tool_name, inv.params_json, inv.output_json, inv.timestamp"
+          " FROM invocation inv"
+          " JOIN skill sk ON sk.id = inv.skill_id"
+          " WHERE sk.type = ? AND sk.name = ?"
+          " ORDER BY inv.timestamp";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return rows;
+    }
+    sqlite3_bind_int(stmt, 1, type);
+    sqlite3_bind_text(stmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        InvocationRow r;
+        r.id = sqlite3_column_int64(stmt, 0);
+        r.messageId = sqlite3_column_int64(stmt, 1);
+        r.skillId = sqlite3_column_int64(stmt, 2);
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)))
+            r.toolName = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)))
+            r.paramsJson = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)))
+            r.outputJson = s;
+        r.timestamp = sqlite3_column_int64(stmt, 6);
+        rows.push_back(r);
+    }
+    sqlite3_finalize(stmt);
+    return rows;
 }
 
 int64_t SqliteStore::findSessionByUuid(const std::string& uuid) const
@@ -472,6 +607,10 @@ std::vector<Stream> SqliteStore::listSessionStreams(int64_t sessionId)
     }
     sqlite3_finalize(stmt);
     return streams;
+}
+
+void* SqliteStore::handle() const {
+    return m_impl->db;
 }
 
 } // namespace a0::persistence

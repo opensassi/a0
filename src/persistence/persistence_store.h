@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <optional>
 
 namespace a0::persistence {
 
@@ -23,6 +24,8 @@ struct Message {
     std::string name;
     std::string resultJson;
     int64_t createdAt;
+    int64_t subSessionId = 0;
+    int seq = 0;
 };
 
 struct Stream {
@@ -48,25 +51,31 @@ struct StreamChunk {
     int64_t timestamp;
 };
 
+struct InvocationRow {
+    int64_t id;
+    int64_t messageId;
+    int64_t skillId;
+    std::string toolName;
+    std::string paramsJson;
+    std::string outputJson;
+    int64_t timestamp;
+};
+
 class PersistenceStore {
 public:
     virtual ~PersistenceStore() = default;
 
-    /// Register or look up an agent binary. Returns agent.id.
     virtual int registerAgent(const BuildFingerprint& fp) = 0;
 
-    /// Create a new session. Returns session.id.
-    /// rootId is the top-level session.id (same as return for root).
-    /// parentId is 0 for root sessions.
     virtual int64_t createSession(int64_t rootId,
                                    int64_t parentId,
                                    int agentId) = 0;
 
-    /// Mark a session as ended.
     virtual void endSession(int64_t sessionId) = 0;
 
-    /// Append a message to the session log. Returns message.id.
     virtual int64_t appendMessage(int64_t sessionId,
+                                   std::optional<int64_t> subSessionId,
+                                   int seq,
                                    const std::string& role,
                                    const std::string& content,
                                    const std::string& toolCallsJson,
@@ -74,44 +83,49 @@ public:
                                    const std::string& name,
                                    const std::string& resultJson) = 0;
 
-    /// Load all messages for a session, ordered by id.
-    virtual std::vector<Message> loadMessages(int64_t sessionId) = 0;
+    virtual std::vector<Message> loadMessages(int64_t sessionId,
+                                               std::optional<int64_t> subSessionId = std::nullopt) = 0;
 
-    /// Look up session id by uuid string.
     virtual int64_t findSessionByUuid(const std::string& uuid) const = 0;
 
-    /// Flush pending writes to disk.
     virtual void flush() = 0;
 
     // --- Streaming ---
 
-    /// Create a new stream. Returns stream.id.
     virtual int64_t createStream(int64_t sessionId,
-                                  const std::string& toolCallId,
-                                  const std::string& name,
-                                  const std::string& contextType,
-                                  const std::string& contextId,
-                                  const std::string& cwd,
-                                  const std::string& terminalId = "") = 0;
+                                   const std::string& toolCallId,
+                                   const std::string& name,
+                                   const std::string& contextType,
+                                   const std::string& contextId,
+                                   const std::string& cwd,
+                                   const std::string& terminalId = "") = 0;
 
-    /// Append a chunk to a stream.
     virtual int appendChunk(int64_t streamId, int seq,
                              const std::string& direction,
                              const std::string& data) = 0;
 
-    /// Mark a stream as ended with an exit code.
     virtual int endStream(int64_t streamId, int exitCode) = 0;
 
-    /// Load all chunks for a stream, ordered by seq.
     virtual std::vector<StreamChunk> loadStreamChunks(int64_t streamId,
                                                        int offset = 0,
                                                        int limit = -1) = 0;
 
-    /// List all streams for a session.
     virtual std::vector<Stream> listSessionStreams(int64_t sessionId) = 0;
+
+    // --- Skill (type reference) ---
+
+    virtual int ensureSkill(int type, const std::string& name) = 0;
+
+    virtual int64_t appendInvocation(int64_t messageId,
+                                      int skillId,
+                                      const std::string& toolName,
+                                      const std::string& paramsJson,
+                                      const std::string& outputJson) = 0;
+
+    virtual std::vector<InvocationRow> loadInvocations(int type,
+                                                        const std::string& name) const = 0;
 };
 
-/// No-op implementation for testing.
 class NullStore : public PersistenceStore {
 public:
     int registerAgent(const BuildFingerprint&) override { return 1; }
@@ -121,13 +135,14 @@ public:
         return nextId++;
     }
     void endSession(int64_t) override {}
-    int64_t appendMessage(int64_t, const std::string&, const std::string&,
+    int64_t appendMessage(int64_t, std::optional<int64_t>, int,
+                           const std::string&, const std::string&,
                            const std::string&, const std::string&,
                            const std::string&, const std::string&) override {
         static int64_t nextMsg = 1000;
         return nextMsg++;
     }
-    std::vector<Message> loadMessages(int64_t) override { return {}; }
+    std::vector<Message> loadMessages(int64_t, std::optional<int64_t>) override { return {}; }
     int64_t findSessionByUuid(const std::string&) const override { return 0; }
     void flush() override {}
 
@@ -144,6 +159,16 @@ public:
         return {};
     }
     std::vector<Stream> listSessionStreams(int64_t) override { return {}; }
+
+    int ensureSkill(int, const std::string&) override { return 1; }
+    int64_t appendInvocation(int64_t, int, const std::string&,
+                              const std::string&, const std::string&) override {
+        static int64_t nextInv = 500;
+        return nextInv++;
+    }
+    std::vector<InvocationRow> loadInvocations(int, const std::string&) const override {
+        return {};
+    }
 
 private:
     int64_t m_nextRoot = 0;

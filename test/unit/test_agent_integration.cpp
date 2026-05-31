@@ -5,9 +5,9 @@
 #include "dependency_resolver.h"
 #include "system_tools.h"
 #include "context_manager.h"
-#include "invocation_logger.h"
 #include "schema_inference_engine.h"
 #include "base_prompt.h"
+#include "persistence/persistence_store.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>
@@ -20,7 +20,6 @@ class AgentIntegrationTest : public ::testing::Test {
 protected:
     std::string m_skillsDir;
     std::string m_storeDir;
-    std::string m_logDir;
     std::string m_pid;
 
     SkillManager* m_mgr = nullptr;
@@ -30,7 +29,7 @@ protected:
     DefaultDependencyResolver* m_depResolver = nullptr;
     DefaultSkillRunner* m_skillRunner = nullptr;
     DefaultContextManager* m_context = nullptr;
-    JsonLinesLogger* m_logger = nullptr;
+    a0::persistence::NullStore* m_persistence = nullptr;
     DefaultSchemaInferenceEngine* m_inference = nullptr;
     DefaultAgentCore* m_core = nullptr;
 
@@ -38,49 +37,45 @@ protected:
         m_pid = std::to_string(::getpid()) + "_" + std::to_string(rand());
         m_skillsDir = "/tmp/a0_int_skills_" + m_pid;
         m_storeDir = "/tmp/a0_int_store_" + m_pid;
-        m_logDir = "/tmp/a0_int_logs_" + m_pid;
         fs::remove_all(m_skillsDir);
         fs::remove_all(m_storeDir);
-        fs::remove_all(m_logDir);
         fs::create_directories(m_skillsDir);
         fs::create_directories(m_storeDir);
 
-        m_mgr = new SkillManager(m_skillsDir, m_storeDir, m_logDir);
+        m_mgr = new SkillManager(m_skillsDir, m_storeDir, nullptr);
         m_systemTools = new a0::SystemToolRegistry();
         m_toolRunner = new SubprocessToolRunner();
         m_provider = new DeepSeekProvider("test-key");
         m_depResolver = new DefaultDependencyResolver(m_mgr);
         m_context = new DefaultContextManager();
-        m_logger = new JsonLinesLogger(m_logDir);
+        m_persistence = new a0::persistence::NullStore();
         m_inference = new DefaultSchemaInferenceEngine(m_provider);
 
         m_skillRunner = new DefaultSkillRunner(
             m_toolRunner, m_provider, m_mgr, m_depResolver, m_systemTools);
         m_skillRunner->setSkillsDir(m_skillsDir);
 
-        // Use non-routable mock URL so provider fails fast instead of hanging
         m_provider->setMockUrl("http://127.0.0.1:18765/v1/chat/completions");
 
         m_core = new DefaultAgentCore(
-            m_toolRunner, m_skillRunner, m_provider, m_context, m_logger,
+            m_toolRunner, m_skillRunner, m_provider, m_context,
             m_depResolver, m_inference, m_systemTools, m_mgr,
-            nullptr, nullptr, nullptr);
+            m_persistence, nullptr, nullptr);
     }
 
     void TearDown() override {
         delete m_core;
         delete m_skillRunner;
         delete m_inference;
-        delete m_logger;
         delete m_context;
         delete m_depResolver;
         delete m_provider;
         delete m_toolRunner;
+        delete m_persistence;
         delete m_systemTools;
         delete m_mgr;
         fs::remove_all(m_skillsDir);
         fs::remove_all(m_storeDir);
-        fs::remove_all(m_logDir);
     }
 
     void addComponent(const std::string& component, const SkillManifest& manifest) {

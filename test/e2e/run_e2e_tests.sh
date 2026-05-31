@@ -14,12 +14,12 @@ cleanup() {
         kill "$MOCK_PID" 2>/dev/null || true
         wait "$MOCK_PID" 2>/dev/null || true
     fi
-    rm -rf /tmp/a0_e2e_${TEST_PID}_* "${PROJECT_DIR}/logs"
+    rm -rf /tmp/a0_e2e_${TEST_PID}_*
 }
 trap cleanup EXIT
 
-# Start clean: remove any leftover logs/test dirs
-rm -rf "${PROJECT_DIR}/logs" /tmp/a0_e2e_${TEST_PID}_*
+# Start clean: remove any leftover test dirs
+rm -rf /tmp/a0_e2e_${TEST_PID}_*
 
 FAILED=0
 
@@ -107,11 +107,11 @@ fi
 # ======================================================================
 echo ""
 echo "=== E2E-03: N/A (flat file skills removed) ==="
-echo "SKIP: E2E-03 (skill inference no longer writes flat .skill.json files)"
+    echo "SKIP: E2E-03 (skill inference no longer writes flat .skill.json files)"
 
 # ======================================================================
 echo ""
-echo "=== E2E-04: Session log created ==="
+echo "=== E2E-04: Session persisted to SQLite ==="
 N4_DIR="${PROJECT_DIR}/test_e2e_n4"
 rm -rf "$N4_DIR"
 A0_DIR=$(a0dir "e2e04")
@@ -122,13 +122,16 @@ echo "find files" | timeout 5 "$A0" \
     --a0-dir "$A0_DIR" \
     2>/dev/null > /dev/null || true
 rm -rf "$N4_DIR"
-# Logs are written to ./logs/ by JsonLinesLogger regardless of --a0-dir
-log_count=$(ls "${PROJECT_DIR}/logs"/*.jsonl 2>/dev/null | wc -l) || true
-rm -rf "$A0_DIR" "${PROJECT_DIR}/logs"
-if [ "$log_count" -ge 1 ]; then
-    echo "PASS: E2E-04 (${log_count} session logs)"
+# Verify session data was written to SQLite
+row_count=$(sqlite3 "$A0_DIR/db/sessions.db" \
+    "SELECT COUNT(*) FROM message WHERE session_id = (
+        SELECT id FROM session ORDER BY id DESC LIMIT 1
+    )" 2>/dev/null) || row_count=0
+rm -rf "$A0_DIR"
+if [ "$row_count" -ge 1 ]; then
+    echo "PASS: E2E-04 (${row_count} messages in SQLite)"
 else
-    echo "FAIL: E2E-04 (no log files in logs/)"
+    echo "FAIL: E2E-04 (no messages in SQLite)"
     FAILED=1
 fi
 

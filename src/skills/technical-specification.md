@@ -137,12 +137,12 @@ namespace a0::skills {
 /// All skill lifecycle operations go through this class.
 class SkillManager {
 public:
-    /// \param skillsRoot  Path to skills/ directory (default: "./skills")
-    /// \param storeRoot   Path to .a0/store/ directory (default: "./.a0/store")
-    /// \param logDir      Path to .a0/logs/ directory (default: "./.a0/logs")
+    /// \param skillsRoot   Path to skills/ directory (default: "./skills")
+    /// \param storeRoot    Path to .a0/store/ directory (default: "./.a0/store")
+    /// \param persistence  Optional persistence store for invocation history
     SkillManager(const std::string& skillsRoot,
                  const std::string& storeRoot,
-                 const std::string& logDir);
+                 a0::persistence::PersistenceStore* persistence = nullptr);
 
     virtual ~SkillManager();
 
@@ -406,8 +406,8 @@ namespace a0::skills {
 /// Used by SkillManager::install() to validate upgrades.
 class ValidationEngine {
 public:
-    /// \param logDir  Path to .a0/logs/ directory.
-    ValidationEngine(const std::string& logDir);
+    /// \param store  Persistence store (SQLite) for invocation history.
+    ValidationEngine(a0::persistence::PersistenceStore* store);
 
     /// Validate a candidate version against historical logs.
     /// \param ns         Namespace of the component.
@@ -425,7 +425,7 @@ public:
                  std::string& report);
 
 private:
-    std::string m_logDir;
+    PersistenceStore* m_store;
 
     int xReplay(const InvocationRecord& record,
                 const SkillManifest& manifest,
@@ -493,14 +493,17 @@ graph TB
     subgraph "Filesystem"
         SK_DIR[skills/]
         STORE[.a0/store/]
-        LOG_DIR[.a0/logs/]
         LCK[.a0/lock.json]
+    end
+
+    subgraph "Persistence"
+        PS[(SQLite)]
     end
 
     SL --> SK_DIR
     VM --> STORE
     VM --> LCK
-    VE --> LOG_DIR
+    VE --> PS
 
     SK_DIR --> SYS[system/]
     SK_DIR --> LOC[local/]
@@ -518,14 +521,14 @@ sequenceDiagram
     participant GH as GitHub
     participant VM as VersionManager
     participant VE as ValidationEngine
-    participant LOG as Logs
+    participant PS as PersistenceStore
 
     User->>SM: install("https://github.com/alice/utils")
     SM->>GH: fetch latest commit
     GH-->>SM: commit abc123, skill.json
     SM->>VE: validate("github_alice", "utils", abc123)
-    VE->>LOG: load records for github_alice:utils
-    LOG-->>VE: historical invocations
+    VE->>PS: loadInvocations(type, "utils")
+    PS-->>VE: historical invocations
     loop each record
         VE->>VE: replay tool with new version
         VE->>VE: compare output vs schema
@@ -686,7 +689,7 @@ a0 skill pin <qualified-name>
 
 Wire-up in `main.cpp`:
 
-1. `SkillManager` is constructed at startup with paths: `./skills`, `./.a0/store`, `./.a0/logs`
+1. `SkillManager` is constructed at startup with paths: `./skills`, `./.a0/store`, and an optional `PersistenceStore*` for invocation history
 2. `SkillManager::loadAll()` called during initialization
 3. `AgentCore` receives a `SkillManager*`
 4. `SkillRunner` resolves tool/prompt lookups through `SkillManager`

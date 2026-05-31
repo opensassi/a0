@@ -6,27 +6,11 @@
 
 ## Items
 
-### 1. Export via Persistence Store (SQLite) instead of JSONL
+### 1. ✅ Export via Persistence Store (SQLite) instead of JSONL *(Done — 2026-05-31)*
 
-Currently `exportSession()` in `JsonLinesLogger` reads from `logs/<id>.jsonl` files. The persistence layer (`PersistenceStore`/`SqliteStore`) records structured session data in SQLite under `.a0/db/sessions.db`. The export pipeline should read from the SQLite store instead, which provides richer data (tool call IDs, arguments, results, timestamps).
+Removed `JsonLinesLogger` entirely. Session persistence now uses SQLite with sub-session support for fork branches. The `export_session.sh` script queries SQLite directly. Tool invocation records are also stored in SQLite for ValidationEngine replay.
 
-**Implementation sketch:**
-```cpp
-// In persistence_store.h add:
-bool exportSession(int64_t sessionDbId, const std::string& outputPath) const;
-
-// In sqlite_store.cpp:
-// JOIN messages table, write as structured JSON array with
-// tool_calls_json parsed into structured form.
-```
-
-The `--export-session` CLI flag in `main.cpp` would then use the persistence store instead of `JsonLinesLogger::exportSession()`.
-
-**Files:**
-- `src/persistence/persistence_store.h` — add `exportSession()`
-- `src/persistence/sqlite_store.h/cpp` — implement SQLite export query
-- `src/main.cpp` — switch from logger export to persistence store export
-- `skills/local/opensassi/session-evaluation/bin/export_session.sh` — update to accept/store richer data if needed
+**Changes:** `persistence_store.h`, `sqlite_store.h/cpp`, `agent_core.h/cpp`, `main.cpp`, `skills/*`, tests.
 
 ---
 

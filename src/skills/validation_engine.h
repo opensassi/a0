@@ -2,13 +2,16 @@
 
 #include "skills.h"
 
+namespace a0::persistence { class PersistenceStore; }
+
 namespace a0::skills {
 
 /// Replays historical tool invocations against a candidate version.
 /// Uses CommandRunner for all subprocess execution.
+/// Invocation records are read from the persistence store (SQLite).
 class ValidationEngine {
 public:
-    explicit ValidationEngine(const std::string& logDir);
+    explicit ValidationEngine(a0::persistence::PersistenceStore* store);
 
     int validate(SkillNamespace ns,
                  const std::string& component,
@@ -17,7 +20,7 @@ public:
                  std::string& report);
 
 private:
-    std::string m_logDir;
+    a0::persistence::PersistenceStore* m_store;
 
     int xReplay(const InvocationRecord& record,
                 const SkillManifest& manifest,
@@ -31,7 +34,6 @@ private:
                      nlohmann::json& output);
     std::vector<InvocationRecord> xLoadLogs(const std::string& ns,
                                              const std::string& component) const;
-    void xWriteReport(const std::string& path, const std::string& details);
 };
 
 } // namespace a0::skills

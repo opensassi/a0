@@ -1,3 +1,4 @@
+#include "CLI11.hpp"
 #include "a0_dir.h"
 #include "agent_core.h"
 #include "persistence/sqlite_store.h"
@@ -6,7 +7,6 @@
 #include "context_manager.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
-#include "invocation_logger.h"
 #include "schema_inference_engine.h"
 #include "skill_runner.h"
 #include "tool_runner.h"
@@ -30,6 +30,13 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <sqlite3.h>
+
+using json = nlohmann::json;
+
+// ---------------------------------------------------------------------------
+// Helpers (unchanged from original)
+// ---------------------------------------------------------------------------
 
 static void loadEnvFile(const std::string& path) {
     std::ifstream file(path);
@@ -45,32 +52,12 @@ static void loadEnvFile(const std::string& path) {
     }
 }
 
-static bool hasFlag(int argc, char* argv[], const std::string& name) {
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] == name) return true;
-    }
-    return false;
-}
-
-static std::string getFlag(int argc, char* argv[],
-                            const std::string& name,
-                            const std::string& defaultVal) {
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] == name && i + 1 < argc)
-            return argv[i + 1];
-    }
-    const char* env = std::getenv(("A0_" + name.substr(2)).c_str());
-    if (env) return env;
-    return defaultVal;
-}
-
 static void killByPidFile(const std::string& path) {
     std::ifstream f(path);
     if (!f) return;
     int pid;
     f >> pid;
     if (pid <= 0) { std::remove(path.c_str()); return; }
-
     kill(pid, SIGTERM);
     for (int i = 0; i < 10; ++i) {
         usleep(100000);
@@ -83,7 +70,6 @@ static void killByPidFile(const std::string& path) {
     std::remove(path.c_str());
 }
 
-/// Read a c2 process's cmdline to find its --socket argument.
 static std::string xC2SocketFromProc(int pid) {
     std::string cmdlinePath = "/proc/" + std::to_string(pid) + "/cmdline";
     std::ifstream f(cmdlinePath, std::ios::binary);
@@ -91,58 +77,45 @@ static std::string xC2SocketFromProc(int pid) {
     std::vector<char> buf(4096, 0);
     f.read(buf.data(), buf.size() - 1);
     f.close();
-    // cmdline is NUL-delimited; walk args looking for --socket
     const char* p = buf.data();
     while (p && *p) {
         std::string arg(p);
         if (arg == "--socket" || arg == "-s") {
-            p += arg.size() + 1; // skip past NUL
+            p += arg.size() + 1;
             if (p && *p) return std::string(p);
         }
         p += arg.size() + 1;
-        // Safety: don't walk past buffer
         if (p >= buf.data() + buf.size()) break;
     }
     return "";
 }
 
-/// Kill all processes with the given comm name using pgrep.
-/// For c2 processes, also discover and return the socket paths that need cleanup.
-/// Returns the number of processes killed.
 static int killByProcessName(const std::string& name,
-                              std::vector<std::string>* outSockets = nullptr,
-                              int sigterm = SIGTERM) {
+                              std::vector<std::string>* outSockets = nullptr) {
     std::string cmd = "pgrep -x " + name + " 2>/dev/null";
     FILE* fp = popen(cmd.c_str(), "r");
     if (!fp) return 0;
-
     std::vector<int> pids;
     char line[64];
     while (fgets(line, sizeof(line), fp)) {
         int pid = atoi(line);
         if (pid > 0) pids.push_back(pid);
     }
-    int rc = pclose(fp);
-    (void)rc;
-
+    pclose(fp);
     for (int pid : pids) {
         if (outSockets && name == "c2") {
             std::string sock = xC2SocketFromProc(pid);
             if (!sock.empty()) outSockets->push_back(sock);
         }
     }
-
     int killed = 0;
     for (int pid : pids) {
-        if (kill(pid, sigterm) == 0) ++killed;
+        if (kill(pid, SIGTERM) == 0) ++killed;
     }
-
     if (killed > 0) {
         usleep(500000);
         for (int pid : pids) {
-            if (kill(pid, 0) == 0) {
-                kill(pid, SIGKILL);
-            }
+            if (kill(pid, 0) == 0) kill(pid, SIGKILL);
         }
     }
     return killed;
@@ -163,201 +136,331 @@ static std::string getC2PidPath() {
     return xdg ? std::string(xdg) + "/a0-c2.pid" : "/tmp/a0-c2.pid";
 }
 
-int main(int argc, char* argv[]) {
-    std::string envFilePath = ".env";
-    std::string skillsDir = "./skills";
-    std::string apiKey;
-    std::string mockUrl;
-    std::string resumeSessionId;
+// ---------------------------------------------------------------------------
+// Command: kill-all
+// ---------------------------------------------------------------------------
 
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--env-file" && i + 1 < argc) {
-            envFilePath = argv[++i];
-        }
-    }
-    loadEnvFile(envFilePath);
+static int cmdKillAll(const std::string& a0Dir) {
+    std::string b1PidPath = a0Dir + "/b1.pid";
+    std::string b1SockPath = a0Dir + "/b1.sock";
+    killByPidFile(b1PidPath);
+    killByPidFile(getC2PidPath());
+    std::vector<std::string> c2Sockets;
+    killByProcessName("c2", &c2Sockets);
+    killByProcessName("b1");
+    a0::ipc::UnixSocket::unlinkPath(b1SockPath);
+    a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
+    for (const auto& sock : c2Sockets)
+        a0::ipc::UnixSocket::unlinkPath(sock);
+    return 0;
+}
 
-    std::string a0Dir = "./.a0";
-    std::string runPrompt;
-    std::string runSkillName;
-    std::string runParamsStr = "{}";
-    std::string exportSessionId;
-    bool noB1 = false;
-    bool noContainerPool = false;
-    bool killAll = false;
-    bool terminalMode = false;
-    std::string terminalId;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--env-file" && i + 1 < argc) {
-            ++i;
-        } else if (arg == "--a0-dir" && i + 1 < argc)
-            a0Dir = argv[++i];
-        else if (arg == "--skills-dir" && i + 1 < argc)
-            skillsDir = argv[++i];
-        else if (arg == "--api-key" && i + 1 < argc)
-            apiKey = argv[++i];
-        else if (arg == "--mock-api" && i + 1 < argc)
-            mockUrl = argv[++i];
-        else if (arg == "--resume" && i + 1 < argc)
-            resumeSessionId = argv[++i];
-        else if (arg == "--run" && i + 1 < argc)
-            runPrompt = argv[++i];
-        else if (arg == "--prompt" && i + 1 < argc)
-            runParamsStr = json{{"prompt", std::string(argv[++i])}}.dump();
-        else if (arg == "--params" && i + 1 < argc)
-            runParamsStr = argv[++i];
-        else if (arg == "--skill" && i + 1 < argc)
-            runSkillName = argv[++i];
-        else if (arg == "--export-session" && i + 1 < argc)
-            exportSessionId = argv[++i];
-        else if (arg == "--no-b1")
-            noB1 = true;
-        else if (arg == "--no-container-pool")
-            noContainerPool = true;
-        else if (arg == "--kill-all")
-            killAll = true;
-        else if (arg == "--terminal")
-            terminalMode = true;
-        else if (arg == "--terminal-id" && i + 1 < argc)
-            terminalId = argv[++i];
-        else if (arg == "--cwd" && i + 1 < argc) {
-            // Change to the requested directory before terminal init
-            const char* dir = argv[++i];
-            if (chdir(dir) != 0) {
-                std::cerr << "a0: warning: could not chdir to " << dir << std::endl;
-            }
-        }
-    }
+static std::string epochToIso8601(int64_t epoch) {
+    if (epoch <= 0) return "";
+    char buf[32];
+    time_t t = static_cast<time_t>(epoch);
+    struct tm tm;
+    gmtime_r(&t, &tm);
+    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+    return {buf};
+}
 
-    if (apiKey.empty()) {
-        const char* envKey = std::getenv("DEEPSEEK_API_KEY");
-        if (envKey) apiKey = envKey;
-    }
-    if (apiKey.empty()) {
-        const char* home = std::getenv("HOME");
-        if (home) {
-            loadEnvFile(std::string(home) + "/.deepseek.env");
-            const char* envKey = std::getenv("DEEPSEEK_API_KEY");
-            if (envKey) apiKey = envKey;
-        }
-    }
+// ---------------------------------------------------------------------------
+// Command: session export
+// ---------------------------------------------------------------------------
 
-    // Ensure .a0/ directory exists (non-committed agent artifacts root)
-    int a0Created = a0::ensureA0Dir(a0Dir);
-    if (a0Created < 0) {
-        std::cerr << "a0: fatal: could not create " << a0Dir << std::endl;
+static int cmdSessionExport(const std::string& a0Dir,
+                             const std::string& sessionId,
+                             const std::string& outputPath,
+                             bool outputJson) {
+    if (sessionId.empty()) {
+        if (outputJson)
+            std::cout << "{\"error\":\"--session-id is required\"}\n";
+        else
+            std::cerr << "a0: --session-id is required for session export" << std::endl;
         return 1;
     }
-
-    if (killAll) {
-        std::string b1PidPath = a0Dir + "/b1.pid";
-        std::string b1SockPath = a0Dir + "/b1.sock";
-        killByPidFile(b1PidPath);
-        killByPidFile(getC2PidPath());
-        // Scan /proc for orphaned c2 processes and discover their sockets
-        std::vector<std::string> c2Sockets;
-        killByProcessName("c2", &c2Sockets);
-        killByProcessName("b1");
-        a0::ipc::UnixSocket::unlinkPath(b1SockPath);
-        a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
-        for (const auto& sock : c2Sockets) {
-            a0::ipc::UnixSocket::unlinkPath(sock);
-        }
-        return 0;
+    a0::persistence::SqliteStore db(a0Dir + "/db/sessions.db");
+    int64_t sid = db.findSessionByUuid(sessionId);
+    if (sid <= 0) {
+        if (outputJson)
+            std::cout << "{\"error\":\"session not found\",\"session_id\":\"" << sessionId << "\"}\n";
+        else
+            std::cerr << "Session not found: " << sessionId << std::endl;
+        return 1;
     }
-
-    // --export-session: dump session log as JSON to stdout and exit
-    if (!exportSessionId.empty()) {
-        JsonLinesLogger logger("logs");
-        std::string outPath = a0Dir + "/" + exportSessionId + ".json";
-        if (logger.exportSession(exportSessionId, outPath)) {
-            std::cout << "Exported session " << exportSessionId << " to " << outPath << std::endl;
-        } else {
-            std::cerr << "Session not found: " << exportSessionId << std::endl;
+    auto messages = db.loadMessages(sid, -1);
+    std::ostream* out = &std::cout;
+    std::ofstream outFile;
+    if (!outputPath.empty()) {
+        outFile.open(outputPath);
+        if (!outFile) {
+            if (outputJson)
+                std::cout << "{\"error\":\"cannot write\",\"path\":\"" << outputPath << "\"}\n";
+            else
+                std::cerr << "Cannot write: " << outputPath << std::endl;
             return 1;
         }
-        return 0;
+        out = &outFile;
+    }
+    for (const auto& m : messages) {
+        json j;
+        j["role"] = m.role;
+        j["content"] = m.content;
+        j["sub_session_id"] = m.subSessionId;
+        j["seq"] = m.seq;
+        j["created_at"] = epochToIso8601(m.createdAt);
+        if (!m.toolCallsJson.empty()) {
+            try { j["tool_calls"] = json::parse(m.toolCallsJson); }
+            catch (...) { j["tool_calls"] = m.toolCallsJson; }
+        }
+        if (!m.toolCallId.empty()) j["tool_call_id"] = m.toolCallId;
+        if (!m.name.empty()) j["name"] = m.name;
+        if (!m.resultJson.empty()) {
+            try { j["result"] = json::parse(m.resultJson); }
+            catch (...) { j["result"] = m.resultJson; }
+        }
+        *out << j.dump() << "\n";
+    }
+    if (outputJson && !outputPath.empty()) {
+        json result;
+        result["status"] = "ok";
+        result["session_id"] = sessionId;
+        result["output"] = outputPath;
+        result["message_count"] = static_cast<int>(messages.size());
+        std::cout << result.dump() << "\n";
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Command: session list
+// ---------------------------------------------------------------------------
+
+static int cmdSessionList(const std::string& a0Dir,
+                           int offset, int limit,
+                           bool outputJson) {
+    a0::persistence::SqliteStore db(a0Dir + "/db/sessions.db");
+    sqlite3* raw = static_cast<sqlite3*>(db.handle());
+
+    // Total count
+    sqlite3_stmt* stmt;
+    int total = 0;
+    if (sqlite3_prepare_v2(raw, "SELECT COUNT(*) FROM session", -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) total = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
     }
 
-    a0::skills::SkillManager skillMgr(skillsDir, a0Dir + "/store", a0Dir + "/logs");
+    // Query sessions
+    const char* sql =
+        "SELECT s.uuid, s.started_at, s.ended_at,"
+        " (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) AS msg_count"
+        " FROM session s ORDER BY s.started_at DESC LIMIT ? OFFSET ?";
+    struct SessionRow {
+        std::string uuid;
+        int64_t started_at, ended_at;
+        int message_count;
+    };
+    std::vector<SessionRow> rows;
+    if (sqlite3_prepare_v2(raw, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, limit);
+        sqlite3_bind_int(stmt, 2, offset);
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            SessionRow r;
+            if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)))
+                r.uuid = s;
+            r.started_at = sqlite3_column_int64(stmt, 1);
+            if (sqlite3_column_type(stmt, 2) != SQLITE_NULL)
+                r.ended_at = sqlite3_column_int64(stmt, 2);
+            else
+                r.ended_at = 0;
+            r.message_count = sqlite3_column_int(stmt, 3);
+            rows.push_back(r);
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    if (outputJson) {
+        json arr = json::array();
+        for (const auto& r : rows) {
+            json j;
+            j["uuid"] = r.uuid;
+            j["started_at"] = epochToIso8601(r.started_at);
+            if (r.ended_at > 0)
+                j["ended_at"] = epochToIso8601(r.ended_at);
+            j["message_count"] = r.message_count;
+            arr.push_back(j);
+        }
+        json out;
+        out["total"] = total;
+        out["offset"] = offset;
+        out["limit"] = limit;
+        out["sessions"] = arr;
+        std::cout << out.dump() << "\n";
+    } else {
+        if (rows.empty()) {
+            std::cout << "No sessions found.\n";
+            return 0;
+        }
+        std::cout << "Recent sessions:\n";
+        for (const auto& r : rows) {
+            std::cout << "  " << r.uuid
+                      << "  " << epochToIso8601(r.started_at)
+                      << "  " << r.message_count << " messages\n";
+        }
+        std::cout << "(Showing " << rows.size() << " of " << total << " total)\n";
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Build full agent stack (shared by repl and run)
+// ---------------------------------------------------------------------------
+
+struct AgentStack {
+    a0::persistence::SqliteStore persistence;
+    a0::skills::SkillManager skillMgr;
     SubprocessToolRunner toolRunner;
-    DeepSeekProvider provider(apiKey);
-    if (!mockUrl.empty())
-        provider.setMockUrl(mockUrl);
-
+    DeepSeekProvider provider;
     DefaultContextManager context;
-    JsonLinesLogger logger;
-    DefaultDependencyResolver depResolver(&skillMgr);
-    DefaultSchemaInferenceEngine inferenceEngine(&provider);
-
+    DefaultDependencyResolver depResolver;
+    DefaultSchemaInferenceEngine inferenceEngine;
     a0::docker::DockerContainerManager* containerMgr = nullptr;
     a0::docker::DockerComposeManager* composeMgr = nullptr;
     a0::docker::DockerToolRunnerImpl* dockerRunner = nullptr;
-
-    bool noDocker = hasFlag(argc, argv, "--no-docker");
-    if (!noDocker) {
-        int idleTimeout = 300;
-        int maxIdle = 10;
-        std::string defaultImage = "ubuntu:22.04";
-
-        std::string timeoutStr = getFlag(argc, argv, "--container-idle-timeout", "300");
-        std::string maxIdleStr = getFlag(argc, argv, "--max-idle-containers", "10");
-        defaultImage = getFlag(argc, argv, "--default-docker-image", "ubuntu:22.04");
-
-        try { idleTimeout = std::stoi(timeoutStr); } catch (...) {}
-        try { maxIdle = std::stoi(maxIdleStr); } catch (...) {}
-
-        containerMgr = new a0::docker::DockerContainerManager(idleTimeout, maxIdle, defaultImage);
-        composeMgr = new a0::docker::DockerComposeManager(idleTimeout);
-        dockerRunner = new a0::docker::DockerToolRunnerImpl(containerMgr, composeMgr, !noContainerPool);
-    }
-
     a0::SystemToolRegistry systemTools;
-
-    // Docker security filter — protects system-managed sandbox containers
     a0::DockerSecurityFilter dockerFilter;
-    // Register known system containers (populated from sandbox env)
-    const char* protectedEnv = std::getenv("A0_PROTECTED_CONTAINERS");
-    if (protectedEnv) {
-        std::string list(protectedEnv);
-        size_t pos = 0;
-        while ((pos = list.find(',')) != std::string::npos) {
-            dockerFilter.protectContainer(list.substr(0, pos));
-            list.erase(0, pos + 1);
+    DefaultSkillRunner* skillRunner = nullptr;
+    DefaultAgentCore* core = nullptr;
+
+    AgentStack(const std::string& a0Dir, const std::string& skillsDir,
+               const std::string& apiKey, const std::string& mockUrl,
+               bool noDocker, bool noContainerPool,
+               const std::string& idleTimeoutStr, const std::string& maxIdleStr,
+               const std::string& defaultImage)
+        : persistence(a0Dir + "/db/sessions.db")
+        , skillMgr(skillsDir, a0Dir + "/store", &persistence)
+        , provider(apiKey)
+        , depResolver(&skillMgr)
+        , inferenceEngine(&provider)
+    {
+        if (!mockUrl.empty())
+            provider.setMockUrl(mockUrl);
+
+        if (!noDocker) {
+            int idleTimeout = 300;
+            int maxIdle = 10;
+            std::string img = defaultImage.empty() ? "ubuntu:22.04" : defaultImage;
+            try { idleTimeout = std::stoi(idleTimeoutStr); } catch (...) {}
+            try { maxIdle = std::stoi(maxIdleStr); } catch (...) {}
+            containerMgr = new a0::docker::DockerContainerManager(idleTimeout, maxIdle, img);
+            composeMgr = new a0::docker::DockerComposeManager(idleTimeout);
+            dockerRunner = new a0::docker::DockerToolRunnerImpl(containerMgr, composeMgr, !noContainerPool);
         }
-        if (!list.empty()) dockerFilter.protectContainer(list);
+
+        const char* protectedEnv = std::getenv("A0_PROTECTED_CONTAINERS");
+        if (protectedEnv) {
+            std::string list(protectedEnv);
+            size_t pos = 0;
+            while ((pos = list.find(',')) != std::string::npos) {
+                dockerFilter.protectContainer(list.substr(0, pos));
+                list.erase(0, pos + 1);
+            }
+            if (!list.empty()) dockerFilter.protectContainer(list);
+        }
+        systemTools.setDockerSecurityFilter(&dockerFilter);
+        systemTools.setInferenceProvider(&provider);
+        systemTools.setSkillManager(&skillMgr);
+
+        skillRunner = new DefaultSkillRunner(&toolRunner, &provider, &skillMgr,
+            &depResolver, &systemTools, dockerRunner, composeMgr);
+        skillRunner->setSkillsDir(skillsDir);
+
+        core = new DefaultAgentCore(&toolRunner, skillRunner, &provider, &context,
+            &depResolver, &inferenceEngine, &systemTools, &skillMgr,
+            &persistence, dockerRunner, composeMgr);
     }
-    systemTools.setDockerSecurityFilter(&dockerFilter);
-    systemTools.setInferenceProvider(&provider);
-    systemTools.setSkillManager(&skillMgr);
 
-    // Persistence store (SQLite under .a0/db/)
-    a0::persistence::SqliteStore persistence(a0Dir + "/db/sessions.db");
-
-    DefaultSkillRunner skillRunner(&toolRunner, &provider, &skillMgr, &depResolver,
-                                    &systemTools, dockerRunner, composeMgr);
-    skillRunner.setSkillsDir(skillsDir);
-
-    DefaultAgentCore core(&toolRunner, &skillRunner,
-                          &provider, &context, &logger,
-                          &depResolver, &inferenceEngine,
-                          &systemTools, &skillMgr,
-                          &persistence, dockerRunner, composeMgr);
-
-    if (!resumeSessionId.empty()) {
-        core.resumeSession(resumeSessionId);
+    ~AgentStack() {
+        delete core;
+        delete skillRunner;
+        delete dockerRunner;
+        delete composeMgr;
+        delete containerMgr;
     }
+};
 
-    if (!core.init(skillsDir)) {
+// ---------------------------------------------------------------------------
+// Command: run (one-shot)
+// ---------------------------------------------------------------------------
+
+static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
+                  const std::string& apiKey, const std::string& mockUrl,
+                  const std::string& resumeSessionId,
+                  const std::string& runPrompt, const std::string& runSkillName,
+                  const std::string& runParamsStr,
+                  bool noDocker, bool noContainerPool,
+                  const std::string& idleTimeoutStr,
+                  const std::string& maxIdleStr,
+                  const std::string& defaultImage) {
+    AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
+                     idleTimeoutStr, maxIdleStr, defaultImage);
+
+    if (!resumeSessionId.empty())
+        stack.core->resumeSession(resumeSessionId);
+
+    if (!stack.core->init(skillsDir)) {
         std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
         return 1;
     }
 
-    // ---- b1 auto-launch ----
-    bool needsB1 = !noB1 && (terminalMode || (runPrompt.empty() && runSkillName.empty()));
+    json params;
+    try { params = json::parse(runParamsStr); } catch (...) { params = json::object(); }
+
+    std::string skillName = runSkillName;
+    if (skillName.empty() && runPrompt.find(':') != std::string::npos) {
+        Prompt sp;
+        if (stack.skillMgr.getPrompt(runPrompt, sp) == 0)
+            skillName = runPrompt;
+    }
+
+    json result;
+    if (!skillName.empty())
+        result = stack.core->runSkill(skillName, params);
+    else
+        result = stack.core->processGoal(runPrompt);
+
+    std::cout << result.dump() << std::endl;
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Command: repl (interactive, default)
+// ---------------------------------------------------------------------------
+
+static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
+                   const std::string& apiKey, const std::string& mockUrl,
+                   const std::string& resumeSessionId,
+                   bool noDocker, bool noContainerPool, bool noB1,
+                   const std::string& idleTimeoutStr,
+                   const std::string& maxIdleStr,
+                   const std::string& defaultImage) {
+    AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
+                     idleTimeoutStr, maxIdleStr, defaultImage);
+
+    if (!resumeSessionId.empty())
+        stack.core->resumeSession(resumeSessionId);
+
+    if (!stack.core->init(skillsDir)) {
+        std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
+        return 1;
+    }
+
+    bool needsB1 = !noB1;
     int b1Fd = -1;
     if (needsB1) {
         std::string b1SockPath = a0Dir + "/b1.sock";
@@ -390,7 +493,7 @@ int main(int argc, char* argv[]) {
             a0::ipc::Message reg;
             reg.type = a0::ipc::MessageType::REGISTER;
             reg.pid = getpid();
-            reg.sessionUuid = core.currentSessionId();
+            reg.sessionUuid = stack.core->currentSessionId();
             if (a0::ipc::sendMessage(sock, reg) == 0) {
                 b1Fd = sock.release();
                 std::cerr << "a0: registered with b1" << std::endl;
@@ -398,204 +501,255 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // ---- terminal mode ----
-    if (terminalMode && b1Fd >= 0) {
-        // Create persistence store
-        a0::persistence::SqliteStore persistence(a0Dir + "/db/sessions.db");
+    stack.core->run();
+    (void)b1Fd;
+    return 0;
+}
 
-        // Create a session for this terminal
-        a0::persistence::BuildFingerprint fp;
-        fp.binarySha1 = "terminal";
-        int agentId = persistence.registerAgent(fp);
-        int64_t sessionId = persistence.createSession(0, 0, agentId);
+// ---------------------------------------------------------------------------
+// Command: terminal
+// ---------------------------------------------------------------------------
 
-        // PTY allocation
-        int master = posix_openpt(O_RDWR | O_NOCTTY);
-        if (master < 0) {
-            std::cerr << "a0: terminal: posix_openpt failed\n";
-            return 1;
-        }
-        grantpt(master);
-        unlockpt(master);
+static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId) {
+    a0::persistence::SqliteStore persistence(a0Dir + "/db/sessions.db");
 
-        // Fork shell
-        pid_t shellPid = fork();
-        if (shellPid == 0) {
-            setsid();
-            int slave = open(ptsname(master), O_RDWR);
-            if (slave < 0) _exit(1);
-            dup2(slave, STDIN_FILENO);
-            dup2(slave, STDOUT_FILENO);
-            dup2(slave, STDERR_FILENO);
-            if (slave > 2) close(slave);
-            close(master);
-            const char* shell = getenv("SHELL");
-            if (!shell) shell = "/bin/bash";
-            execl(shell, shell, "--login", nullptr);
-            _exit(127);
-        }
+    a0::persistence::BuildFingerprint fp;
+    fp.binarySha1 = "terminal";
+    int agentId = persistence.registerAgent(fp);
+    int64_t sessionId = persistence.createSession(0, 0, agentId);
 
-        if (shellPid < 0) {
-            std::cerr << "a0: terminal: fork failed\n";
-            return 1;
-        }
+    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    if (master < 0) {
+        std::cerr << "a0: terminal: posix_openpt failed\n";
+        return 1;
+    }
+    grantpt(master);
+    unlockpt(master);
 
-        // Create stream record with terminalId for c2 DB discovery
-        int64_t streamId = persistence.createStream(sessionId, "",
-            "terminal", "host", "", ".", terminalId);
+    pid_t shellPid = fork();
+    if (shellPid == 0) {
+        setsid();
+        int slave = open(ptsname(master), O_RDWR);
+        if (slave < 0) _exit(1);
+        dup2(slave, STDIN_FILENO);
+        dup2(slave, STDOUT_FILENO);
+        dup2(slave, STDERR_FILENO);
+        if (slave > 2) close(slave);
+        close(master);
+        const char* shell = getenv("SHELL");
+        if (!shell) shell = "/bin/bash";
+        execl(shell, shell, "--login", nullptr);
+        _exit(127);
+    }
 
-        // Send TERMINAL_READY via b1 socket
-        {
-            a0::ipc::UnixSocket b1Sock(b1Fd);
-            a0::ipc::Message ready;
-            ready.type = a0::ipc::MessageType::TERMINAL_READY;
-            ready.streamId = streamId;
-            ready.pid = getpid();
-            ready.sessionUuid = "";
-            ready.terminalId = terminalId;
-            a0::ipc::sendMessage(b1Sock, ready);
-            b1Sock.release();
-        }
+    if (shellPid < 0) {
+        std::cerr << "a0: terminal: fork failed\n";
+        return 1;
+    }
 
-        // Streaming loop: read PTY master, persist + IPC
-        {
-            a0::ipc::UnixSocket b1Sock(b1Fd);
-            char buf[4096];
-            int seq = 0;
-            std::atomic<bool> done{false};
+    int64_t streamId = persistence.createStream(sessionId, "",
+        "terminal", "host", "", ".", terminalId);
 
-            // Reader thread for PTY input from b1 (STREAM_INPUT)
-            std::thread inputThread([&]() {
-                while (!done) {
-                    a0::ipc::Message inputMsg;
-                    int rc = a0::ipc::recvMessage(b1Sock, inputMsg, 100);
-                    if (rc == 0 && inputMsg.type == a0::ipc::MessageType::STREAM_INPUT
-                        && inputMsg.streamId == streamId) {
-                        write(master, inputMsg.chunkData.data(),
-                              inputMsg.chunkData.size());
-                    }
-                    // rc == -2 (timeout) is normal — no input available
-                    // rc < -2 is an actual error
-                }
-            });
+    std::string b1SockPath = a0Dir + "/b1.sock";
+    a0::ipc::UnixSocket b1Sock;
+    if (b1Sock.connect(b1SockPath, 2000) == 0) {
+        a0::ipc::Message ready;
+        ready.type = a0::ipc::MessageType::TERMINAL_READY;
+        ready.streamId = streamId;
+        ready.pid = getpid();
+        ready.terminalId = terminalId;
+        a0::ipc::sendMessage(b1Sock, ready);
+    }
 
-            // Main thread: read PTY output and send via IPC
-            fd_set rdfs;
-            struct timeval tv;
+    {
+        char buf[4096];
+        int seq = 0;
+        std::atomic<bool> done{false};
+
+        std::thread inputThread([&]() {
             while (!done) {
-                FD_ZERO(&rdfs);
-                FD_SET(master, &rdfs);
-                tv.tv_sec = 0;
-                tv.tv_usec = 100000;
-
-                if (select(master + 1, &rdfs, nullptr, nullptr, &tv) < 0) break;
-                if (FD_ISSET(master, &rdfs)) {
-                    ssize_t n = read(master, buf, sizeof(buf));
-                    if (n > 0) {
-                        std::string data(buf, static_cast<size_t>(n));
-                        // Persist chunk
-                        persistence.appendChunk(streamId, seq++, "stdout", data);
-                        // Send via IPC
-                        a0::ipc::Message chunk;
-                        chunk.type = a0::ipc::MessageType::STREAM_DATA;
-                        chunk.streamId = streamId;
-                        chunk.chunkSeq = seq;
-                        chunk.chunkDirection = "stdout";
-                        chunk.chunkData = data;
-                        a0::ipc::sendMessage(b1Sock, chunk);
-                    } else {
-                        done = true;
-                    }
+                a0::ipc::Message inputMsg;
+                int rc = a0::ipc::recvMessage(b1Sock, inputMsg, 100);
+                if (rc == 0 && inputMsg.type == a0::ipc::MessageType::STREAM_INPUT
+                    && inputMsg.streamId == streamId) {
+                    write(master, inputMsg.chunkData.data(), inputMsg.chunkData.size());
                 }
+            }
+        });
 
-                // Check if shell has exited
-                int status;
-                pid_t wpid = waitpid(shellPid, &status, WNOHANG);
-                if (wpid == shellPid) {
+        fd_set rdfs;
+        struct timeval tv;
+        while (!done) {
+            FD_ZERO(&rdfs);
+            FD_SET(master, &rdfs);
+            tv.tv_sec = 0;
+            tv.tv_usec = 100000;
+
+            if (select(master + 1, &rdfs, nullptr, nullptr, &tv) < 0) break;
+            if (FD_ISSET(master, &rdfs)) {
+                ssize_t n = read(master, buf, sizeof(buf));
+                if (n > 0) {
+                    std::string data(buf, static_cast<size_t>(n));
+                    persistence.appendChunk(streamId, seq++, "stdout", data);
+                    a0::ipc::Message chunk;
+                    chunk.type = a0::ipc::MessageType::STREAM_DATA;
+                    chunk.streamId = streamId;
+                    chunk.chunkSeq = seq;
+                    chunk.chunkDirection = "stdout";
+                    chunk.chunkData = data;
+                    a0::ipc::sendMessage(b1Sock, chunk);
+                } else {
                     done = true;
                 }
             }
 
-            done = true;
-            int exitCode = 0;
             int status;
-            if (waitpid(shellPid, &status, 0) > 0) {
-                if (WIFEXITED(status)) exitCode = WEXITSTATUS(status);
-            }
-            persistence.endStream(streamId, exitCode);
-
-            // Send STREAM_END
-            a0::ipc::Message end;
-            end.type = a0::ipc::MessageType::STREAM_END;
-            end.streamId = streamId;
-            end.pid = exitCode;
-            a0::ipc::sendMessage(b1Sock, end);
-
-            if (inputThread.joinable()) inputThread.join();
-            b1Sock.release();
+            pid_t wpid = waitpid(shellPid, &status, WNOHANG);
+            if (wpid == shellPid) done = true;
         }
 
-        close(master);
-        return 0;
+        done = true;
+        int exitCode = 0;
+        int status;
+        if (waitpid(shellPid, &status, 0) > 0) {
+            if (WIFEXITED(status)) exitCode = WEXITSTATUS(status);
+        }
+        persistence.endStream(streamId, exitCode);
+
+        a0::ipc::Message end;
+        end.type = a0::ipc::MessageType::STREAM_END;
+        end.streamId = streamId;
+        end.pid = exitCode;
+        a0::ipc::sendMessage(b1Sock, end);
+
+        if (inputThread.joinable()) inputThread.join();
     }
 
-    // ---- --run mode (non-interactive) ----
-    if (!runPrompt.empty() || !runSkillName.empty()) {
-        json params;
-        try { params = json::parse(runParamsStr); } catch (...) { params = json::object(); }
-        if (!params.contains("prompt") && !runPrompt.empty()) {
-            params["prompt"] = runPrompt;
-        }
-
-        std::string skillName = runSkillName;
-        if (skillName.empty() && runPrompt.find(':') != std::string::npos) {
-            // If --run text contains ':', try as qualified prompt name
-            Prompt sp;
-            if (skillMgr.getPrompt(runPrompt, sp) == 0) {
-                skillName = runPrompt;
-            }
-        }
-
-        json result;
-        if (!skillName.empty()) {
-            result = core.runSkill(skillName, params);
-        } else {
-            result = core.processGoal(runPrompt);
-        }
-        std::cout << result.dump() << std::endl;
-
-        if (killAll) {
-            killByPidFile(a0Dir + "/b1.pid");
-            killByPidFile(getC2PidPath());
-            std::vector<std::string> c2Socks;
-            killByProcessName("c2", &c2Socks);
-            killByProcessName("b1");
-            a0::ipc::UnixSocket::unlinkPath(a0Dir + "/b1.sock");
-            a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
-            for (const auto& s : c2Socks) a0::ipc::UnixSocket::unlinkPath(s);
-        }
-        delete dockerRunner;
-        delete composeMgr;
-        delete containerMgr;
-        return 0;
-    }
-
-    // ---- interactive REPL ----
-    core.run();
-
-    if (killAll) {
-        killByPidFile(a0Dir + "/b1.pid");
-        killByPidFile(getC2PidPath());
-        std::vector<std::string> c2Socks;
-        killByProcessName("c2", &c2Socks);
-        killByProcessName("b1");
-        a0::ipc::UnixSocket::unlinkPath(a0Dir + "/b1.sock");
-        a0::ipc::UnixSocket::unlinkPath(getC2PidPath());
-        for (const auto& s : c2Socks) a0::ipc::UnixSocket::unlinkPath(s);
-    }
-
-    delete dockerRunner;
-    delete composeMgr;
-    delete containerMgr;
+    close(master);
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Main — CLI11 dispatch
+// ---------------------------------------------------------------------------
+
+int main(int argc, char* argv[]) {
+    CLI::App app{"a0 - agent orchestrator"};
+
+    // Global flags
+    std::string a0Dir = "./.a0";
+    std::string envFilePath = ".env";
+    app.add_option("--a0-dir", a0Dir, ".a0 state root (default ./.a0)");
+    app.add_option("--env-file", envFilePath, ".env file path (default ./.env)");
+
+    // Agent flags (shared by repl and run modes)
+    std::string apiKey, mockUrl, skillsDir = "./skills", resumeSessionId;
+    std::string idleTimeoutStr = "300", maxIdleStr = "10", defaultImage = "ubuntu:22.04";
+    bool noDocker = false, noContainerPool = false, noB1 = false, outputJson = false;
+    app.add_flag("--output-json", outputJson, "Output results as JSON");
+    app.add_option("--api-key", apiKey, "DeepSeek API key");
+    app.add_option("--mock-api", mockUrl, "Mock API URL");
+    app.add_option("--skills-dir", skillsDir, "Skills root directory");
+    app.add_option("--resume", resumeSessionId, "Resume session UUID");
+    app.add_flag("--no-docker", noDocker, "Disable Docker integration");
+    app.add_flag("--no-container-pool", noContainerPool, "Disable container pooling");
+    app.add_flag("--no-b1", noB1, "Skip b1 supervisor launch");
+    app.add_option("--container-idle-timeout", idleTimeoutStr, "Container idle timeout (s)");
+    app.add_option("--max-idle-containers", maxIdleStr, "Max idle containers");
+    app.add_option("--default-docker-image", defaultImage, "Default Docker image");
+
+    // Subcommand: kill-all
+    auto* killCmd = app.add_subcommand("kill-all", "Stop daemon processes");
+
+    // Subcommand: session {export, list}
+    std::string exportSessionId, exportOutputPath;
+    int sessionListOffset = 0, sessionListLimit = 10;
+    auto* sessionCmd = app.add_subcommand("session", "Session operations");
+    auto* sessionExportCmd = sessionCmd->add_subcommand("export", "Export session as JSONL");
+    sessionExportCmd->add_flag("--output-json", outputJson, "Output results as JSON");
+    sessionExportCmd->add_option("--session-id", exportSessionId)->required();
+    sessionExportCmd->add_option("--output", exportOutputPath, "Output file (default: stdout)");
+    auto* sessionListCmd = sessionCmd->add_subcommand("list", "List recent sessions");
+    sessionListCmd->add_flag("--output-json", outputJson, "Output results as JSON");
+    sessionListCmd->add_option("--offset", sessionListOffset, "Pagination offset");
+    sessionListCmd->add_option("--limit", sessionListLimit, "Max results");
+
+    // Subcommand: run
+    std::string runPrompt, runSkillName, runParamsStr = "{}";
+    auto* runCmd = app.add_subcommand("run", "Execute a skill or prompt and exit");
+    runCmd->add_option("--api-key", apiKey);
+    runCmd->add_option("--mock-api", mockUrl);
+    runCmd->add_option("--skills-dir", skillsDir);
+    runCmd->add_option("--skill", runSkillName, "Qualified skill name");
+    runCmd->add_option("--params", runParamsStr, "JSON parameters");
+    runCmd->add_flag("--no-container-pool", noContainerPool);
+    runCmd->add_option("--container-idle-timeout", idleTimeoutStr);
+    runCmd->add_option("--max-idle-containers", maxIdleStr);
+    runCmd->add_option("--default-docker-image", defaultImage);
+    runCmd->add_option("--resume", resumeSessionId);
+    runCmd->add_option("prompt", runPrompt, "Prompt text (positional)");
+
+    // Subcommand: terminal
+    std::string terminalId;
+    auto* termCmd = app.add_subcommand("terminal", "PTY terminal session");
+    termCmd->add_option("--id", terminalId, "Terminal identifier");
+
+    // 0 subcommands = repl mode (default); unlimited otherwise
+    // Nesting works without explicit require_subcommand.
+
+    try {
+        app.parse(argc, argv);
+    } catch (const CLI::ParseError& e) {
+        return app.exit(e);
+    }
+
+    // Load env file (needed by all modes)
+    loadEnvFile(envFilePath);
+
+    // Resolve API key from env if not set
+    if (apiKey.empty()) {
+        const char* envKey = std::getenv("DEEPSEEK_API_KEY");
+        if (envKey) apiKey = envKey;
+    }
+    if (apiKey.empty()) {
+        const char* home = std::getenv("HOME");
+        if (home) {
+            loadEnvFile(std::string(home) + "/.deepseek.env");
+            const char* envKey = std::getenv("DEEPSEEK_API_KEY");
+            if (envKey) apiKey = envKey;
+        }
+    }
+
+    // Ensure .a0 directory (needed by all except kill-all)
+    if (!app.got_subcommand(killCmd)) {
+        int r = a0::ensureA0Dir(a0Dir);
+        if (r < 0) {
+            std::cerr << "a0: fatal: could not create " << a0Dir << std::endl;
+            return 1;
+        }
+    }
+
+    // Dispatch by subcommand
+    if (app.got_subcommand(killCmd))
+        return cmdKillAll(a0Dir);
+    if (app.got_subcommand(sessionCmd)) {
+        if (sessionCmd->got_subcommand(sessionExportCmd))
+            return cmdSessionExport(a0Dir, exportSessionId, exportOutputPath, outputJson);
+        if (sessionCmd->got_subcommand(sessionListCmd))
+            return cmdSessionList(a0Dir, sessionListOffset, sessionListLimit, outputJson);
+        // session with no subcommand → print help
+        std::cerr << "a0: session requires a subcommand (export|list)" << std::endl;
+        return 1;
+    }
+    if (app.got_subcommand(runCmd))
+        return cmdRun(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
+                      runPrompt, runSkillName, runParamsStr,
+                      noDocker, noContainerPool, idleTimeoutStr, maxIdleStr, defaultImage);
+    if (app.got_subcommand(termCmd))
+        return cmdTerminal(a0Dir, terminalId);
+
+    // Default: repl
+    return cmdRepl(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
+                   noDocker, noContainerPool, noB1,
+                   idleTimeoutStr, maxIdleStr, defaultImage);
 }

@@ -9,16 +9,15 @@
 #include "nlohmann/json.hpp"
 #include "../agent_interfaces.h"
 
+namespace a0::persistence { class PersistenceStore; }
+
 namespace a0::skills {
 
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
-
+/// Namespace identifier for a skill source.
 enum class SkillNamespace {
-    SYSTEM,
-    LOCAL,
-    GITHUB
+    SYSTEM,   // skills/system/ — shipped with agent, read-only, not overridable
+    LOCAL,    // skills/local/  — agent-created, writable
+    GITHUB    // skills/github_<user>/ — installed from GitHub, read-only
 };
 
 // ---------------------------------------------------------------------------
@@ -110,7 +109,7 @@ class SkillManager {
 public:
     SkillManager(const std::string& skillsRoot,
                  const std::string& storeRoot,
-                 const std::string& logDir);
+                 a0::persistence::PersistenceStore* persistence = nullptr);
     virtual ~SkillManager();
 
     int loadAll();
@@ -153,7 +152,6 @@ public:
 private:
     std::string m_skillsRoot;
     std::string m_storeRoot;
-    std::string m_logDir;
     SkillLoader* m_loader;
     VersionManager* m_versionMgr;
     ValidationEngine* m_validator;

@@ -32,7 +32,7 @@ protected:
         m_mgr = new SkillManager(
             skillsDir,
             "/tmp/a0_test_e2e_store_" + pid,
-            "/tmp/a0_test_e2e_logs_" + pid
+            nullptr
         );
         ASSERT_EQ(m_mgr->loadAll(), 0) << "Failed to load skills from " << skillsDir;
 

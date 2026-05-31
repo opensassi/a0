@@ -16,7 +16,7 @@ protected:
         m_mgr = new SkillManager(
             "/tmp/a0_test_dep_res_skills_" + pid,
             "/tmp/a0_test_dep_res_store_" + pid,
-            "/tmp/a0_test_dep_res_logs_" + pid
+            nullptr
         );
 
         SkillTool tool;
@@ -115,7 +115,7 @@ TEST_F(DependencyResolverTest, ManagerWithNoComponents) {
     SkillManager emptyMgr(
         "/tmp/a0_test_dep_res_empty_skills_" + pid,
         "/tmp/a0_test_dep_res_empty_store_" + pid,
-        "/tmp/a0_test_dep_res_empty_logs_" + pid
+        nullptr
     );
     DefaultDependencyResolver emptyRes(&emptyMgr);
     Prompt p;

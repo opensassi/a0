@@ -245,7 +245,7 @@ graph TB
 
     subgraph "File System"
         ComponentsDir[(components/)]
-        LogsDir[(logs/)]
+
     end
 
     subgraph "Docker Engine"
@@ -428,7 +428,7 @@ agent --components-dir <path> [--env-file <path>] [--a0-dir <path>] [--resume <s
 - `--a0-dir` : Root directory for non-committed agent artifacts (default `./.a0`). Created on startup if missing; on first creation, automatically appended to `.gitignore` when CWD is a git repository. All runtime state (b1 socket/pid, SQLite database, skills store, logs) is scoped under this directory.
 - `--components-dir` : Root directory for components (default `./components`).
 - `--env-file` : Path to `.env` file to load (default `./.env`). Each line is `KEY=VALUE`; `#` comments and blank lines are skipped. **The implementation must overwrite existing environment variables** (i.e., use `setenv(key, val, 1)`).
-- `--resume` : Session ID to replay from `./logs/`.
+
 - `--api-key` : DeepSeek API key; if not provided, read from environment (see precedence below).
 - `--mock-api` : Override the API URL (for testing, e.g., `http://localhost:8080`).
 
@@ -620,7 +620,6 @@ project/
 │   ├── skill_runner.cpp/.h
 │   ├── deepseek_provider.cpp/.h
 │   ├── context_manager.cpp/.h
-│   ├── invocation_logger.cpp/.h
 │   ├── schema_inference_engine.cpp/.h
 │   ├── dependency_resolver.cpp/.h
 │   ├── trace.h
@@ -662,9 +661,9 @@ project/
 │   ├── db/
 │   │   └── sessions.db              # SQLite session database
 │   ├── store/                       # version archive keyed by commit hash
-│   ├── logs/                        # historical invocation logs
+
 │   └── lock.json                    # version refcounts + metadata
-├── logs/                            # session logs (created at runtime)
+
 └── coverage_html/                   # generated after coverage run
 ```
 

@@ -49,13 +49,12 @@ std::string buildQualifiedName(const std::string& ns,
 
 SkillManager::SkillManager(const std::string& skillsRoot,
                            const std::string& storeRoot,
-                           const std::string& logDir)
+                           a0::persistence::PersistenceStore* persistence)
     : m_skillsRoot(skillsRoot)
     , m_storeRoot(storeRoot)
-    , m_logDir(logDir)
     , m_loader(new SkillLoader(skillsRoot))
     , m_versionMgr(new VersionManager(storeRoot, skillsRoot))
-    , m_validator(new ValidationEngine(logDir))
+    , m_validator(new ValidationEngine(persistence))
 {
 }
 

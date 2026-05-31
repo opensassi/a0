@@ -26,24 +26,21 @@ class SkillManagerTest : public ::testing::Test {
 protected:
     std::string m_skillsRoot;
     std::string m_storeRoot;
-    std::string m_logDir;
     SkillManager* m_mgr = nullptr;
 
     void SetUp() override {
         auto pid = std::to_string(::getpid());
         m_skillsRoot = "/tmp/a0_test_sm_skills_" + pid;
         m_storeRoot = "/tmp/a0_test_sm_store_" + pid;
-        m_logDir = "/tmp/a0_test_sm_logs_" + pid;
         fs::create_directories(m_skillsRoot + "/system");
         fs::create_directories(m_skillsRoot + "/local");
-        m_mgr = new SkillManager(m_skillsRoot, m_storeRoot, m_logDir);
+        m_mgr = new SkillManager(m_skillsRoot, m_storeRoot, nullptr);
     }
 
     void TearDown() override {
         delete m_mgr;
         fs::remove_all(m_skillsRoot);
         fs::remove_all(m_storeRoot);
-        fs::remove_all(m_logDir);
     }
 };
 

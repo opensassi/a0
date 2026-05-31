@@ -139,26 +139,6 @@ public:
     virtual std::vector<ContextFrame> snapshot() const = 0;
 };
 
-struct LogEntry {
-    std::string sessionId;
-    int64_t timestamp;
-    std::string eventType;
-    std::string data;
-};
-
-class InvocationLogger {
-public:
-    virtual ~InvocationLogger() = default;
-    virtual void log(const LogEntry& entry) = 0;
-    virtual bool replay(const std::string& sessionId,
-                        std::function<void(const LogEntry&)> callback) = 0;
-    virtual std::vector<std::string> listSessions() const = 0;
-    /// Export session log as JSON array to outputPath.
-    /// Returns true if any entries were written.
-    virtual bool exportSession(const std::string& sessionId,
-                                const std::string& outputPath) const = 0;
-};
-
 class DependencyResolver {
 public:
     virtual ~DependencyResolver() = default;

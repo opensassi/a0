@@ -1,18 +1,27 @@
 #include "validation_engine.h"
 #include "../command_runner.h"
+#include "../persistence/persistence_store.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <dirent.h>
 
 namespace a0::skills {
 
 using a0::CommandRunner;
 
-ValidationEngine::ValidationEngine(const std::string& logDir)
-    : m_logDir(logDir)
+static int xNsToType(SkillNamespace ns) {
+    switch (ns) {
+        case SkillNamespace::SYSTEM: return 0;
+        case SkillNamespace::LOCAL:  return 1;
+        case SkillNamespace::GITHUB: return 2;
+    }
+    return 0;
+}
+
+ValidationEngine::ValidationEngine(a0::persistence::PersistenceStore* store)
+    : m_store(store)
 {
 }
 
@@ -82,10 +91,6 @@ int ValidationEngine::validate(SkillNamespace ns,
                << " — output mismatch" << std::endl;
         }
     }
-
-    std::string reportPath = m_logDir + "/../store/" + nsStr + "/" + commit + "/validation-report.txt";
-    mkdir(reportPath.substr(0, reportPath.rfind('/')).c_str(), 0755);
-    xWriteReport(reportPath, ss.str());
 
     report = ss.str();
     if (failures > 0) {
@@ -173,45 +178,31 @@ std::vector<InvocationRecord> ValidationEngine::xLoadLogs(
     const std::string& component) const
 {
     std::vector<InvocationRecord> records;
-    std::string dir = m_logDir + "/" + ns + ":" + component;
-    DIR* d = opendir(dir.c_str());
-    if (!d) {
-        return records;
-    }
+    if (!m_store) return records;
 
-    struct dirent* entry;
-    while ((entry = readdir(d)) != nullptr) {
-        std::string name(entry->d_name);
-        if (name.length() < 6 || name.rfind(".jsonl") != name.length() - 6) {
-            continue;
+    int type = xNsToType(
+        ns == "system" ? SkillNamespace::SYSTEM :
+        ns == "local"  ? SkillNamespace::LOCAL :
+                         SkillNamespace::GITHUB);
+
+    auto rows = m_store->loadInvocations(type, component);
+    for (const auto& row : rows) {
+        InvocationRecord rec;
+        rec.toolName = row.toolName;
+        try {
+            rec.params = nlohmann::json::parse(row.paramsJson);
+        } catch (...) {
+            rec.params = row.paramsJson;
         }
-        std::string path = dir + "/" + name;
-        std::ifstream ifs(path);
-        std::string line;
-        while (std::getline(ifs, line)) {
-            if (line.empty()) continue;
-            try {
-                auto j = nlohmann::json::parse(line);
-                InvocationRecord rec;
-                rec.toolName = j.value("tool", "");
-                rec.params = j.value("params", nlohmann::json::object());
-                rec.output = j.value("output", nlohmann::json::object());
-                rec.timestamp = j.value("ts", 0LL);
-                records.push_back(rec);
-            } catch (...) {
-            }
+        try {
+            rec.output = nlohmann::json::parse(row.outputJson);
+        } catch (...) {
+            rec.output = row.outputJson;
         }
+        rec.timestamp = row.timestamp;
+        records.push_back(rec);
     }
-    closedir(d);
     return records;
-}
-
-void ValidationEngine::xWriteReport(const std::string& path, const std::string& details)
-{
-    std::ofstream ofs(path);
-    if (ofs) {
-        ofs << details;
-    }
 }
 
 } // namespace a0::skills
