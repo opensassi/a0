@@ -12,42 +12,30 @@ DefaultDependencyResolver implements DependencyResolver. It validates that all d
 ```cpp
 class DefaultDependencyResolver : public DependencyResolver {
 public:
-    /// \param skillManager  Non-owning pointer to the skill manager; must remain valid for the lifetime of this resolver.
-    explicit DefaultDependencyResolver(SkillManager* skillManager);
+    /// \param skillMgr  Non-owning pointer to the skill manager; must remain valid for the lifetime of this resolver.
+    explicit DefaultDependencyResolver(const a0::skills::SkillManager* skillMgr);
 
     /// \param tool  The tool to check (ignored – tools always pass).
     /// \retval true  Always, because tools have no dependency semantics.
     bool checkToolDependencies(const Tool& tool) const override;
 
-    /// \param skill  The skill whose dependency set to check.
-    /// \retval true  When missingDependencies(skill) returns an empty vector.
-    bool checkSkillDependencies(const Skill& skill) const override;
+    /// \param prompt  The prompt whose dependency set to check.
+    /// \retval true  When missingDependencies(prompt) returns an empty vector.
+    bool checkPromptDependencies(const Prompt& prompt) const override;
 
-    /// \param skill  The skill to audit.
+    /// \param prompt  The prompt to audit.
     /// \returns  Names of every transitive dependency that is neither a registered tool nor a registered skill.
-    std::vector<std::string> missingDependencies(const Skill& skill) const override;
-
-    /// Overload: resolve dependencies against SkillManager using qualified names.
-    /// \param dependencies  Map of qualified dependency names → bare name alias.
-    /// \returns  Missing qualified names.
-    std::vector<std::string> missingDependencies(
-        const std::unordered_map<std::string, std::string>& dependencies) const;
+    std::vector<std::string> missingDependencies(const Prompt& prompt) const override;
 
 private:
-    /// Recursive helper. Inserts skill.name into visited before iterating its deps.
-    /// \param skill    Current skill node to expand.
-    /// \param visited  Mutable set of already-visited skill names (cycle guard).
+    /// Recursive helper. Inserts prompt.name into visited before iterating its deps.
+    /// \param prompt   Current prompt node to expand.
+    /// \param visited  Mutable set of already-visited prompt names (cycle guard).
     /// \returns        Accumulated missing dependencies for this subtree.
     std::vector<std::string> missingDependenciesRecursive(
-        const Skill& skill, std::set<std::string>& visited) const;
+        const Prompt& prompt, std::set<std::string>& visited) const;
 
-    /// Recursive helper for qualified-name resolution.
-    std::vector<std::string> missingDepsQualified(
-        const std::string& ns,
-        const std::string& component,
-        std::set<std::string>& visited) const;
-
-    SkillManager* m_skillManager;
+    const a0::skills::SkillManager* m_skillMgr;
 };
 ```
 
@@ -123,8 +111,8 @@ sequenceDiagram
 | Method | Test Case | Input | Expected Output |
 |--------|-----------|-------|----------------|
 | `checkToolDependencies` | Any tool | `Tool{name="ls", ...}` | `true` |
-| `checkSkillDependencies` | All deps satisfied | Skill with dep pointing to registered tool | `true` |
-| `checkSkillDependencies` | Missing dep | Skill with dep absent from registry | `false` |
+| `checkPromptDependencies` | All deps satisfied | Prompt with dep pointing to registered tool | `true` |
+| `checkPromptDependencies` | Missing dep | Prompt with dep absent from registry | `false` |
 | `missingDependencies` | Fully satisfied | Skill with only tool deps | `[]` |
 | `missingDependencies` | Single missing | Skill with one dep missing | `["missing_dep"]` |
 | `missingDependencies` | Transitive missing | A→B→toolX, toolX missing | `["toolX"]` |

@@ -11,6 +11,8 @@ Central header for the Skills sub-module. Defines data structures (SkillTool, Sk
 ## 2. Data Structures
 
 ```cpp
+namespace a0::persistence { class PersistenceStore; }
+
 namespace a0::skills {
 
 enum class SkillNamespace { SYSTEM, LOCAL, GITHUB };
@@ -52,7 +54,31 @@ class SkillLoader;
 class VersionManager;
 class ValidationEngine;
 
-class SkillManager { /* facade — see skill_manager.spec.md */ };
+class SkillManager {
+public:
+    SkillManager(const std::string& skillsRoot,
+                 const std::string& storeRoot,
+                 a0::persistence::PersistenceStore* persistence = nullptr);
+    virtual ~SkillManager();
+
+    int loadAll();
+    int getTool(const std::string& qualifiedName, SkillTool& tool) const;
+    int getPrompt(const std::string& qualifiedName, Prompt& prompt) const;
+    int getManifest(SkillNamespace ns, const std::string& component, SkillManifest& manifest) const;
+    int getPromptResolved(const std::string& qualifiedName, Prompt& out) const;
+    int resolveName(const std::string& componentNs, const std::string& componentName,
+                    const std::string& shortName, std::string& qualifiedOut) const;
+    std::unordered_map<std::string, std::string> buildDispatchTable() const;
+    std::vector<std::string> listSkills(std::optional<SkillNamespace> ns) const;
+    int addTool(const std::string& component, const SkillTool& tool);
+    int addPrompt(const std::string& component, const Prompt& prompt);
+    int updateTool(const std::string& component, const std::string& name, const SkillTool& tool);
+    int install(const std::string& sourceUrl, bool force = false);
+    int install(const std::string& sourceUrl, const std::string& commit, bool force = false);
+    int remove(const std::string& qualifiedName);
+    int gc(bool dryRun = false);
+    int validate(const std::string& qualifiedName, const std::string& commit, std::string& report);
+};
 
 } // namespace a0::skills
 ```

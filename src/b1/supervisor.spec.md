@@ -45,11 +45,16 @@ private:
     int m_c2Fd = -1;
     std::chrono::steady_clock::time_point m_lastC2Push;
     int m_listenFd = -1;
+    std::unordered_map<int64_t, int> m_streamOwners;  // streamId → peerFd
 
     int xHandleRegister(const ipc::Message& msg, int peerFd);
     int xHandleHeartbeat(const ipc::Message& msg, int peerPid);
     int xHandleUserPrompt(const ipc::Message& msg, int peerFd);
     int xHandlePromptReply(const ipc::Message& msg);
+    int xHandleStreamData(const ipc::Message& msg, int peerFd);
+    int xHandleStreamEnd(const ipc::Message& msg, int peerFd);
+    int xHandleStreamInput(const ipc::Message& msg);
+    int xHandleTerminalOpen(const ipc::Message& msg, int peerFd);
     int xDetectCrashes();
     int xPushSnapshotToC2();
     int xLaunchC2IfNeeded();
@@ -118,6 +123,19 @@ sequenceDiagram
     end
 
     Sup->>C2: {"type":"update","agents":[...]}
+
+    C2->>Sup: {"type":"stream_input","streamId":42,"data":"input"}
+    Sup->>Sup: xHandleStreamInput → m_streamOwners lookup
+    Sup->>A0: forward stream_input
+
+    A0->>Sup: {"type":"stream_data","streamId":42,"chunkData":"...","chunkDirection":"stdout"}
+    Sup->>Sup: xHandleStreamData → track owner
+    Sup->>C2: forward stream_data
+
+    C2->>Sup: {"type":"terminal_open","terminalId":"t1","cwd":"/p"}
+    Sup->>Sup: xHandleTerminalOpen → fork/exec a0 --terminal
+    A0->>Sup: {"type":"terminal_ready","terminalId":"t1"}
+    Sup->>C2: forward terminal_ready
 ```
 
 ## 5. Error Handling

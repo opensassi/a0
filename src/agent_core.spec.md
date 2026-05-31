@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-DefaultAgentCore is the central orchestrator of the agent system. It owns pointers to every subsystem (skill manager, runners, provider, context, logger, resolver, inference engine, Docker infra) and exposes a high-level goal-processing loop. Its lifecycle is: construct → init (load skills + generate session ID) → run (REPL) or processGoal — resumeSession replays a prior session's log. It depends on SkillManager, ToolRunner, SkillRunner, InferenceProvider, ContextManager, InvocationLogger, DependencyResolver, SchemaInferenceEngine, and optionally DockerToolRunner + ComposeManager.
+DefaultAgentCore is the central orchestrator of the agent system. It owns pointers to every subsystem (skill manager, runners, provider, context, resolver, inference engine, system tools, Docker infra, persistence) and exposes a high-level goal-processing loop. Its lifecycle is: construct → init (load skills + generate session ID) → run (REPL) or processGoal — resumeSession replays a prior session's log. It depends on SkillManager, ToolRunner, SkillRunner, InferenceProvider, ContextManager, PersistenceStore, DependencyResolver, SchemaInferenceEngine, SystemToolRegistry, and optionally DockerToolRunner + ComposeManager.
 
 ## 2. Component Specifications
 
@@ -13,7 +13,6 @@ public:
     /// \param skillRunner    Executes skill pipelines
     /// \param provider       LLM inference (e.g. DeepSeek)
     /// \param context        Conversation context stack
-    /// \param logger         Invocation audit log
     /// \param depResolver    Checks transitive dependencies
     /// \param inferenceEngine  Infers Skill/Tool from natural language
     /// \param systemTools    Built-in tool registry (bash, read, glob, etc.)
@@ -25,7 +24,6 @@ public:
                      SkillRunner* skillRunner,
                      InferenceProvider* provider,
                      ContextManager* context,
-                     InvocationLogger* logger,
                      DependencyResolver* depResolver,
                      SchemaInferenceEngine* inferenceEngine,
                      a0::SystemToolRegistry* systemTools,
@@ -41,6 +39,9 @@ public:
     std::string currentSessionId() const override;
     void run() override;
 
+    a0::StreamHandle processGoalStreaming(const std::string& goal,
+                                           a0::StreamCallback onChunk) override;
+
 private:
     SkillManager* m_skillManager;
     ToolRunner* m_toolRunner;
@@ -49,11 +50,23 @@ private:
     SkillRunner* m_skillRunner;
     InferenceProvider* m_provider;
     ContextManager* m_context;
-    InvocationLogger* m_logger;
     DependencyResolver* m_depResolver;
     SchemaInferenceEngine* m_inferenceEngine;
     std::string m_sessionId;
     bool m_initialized;
+    int m_nextSubSession = 1;
+
+    void xPushToContext(const std::string& goal, const json& result);
+    std::string sanitizeUtf8(const std::string& input);
+    std::string truncateForLLM(const std::string& input);
+    void xRebuildBasePrompt();
+    void xBuildDispatchTable();
+    std::string xRunForkedLoop(const std::string& userInput,
+                                const std::vector<ToolSchema>& tools,
+                                int maxTurns = 20);
+    static void xParseQualified(const std::string& qn,
+                                 std::string& ns, std::string& comp, std::string& name);
+    static int xNsToType(const std::string& ns);
 };
 ```
 
@@ -70,19 +83,22 @@ graph TB
     AC --> SR[SkillRunner]
     AC --> IP[InferenceProvider]
     AC --> CM[ContextManager]
-    AC --> IL[InvocationLogger]
     AC --> DR[DependencyResolver]
     AC --> SIE[SchemaInferenceEngine]
-    AC -.-> DTR[DockerToolRunner]
-    AC -.-> CPM[ComposeManager]
+    AC --> ST[SystemToolRegistry]
+    AC --> PS[PersistenceStore]
+    AC --> DTR[DockerToolRunner]
+    AC --> CPM[ComposeManager]
+    AC --> ST[SystemToolRegistry]
+    AC --> PS[PersistenceStore]
 
     SM --> SL[SkillLoader]
     SM --> VM[VersionManager]
     SM --> VE[ValidationEngine]
+    VE --> PS
     TR --> DTR
     DTR --> DC[Docker Daemon]
     IP --> LLM[DeepSeek API / LLM]
-    IL --> DB[(Log Storage)]
 ```
 
 ## 4. Data Flow
@@ -95,28 +111,29 @@ sequenceDiagram
     participant SIE as SchemaInferenceEngine
     participant DR as DependencyResolver
     participant SR as SkillRunner
-    participant IL as InvocationLogger
+    participant PS as PersistenceStore
+    participant ST as SystemToolRegistry
 
     U->>AC: processGoal(goal)
-    AC->>SM: listSkills()
+    AC->>PS: createSession / appendMessage
+    AC->>SM: listSkills() / getPromptResolved()
     alt Exact match
-        SM-->>AC: skill name
-        AC->>SM: getPrompt(name)
-        SM-->>AC: SkillPrompt
+        SM-->>AC: Prompt
+        AC->>SR: execute(prompt, params)
+        SR-->>AC: result
     else No exact match
-        AC->>SIE: inferSkill(goal)
-        SIE-->>AC: Skill
-        AC->>SM: addPrompt(skill.name, prompt)
+        AC->>AC: xBuildDispatchTable()
+        AC->>ST: schemas()
+        ST-->>AC: toolSchemas
+        AC->>AC: xRunForkedLoop(goal, toolSchemas)
+        Note over AC: forked tool-calling loop with max 20 turns
+        loop each turn
+            AC->>SR: expandPrompt / tool dispatch
+            SR-->>AC: tool result or LLM response
+            AC->>PS: appendMessage per turn
+        end
     end
-    AC->>DR: missingDependencies(skill)
-    alt Dependencies missing
-        DR-->>AC: ["dep1","dep2"]
-        AC-->>U: "Missing dependencies: ..."
-    else All satisfied
-        AC->>SR: execute(skill, params)
-        SR-->>AC: result (json)
-    end
-    AC->>IL: log(entry)
+    AC->>PS: endSession
     AC-->>U: result
 ```
 
@@ -127,7 +144,7 @@ sequenceDiagram
 | `init()` called on non-existent directory | Returns `false` |
 | `processGoal()` called before `init()` | Throws `std::logic_error("AgentCore not initialized")` |
 | Empty goal string | Returns JSON string `"no goal provided"` |
-| No exact skill match and `inferSkill` throws | Returns `"failed to infer skill: <what>"` |
+| No exact prompt match and `inferPrompt` throws | Returns `"failed to infer prompt: <what>"` |
 | Missing dependencies after skill resolution | Returns `"Missing dependencies: dep1, dep2"` without invoking LLM |
 | `resumeSession()` with non-existent session | Returns `false`, context remains empty |
 | Malformed log data during replay | Silently skipped (catch-all) |
@@ -154,9 +171,14 @@ sequenceDiagram
 | `processGoal` | Not initialized | `"anything"` | Throws `std::logic_error` |
 | `processGoal` | Empty goal | `""` | Returns `"no goal provided"` |
 | `processGoal` | Exact skill match, deps satisfied | Registered skill `"test"` | Executes skill, returns result |
-| `processGoal` | No match, infer + deps satisfied | Unknown goal | infers skill, adds to registry, executes |
-| `processGoal` | No match, infer fails | Unknown goal | Returns `"failed to infer skill: ..."` |
-| `processGoal` | Dependencies missing | Skill requiring `"missing_tool"` | Returns `"Missing dependencies: missing_tool"` |
+| `processGoal` | No match, forked loop runs | Unknown goal | Calls xBuildDispatchTable + xRunForkedLoop |
+| `processGoal` | Forked loop exceeds max turns | Loop with 20+ tool calls | Returns `"ERROR: max tool call turns exceeded"` |
+| `processGoal` | Forked loop total payload exceeds limit | Each turn adds large content | Returns `"ERROR: cumulative message payload exceeds limit"` |
+| `processGoal` | LLM returns empty response | All tool calls done, no content | Returns `"ERROR: LLM returned empty response"` |
+| `xRunForkedLoop` | System tool dispatch | `m_systemTools->isSystemTool()` true | Uses system tool registry |
+| `xRunForkedLoop` | Qualified tool dispatch | `m_dispatch` contains name | Resolves via SkillManager, runs tool |
+| `xRunForkedLoop` | Prompt dispatch | `getPromptResolved` succeeds | Executes via SkillRunner |
+| `xRunForkedLoop` | Unknown dispatch target | Name not in dispatch or system tools | Returns `"ERROR: unknown tool: <name>"` |
 | `resumeSession` | Valid session with log entries | Existing session ID | Returns `true`, context rebuilt |
 | `resumeSession` | Non-existent session | `"nosession"` | Returns `false` |
 | `run` | REPL one line | Stdin `"test\n"` | processGoal called, result printed |

@@ -7,6 +7,17 @@ DeepSeekProvider implements InferenceProvider by making HTTPS POST requests to t
 ## 2. Component Specifications
 
 ```cpp
+struct ToolCall {
+    std::string id;
+    std::string name;
+    json arguments;
+};
+
+struct CompletionResponse {
+    std::string content;
+    std::vector<ToolCall> toolCalls;
+};
+
 class DeepSeekProvider : public InferenceProvider {
 public:
     /// \param apiKey  DeepSeek API key (sent as Bearer token)
@@ -20,6 +31,16 @@ public:
     /// \retval Empty string on HTTP/network/parse error
     std::string complete(const std::string& systemPrompt,
                          const std::string& userPrompt) override;
+
+    /// Tool-calling variant. Sends message history + tool schemas to the API.
+    /// \param systemPrompt  System-level instruction
+    /// \param messages      Conversation history including tool results
+    /// \param tools         JSON Schema tool definitions for function calling
+    /// \retval CompletionResponse with content and/or tool_calls array
+    CompletionResponse complete(
+        const std::string& systemPrompt,
+        const std::vector<Message>& messages,
+        const std::vector<ToolSchema>& tools) override;
 
     /// \param url  Override base URL (used for mock/test servers)
     void setMockUrl(const std::string& url) override;
@@ -66,6 +87,45 @@ sequenceDiagram
     participant CURL as libcurl
     participant API as DeepSeek API
 
+    Note over AC,DSP: Text completion (legacy)
+
+    AC->>DSP: complete(systemPrompt, userPrompt)
+    DSP->>DSP: build JSON payload
+    DSP->>CURL: curl_easy_init()
+    CURL-->>DSP: CURL* handle
+    DSP->>CURL: set URL (m_baseUrl)
+    DSP->>CURL: set headers (Content-Type + Authorization)
+    DSP->>CURL: set POST body (JSON dump)
+    DSP->>CURL: set WRITEFUNCTION / WRITEDATA
+    alt localhost URL
+        DSP->>CURL: SSL_VERIFYPEER = 0
+        DSP->>CURL: SSL_VERIFYHOST = 0
+    end
+    DSP->>CURL: curl_easy_perform()
+    CURL->>API: HTTPS POST
+    API-->>CURL: JSON response
+    CURL-->>DSP: response string
+    DSP->>DSP: parse JSON
+    DSP->>DSP: extract choices[0].message.content
+    DSP-->>AC: response text
+
+    Note over AC,DSP: Tool-calling variant
+
+    AC->>DSP: complete(systemPrompt, messages, tools)
+    DSP->>DSP: build payload with "tools" array + message history
+    DSP->>DSP: includes assistant tool_calls and tool results
+    Note over DSP: payload["tools"] = [{type:"function",function:{name,description,parameters}}]
+    DSP->>CURL: HTTPS POST with max_tokens=4096
+    API-->>CURL: JSON response
+    DSP->>DSP: parse choices[0].message
+    alt message contains tool_calls
+        DSP->>DSP: extract tool_calls array → ToolCall structs
+        DSP-->>AC: CompletionResponse{content:"", toolCalls:[{id,name,arguments}]}
+    else message contains content
+        DSP-->>AC: CompletionResponse{content:"...", toolCalls:[]}
+    end
+
+    Note over DSP: On curl/parse error → returns empty CompletionResponse
     AC->>DSP: complete(systemPrompt, userPrompt)
     DSP->>DSP: build JSON payload
     DSP->>CURL: curl_easy_init()
@@ -118,17 +178,19 @@ sequenceDiagram
 
 | Method | Test | Input | Expected |
 |--------|------|-------|----------|
-| `complete` | Successful response | Valid prompts, mock returns `{"choices":[{"message":{"content":"ok"}}]}` | Returns `"ok"` |
-| `complete` | API error field | Mock returns `{"error":"rate limit"}` | Returns `""` |
-| `complete` | Network timeout | Mock hangs for 31s | Returns `""` (curl 30s timeout) |
-| `complete` | Invalid JSON response | Mock returns `not json` | Returns `""` |
-| `complete` | Empty system prompt | `systemPrompt=""`, mock returns valid content | Returns content (system message omitted from array) |
-| `complete` | Empty user prompt | `userPrompt=""`, mock returns valid content | Returns content |
-| `complete` | curl init failure* | Force curl_easy_init to return nullptr | Returns `""` |
-| `complete` | Missing `choices` key | Mock returns `{}` | Returns `""` (parse exception) |
-| `complete` | Missing `message.content` | Mock returns `{"choices":[{}]}` | Returns `""` (parse exception) |
-| `complete` | localhost mock URL | `setMockUrl("http://localhost:8080/...")` | SSL verification skipped, request succeeds |
+| `complete` (text) | Successful response | Valid prompts, mock returns `{"choices":[{"message":{"content":"ok"}}]}` | Returns `"ok"` |
+| `complete` (text) | API error field | Mock returns `{"error":"rate limit"}` | Returns `""` |
+| `complete` (text) | Network timeout | Mock hangs for 31s | Returns `""` (curl 30s timeout) |
+| `complete` (text) | Invalid JSON response | Mock returns `not json` | Returns `""` |
+| `complete` (text) | Empty system prompt | `systemPrompt=""` | Content returned (system message omitted) |
+| `complete` (text) | Empty user prompt | `userPrompt=""` | Returns content |
+| `complete` (text) | curl init failure* | Force curl_easy_init to return nullptr | Returns `""` |
+| `complete` (text) | Missing `choices` key | Mock returns `{}` | Returns `""` |
+| `complete` (text) | Missing `message.content` | Mock returns `{"choices":[{}]}` | Returns `""` |
+| `complete` (tool) | Tool call returned | Mock returns tool_calls array | CompletionResponse with toolCalls populated |
+| `complete` (tool) | Both content and tool_calls | Mock returns both fields | Both fields populated in response |
+| `complete` (tool) | Unparseable arguments JSON | Mock returns invalid arguments | Empty arguments object, no crash |
+| `complete` (tool) | No tools registered | Empty tools vector, mock returns text | CompletionResponse with content only |
 | `setMockUrl` | Override URL | `"http://127.0.0.1:9999/v1/chat"` | Next `complete()` uses the new URL |
-| `complete` | API key with special chars | Key `"abc!@#"` | Request sent with exact header `Authorization: Bearer abc!@#` |
 
 \* *Hard to unit test without dependency injection; acceptance via code review.*

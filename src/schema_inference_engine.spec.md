@@ -20,10 +20,10 @@ public:
     /// \throws   std::runtime_error if LLM returns empty or unparseable response after one retry.
     Tool inferTool(const std::string& naturalLanguageDescription) override;
 
-    /// \param naturalLanguageDescription  Free-text description of the desired skill.
-    /// \returns  A Skill struct hydrated from LLM JSON output.
+    /// \param naturalLanguageDescription  Free-text description of the desired prompt/skill.
+    /// \returns  A Prompt struct hydrated from LLM JSON output.
     /// \throws   std::runtime_error if LLM returns empty or unparseable response after one retry.
-    Skill inferSkill(const std::string& naturalLanguageDescription) override;
+    Prompt inferPrompt(const std::string& naturalLanguageDescription) override;
 
 private:
     InferenceProvider* m_provider;
@@ -33,7 +33,7 @@ private:
 **Static prompts (defined in .cpp):**
 
 - `TOOL_INFERENCE_PROMPT` — Instructs LLM to output JSON with fields `name`, `description`, `command`, `inputMode`.
-- `SKILL_INFERENCE_PROMPT` — Instructs LLM to output JSON with fields `name`, `description`, `prompt`, `dependencies`, `validators`.
+- `SKILL_INFERENCE_PROMPT` — Instructs LLM to output JSON with fields `name`, `description`, `prompt`, `dependencies`, `validators`. (Used by `inferPrompt`)
 
 **Helper function `fillDefaults`:** If a required field is missing, not a string, or empty, assigns `"inferred"`.
 
@@ -80,7 +80,7 @@ sequenceDiagram
     DSIE-->>Client: Tool
     deactivate DSIE
 
-    Client->>DSIE: inferSkill(description)
+    Client->>DSIE: inferPrompt(description)
     activate DSIE
     DSIE->>IP: complete(SKILL_INFERENCE_PROMPT, description)
     IP->>LLM: API call
@@ -90,7 +90,7 @@ sequenceDiagram
     DSIE->>DSIE: fillDefaults(j, "name")
     DSIE->>DSIE: fillDefaults(j, "prompt")
     DSIE->>DSIE: parse dependencies[] and validators[]
-    DSIE-->>Client: Skill
+    DSIE-->>Client: Prompt
     deactivate DSIE
 ```
 
@@ -123,7 +123,7 @@ sequenceDiagram
 | `inferTool` | Invalid JSON, retry succeeds | First response garbage, second valid | Tool correctly constructed |
 | `inferTool` | Invalid JSON, both attempts fail | Both responses unparseable | `json::parse` exception propagates |
 | `inferTool` | Missing `name` in JSON | JSON omits `name` field | Tool.name == `"inferred"` |
-| `inferSkill` | Valid LLM response | Description, provider returns valid JSON | Skill with fields, dependencies, validators |
-| `inferSkill` | Missing `prompt` in JSON | JSON omits `prompt` field | Skill.prompt == `"inferred"` |
-| `inferSkill` | Empty dependencies array | JSON has `"dependencies": []` | Skill.dependencies empty |
-| `inferSkill` | Validators in JSON | JSON includes validators array | Skill.validators populated |
+| `inferPrompt` | Valid LLM response | Description, provider returns valid JSON | Prompt with fields, dependencies, validators |
+| `inferPrompt` | Missing `prompt` in JSON | JSON omits `prompt` field | Prompt.prompt == `"inferred"` |
+| `inferPrompt` | Empty dependencies array | JSON has `"dependencies": []` | Prompt.dependencies empty |
+| `inferPrompt` | Validators in JSON | JSON includes validators array | Prompt.validators populated |

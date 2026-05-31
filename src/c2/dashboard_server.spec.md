@@ -4,7 +4,7 @@
 
 HTTP dashboard server using uWebSockets. Serves JSON REST API endpoints, an SSE event stream, and static Web UI files from disk. Runs on the main thread alongside `C2Listener` on a separate thread.
 
-**Dependencies:** uWebSockets, `B1Registry`, `SseManager`, `EventStore`, `C2Listener`
+**Dependencies:** uWebSockets, `B1Registry`, `SseManager`, `EventStore`, `C2Listener`, SQLite3, POSIX
 
 **Lifecycle:** Created at c2 startup, blocks on `run()` until shutdown.
 
@@ -176,7 +176,7 @@ sequenceDiagram
 | GET | `/api/agent/:uuid` | Registry scan | Agent session info |
 | POST | `/api/agent/:uuid/messages` | Append message; resolves prompt if tool role | User input or tool response |
 | DELETE | `/api/agent/:uuid/prompt/:toolCallId` | Dismiss prompt | Cancel without answer |
-| POST | `/api/ping` | Sends pong via SSE | Client keepalive |
+| POST | `/api/ping` | Sends pong via SSE; registers `onAborted` handler | Client keepalive |
 | GET | `/*` | `xServeStatic()` | Static files, SPA fallthrough |
 
 ## 6. Static File Serving

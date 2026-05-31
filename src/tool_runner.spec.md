@@ -16,11 +16,19 @@ public:
     /// \param params  Parameters to pass to the subprocess.
     /// \returns       Stdout contents (string), or an error string prefixed with "ERROR: ".
     json run(const Tool& tool, const json& params) override;
+
+    a0::StreamHandle runStreaming(const Tool& tool,
+                                   const json& params,
+                                   a0::StreamCallback onChunk) override;
 };
 ```
 
-**Internal helper (file-static):**
+**Internal helpers (file-static):**
 ```cpp
+/// Build the shell command and extract stdin payload from tool params.
+static void buildToolCommand(const Tool& tool, const json& params,
+                             std::string& outCmd, std::string& outStdin);
+
 /// Format a CommandResult into a JSON string (or "ERROR: ...").
 static std::string formatResult(const CommandResult& res);
 ```
@@ -58,14 +66,10 @@ sequenceDiagram
     Client->>STR: run(tool, params)
     activate STR
 
-    alt inputMode == "args"
-        STR->>STR: build CLI command string
-        Note over STR: flatten params → --key=value<br/>escape with shellEscape
-    else stdin mode
-        STR->>STR: extract input string from params
-    end
+    STR->>STR: buildToolCommand(tool, params, cmd, input)
+    Note over STR: shared helper for both run and runStreaming
 
-    STR->>CR: run(cmd, stdinData, 30)
+    STR->>CR: run(cmd, input, tool.timeoutSecs)
     CR->>OS: fork / exec / pipe / alarm
     OS-->>CR: {exitCode, stdout, stderr, timedOut}
     CR-->>STR: CommandResult
@@ -82,6 +86,14 @@ sequenceDiagram
         STR-->>Client: stdout string
     end
 
+    deactivate STR
+
+    Client->>STR: runStreaming(tool, params, onChunk)
+    activate STR
+    STR->>CR: runStreaming(cmd, onChunk, tool.timeoutSecs)
+    CR-->>STR: StreamHandle
+    STR-->>Client: StreamHandle
+    Client->>Client: poll handle or wait()
     deactivate STR
 ```
 
@@ -116,3 +128,6 @@ sequenceDiagram
 | `run` | Failed command | Tool{command:`"nonexistent_cmd_xyz"`} | `"ERROR: command failed with exit code 127"` |
 | `run` | Shell escape | Params with single quote `it's` | `'it'\''s'` in the command string |
 | `run` | Non-object params (string) | Tool{inputMode:`"args"`}, params `"test"` | `sh -c "echo 'test'"` |
+| `runStreaming` | Basic streaming | Tool{command:`"echo hello"`} | onChunk called with "hello\n", handle.isDone() true |
+| `runStreaming` | Stdin via sendInput | Tool{command:`"cat"`} | onChunk receives input echoed back |
+| `runStreaming` | Timeout | Tool{command:`"sleep 60"`} | handle.wait() returns, handle.isDone() true |

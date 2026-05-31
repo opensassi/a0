@@ -147,30 +147,26 @@ public:
 
 ### `LogEntry` struct
 ```cpp
-struct LogEntry {
-    std::string sessionId;
-    int64_t timestamp;   /**< Unix epoch milliseconds */
-    std::string eventType;
-    std::string data;    /**< JSON-encoded payload */
-};
+
 ```
 
-### `InvocationLogger` (abstract)
+### `DependencyResolver` (abstract)
+
 ```cpp
-class InvocationLogger {
+class DependencyResolver {
 public:
-    virtual ~InvocationLogger() = default;
-    virtual void log(const LogEntry& entry) = 0;
+    virtual ~DependencyResolver() = default;
     /**
-     * @param sessionId Session to replay
-     * @param callback  Invoked for each matching entry in order
-     * @retval true  Session found and replayed
-     * @retval false Session not found
+     * @param tool Tool whose deps to check
+     * @retval true  All dependencies satisfied
+     * @retval false Missing dependencies
      */
-    virtual bool replay(const std::string& sessionId,
-                        std::function<void(const LogEntry&)> callback) = 0;
-    /** @return All known session IDs */
-    virtual std::vector<std::string> listSessions() const = 0;
+    virtual bool checkToolDependencies(const Tool& tool) const = 0;
+    /** @see checkToolDependencies */
+    virtual bool checkPromptDependencies(const Prompt& prompt) const = 0;
+    /** @param prompt Prompt to audit
+     *  @return Names of unsatisfied dependencies */
+    virtual std::vector<std::string> missingDependencies(const Prompt& prompt) const = 0;
 };
 ```
 
@@ -183,6 +179,13 @@ public:
      *  @param params JSON parameters for the tool
      *  @return JSON result of execution */
     virtual json run(const Tool& tool, const json& params) = 0;
+
+    /// Streaming variant: returns immediately with a StreamHandle.
+    /// onChunk is called from a background thread with (data, direction).
+    /// Default implementation delegates to CommandRunner::runStreaming.
+    virtual a0::StreamHandle runStreaming(const Tool& tool,
+                                           const json& params,
+                                           a0::StreamCallback onChunk);
 };
 ```
 
@@ -213,10 +216,10 @@ public:
      */
     virtual bool checkToolDependencies(const Tool& tool) const = 0;
     /** @see checkToolDependencies */
-    virtual bool checkSkillDependencies(const Skill& skill) const = 0;
-    /** @param skill Skill to audit
+    virtual bool checkPromptDependencies(const Prompt& prompt) const = 0;
+    /** @param prompt Prompt to audit
      *  @return Names of unsatisfied dependencies */
-    virtual std::vector<std::string> missingDependencies(const Skill& skill) const = 0;
+    virtual std::vector<std::string> missingDependencies(const Prompt& prompt) const = 0;
 };
 ```
 
@@ -225,18 +228,28 @@ public:
 class SkillRunner {
 public:
     virtual ~SkillRunner() = default;
-    /** @param skill  Skill definition
+    /** @param prompt  Prompt definition
      *  @param params Parameters to interpolate
      *  @return Expanded prompt string */
-    virtual std::string expandPrompt(const Skill& skill, const json& params) = 0;
-    /** @param skill Skill whose validators to run
+    virtual std::string expandPrompt(const Prompt& prompt, const json& params) = 0;
+    /** @param prompt Prompt whose validators to run
      *  @param input Data to validate
      *  @return Validated/transformed JSON */
-    virtual json runValidators(const Skill& skill, const json& input) = 0;
-    /** @param skill  Skill to execute
+    virtual json runValidators(const Prompt& prompt, const json& input) = 0;
+    /** @param prompt  Prompt to execute
      *  @param params Parameters
      *  @return Execution result JSON */
-    virtual json execute(const Skill& skill, const json& params) = 0;
+    virtual json execute(const Prompt& prompt, const json& params) = 0;
+
+    /// Streaming variant: executes the skill with streaming tool invocations.
+    /// onChunk is called for each chunk of streaming tool output.
+    /// Returns a StreamHandle that can be polled/interacted with.
+    virtual a0::StreamHandle executeStreaming(const Prompt& prompt,
+                                               const json& params,
+                                               a0::StreamCallback onChunk) = 0;
+
+    virtual void setGlobalVar(const std::string& key, const std::string& value) = 0;
+    virtual void setGlobalVars(const std::unordered_map<std::string, std::string>& vars) = 0;
 };
 ```
 
@@ -250,7 +263,7 @@ public:
     virtual Tool inferTool(const std::string& naturalLanguageDescription) = 0;
     /** @param naturalLanguageDescription Human description of the skill
      *  @return Inferred Skill struct */
-    virtual Skill inferSkill(const std::string& naturalLanguageDescription) = 0;
+    virtual Prompt inferPrompt(const std::string& naturalLanguageDescription) = 0;
 };
 ```
 
@@ -274,6 +287,11 @@ public:
     virtual std::string currentSessionId() const = 0;
     /** Interactive REPL loop (blocking) */
     virtual void run() = 0;
+
+    /// Streaming goal processing: processes a goal with streaming tool invocations.
+    /// onChunk receives streaming output from tool invocations.
+    virtual a0::StreamHandle processGoalStreaming(const std::string& goal,
+                                                   a0::StreamCallback onChunk) = 0;
 };
 ```
 
@@ -352,10 +370,6 @@ graph TB
         AC[AgentCore]
     end
 
-    subgraph Logging_Interfaces
-        IL[InvocationLogger]
-    end
-
     subgraph Docker_Interfaces
         CtrM[ContainerManager]
         CoM[ComposeManager]
@@ -392,24 +406,24 @@ sequenceDiagram
     participant CM as ContextManager
     participant DR as DependencyResolver
     participant SIE as SchemaInferenceEngine
-    participant IL as InvocationLogger
+    participant SM as SkillManager
+    participant CM as ContextManager
 
     User->>AC: processGoal(goal)
     AC->>SM: getPrompt(qualifiedName)
-    SM-->>AC: SkillPrompt
-    AC->>SIE: inferSkill(goal)
-    SIE-->>AC: Skill
-    AC->>DR: checkSkillDependencies(skill)
+    SM-->>AC: Prompt
+    AC->>SIE: inferPrompt(goal)
+    SIE-->>AC: Prompt
+    AC->>DR: checkPromptDependencies(prompt)
     DR-->>AC: ok
-    AC->>SR: execute(skill, params)
-    SR->>IP: complete(systemPrompt, userPrompt)
+    AC->>SR: execute(prompt, params)
+    SR->>IP: complete(systemPrompt, userPrompt, tools)
     IP-->>SR: response
     SR->>TR: run(tool, params)
     TR-->>SR: result
-    SR->>SR: runValidators(skill, result)
+    SR->>SR: runValidators(prompt, result)
     SR-->>AC: finalResult
     AC->>CM: push({role:"assistant", content:finalResult})
-    AC->>IL: log(entry)
     AC-->>User: finalResult
 ```
 
@@ -468,18 +482,11 @@ sequenceDiagram
 | `size`/`clear` | After pushes, after clear |
 | `snapshot` | Returns copy, modification isolation |
 
-### `InvocationLogger`
-| Method | Test Case |
-|---|---|
-| `log` | Single entry, multiple entries, large data |
-| `replay` | Existing session, missing session, empty session |
-| `listSessions` | No sessions, multiple sessions |
-
 ### `DependencyResolver`
 | Method | Test Case |
 |---|---|
 | `checkToolDependencies` | Satisfied, missing tool dep, missing binary |
-| `checkSkillDependencies` | All satisfied, missing skill dep |
+| `checkPromptDependencies` | All satisfied, missing prompt dep |
 | `missingDependencies` | Fully satisfied, partially missing, all missing |
 
 ### `SkillRunner`
@@ -493,7 +500,7 @@ sequenceDiagram
 | Method | Test Case |
 |---|---|
 | `inferTool` | Clear description, ambiguous description, empty string |
-| `inferSkill` | Same as inferTool |
+| `inferPrompt` | Same as inferTool |
 
 ### `AgentCore`
 | Method | Test Case |

@@ -23,52 +23,52 @@ public:
     explicit DockerComposeManager(int idleTimeout);
 
     /**
-     * @brief  Start a compose environment for a skill
-     * @param  skill          The skill requesting the environment
-     * @param  skillDirectory Filesystem path to the skill's compose file
+     * @brief  Start a compose environment for a prompt
+     * @param  prompt         The prompt requesting the environment
+     * @param  skillDirectory Filesystem path to the prompt's compose file
      * @return The Docker network name for the started stack,
      *         or empty string on failure
      */
-    std::string startEnvironment(const Skill& skill,
+    std::string startEnvironment(const Prompt& prompt,
                                   const std::string& skillDirectory) override;
 
     /**
      * @brief  Stop and remove a compose environment
-     * @param  skill The skill whose environment to tear down
+     * @param  prompt The prompt whose environment to tear down
      * @retval void  Errors are swallowed
      */
-    void stopEnvironment(const Skill& skill) override;
+    void stopEnvironment(const Prompt& prompt) override;
 
     /**
-     * @brief  Bump the last-used timestamp for a skill's stack
-     * @param  skill The skill to mark
+     * @brief  Bump the last-used timestamp for a prompt's stack
+     * @param  prompt The prompt to mark
      * @retval void  No-op if stack does not exist
      */
-    void markUsed(const Skill& skill) override;
+    void markUsed(const Prompt& prompt) override;
 
     /**
-     * @brief  Record which skill is currently active
-     * @param  skill The active skill
-     * @retval void  Stores skill name internally
+     * @brief  Record which prompt is currently active
+     * @param  prompt The active prompt
+     * @retval void  Stores prompt name internally
      */
-    void setCurrentSkill(const Skill& skill) override;
+    void setCurrentPrompt(const Prompt& prompt) override;
 
     /**
-     * @brief  Get the network of the currently active skill
+     * @brief  Get the network of the currently active prompt
      * @return Network name string, or empty if none set
      */
     std::string getCurrentNetwork() const override;
 
     /**
-     * @brief  Clear the currently active skill name
+     * @brief  Clear the currently active prompt name
      * @retval void  Resets internal tracker
      */
-    void clearCurrentSkill() override;
+    void clearCurrentPrompt() override;
 
 private:
     int m_idleTimeout;
     std::unordered_map<std::string, ComposeStackInfo> m_stacks;
-    std::string m_currentSkillName;
+    std::string m_currentPromptName;
 };
 ```
 
@@ -108,7 +108,7 @@ sequenceDiagram
     participant Map as m_stacks
     participant CLI as DockerCLIWrapper
 
-    S->>DCM: startEnvironment(skill, dir)
+    S->>DCM: startEnvironment(prompt, dir)
     DCM->>DCM: composeFile empty?
     alt empty
         DCM-->>S: return ""
@@ -123,7 +123,7 @@ sequenceDiagram
     DCM->>Map: store(dir → ComposeStackInfo)
     DCM-->>S: return networkName
 
-    S->>DCM: stopEnvironment(skill)
+    S->>DCM: stopEnvironment(prompt)
     DCM->>Map: find(dir)
     DCM->>CLI: composeDown(composeFile, dir)
     DCM->>Map: erase(dir)
@@ -154,5 +154,5 @@ sequenceDiagram
 | `stopEnvironment` | Non-existent stack | No-op |
 | `markUsed` | Existing stack | lastUsed updated |
 | `markUsed` | Non-existent stack | No-op |
-| `setCurrentSkill` + `getCurrentNetwork` | Skill set | Returns matching network |
-| `clearCurrentSkill` | After set | `getCurrentNetwork` returns `""` |
+| `setCurrentPrompt` + `getCurrentNetwork` | Prompt set | Returns matching network |
+| `clearCurrentPrompt` | After set | `getCurrentNetwork` returns `""` |

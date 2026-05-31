@@ -213,6 +213,8 @@ private:
     int xHandleRegister(const nlohmann::json& msg, int peerFd);
     int xHandleUpdate(const nlohmann::json& msg);
     int xHandleUserPrompt(const nlohmann::json& msg);
+    int xHandleStreamData(const nlohmann::json& msg);
+    int xHandleStreamEnd(const nlohmann::json& msg);
     void xCleanupStaleSocket();
 };
 
@@ -311,11 +313,13 @@ graph TB
         STATIC[c2/web/index.html + JS + CSS]
     end
 
-    B1_1 -->|"unix socket: register/update/user_prompt"| L
-    B1_2 -->|"unix socket: register/update/user_prompt"| L
+    B1_1 -->|"unix socket: register/update/user_prompt/stream_data/stream_end"| L
+    B1_2 -->|"unix socket: register/update/user_prompt/stream_data/stream_end"| L
     L -->|upsertB1/removeB1/updateAgents| REG
     L -->|upsertPrompt| EV
     L -->|broadcast user_prompt| SSE
+    L -->|broadcast stream_chunk/stream_end| SSE
+    L -->|broadcast terminal_ready| SSE
     REG -->|broadcast state changes| SSE
 
     D -->|reads| REG
@@ -421,7 +425,27 @@ sequenceDiagram
     SSE->>Browser: prompt_resolved event
 ```
 
-### 4.4 Dashboard API (HTTP)
+### 4.4 Stream Data Relay
+
+```mermaid
+sequenceDiagram
+    participant B1 as b1 Supervisor
+    participant L as C2Listener
+    participant SSE as SseManager
+    participant Browser
+
+    B1->>L: {"type":"stream_data","streamId":42,"chunkSeq":1,"chunkDirection":"stdout","chunkData":"hello"}
+    L->>L: xHandleStreamData → build SSE event
+    L->>SSE: broadcast("stream_chunk", {streamId, seq, direction, data, timestamp})
+    SSE->>Browser: event:stream_chunk data:{...}
+
+    B1->>L: {"type":"stream_end","streamId":42,"pid":0}
+    L->>L: xHandleStreamEnd → build SSE event
+    L->>SSE: broadcast("stream_end", {streamId, exitCode})
+    SSE->>Browser: event:stream_end data:{...}
+```
+
+### 4.5 Dashboard API (HTTP)
 
 ```mermaid
 sequenceDiagram
@@ -492,6 +516,9 @@ All SSE events use the `event:` field for discrimination and `data:` for JSON pa
 | `prompt_resolved` | No | session, toolCallId | User responded to prompt |
 | `prompt_dismissed` | No | session, toolCallId | User dismissed prompt |
 | `pong` | No | echo, serverTime | Response to client ping |
+| `stream_chunk` | No | streamId, seq, direction, data, timestamp | Streaming tool output chunk |
+| `stream_end` | No | streamId, exitCode | Streaming tool exited |
+| `terminal_ready` | No | terminalId, streamId, pid | a0 terminal instance started |
 
 Events that require user input (`user_prompt`) are persisted in SQLite until resolved or dismissed. Informational events are not stored — the UI refreshes base state from REST endpoints on reconnect.
 
@@ -638,6 +665,9 @@ struct AgentRecord {
 | `DashboardServer` | xMimeType .js | text/javascript |
 | `C2Listener` | sendToB1 unknown pid | Returns -1 |
 | `C2Listener` | xHandleUserPrompt | Stores in EventStore, broadcasts SSE |
+| `C2Listener` | xHandleStreamData | Builds SSE event, broadcasts stream_chunk |
+| `C2Listener` | xHandleStreamEnd | Builds SSE event, broadcasts stream_end |
+| `C2Listener` | xHandleStreamData missing fields | Returns -1, no broadcast |
 
 ### 10.2 Integration Tests
 

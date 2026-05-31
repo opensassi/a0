@@ -15,12 +15,13 @@ class SkillManager {
 public:
     SkillManager(const std::string& skillsRoot,
                  const std::string& storeRoot,
-                 const std::string& logDir);
+                 a0::persistence::PersistenceStore* persistence = nullptr);
     ~SkillManager();
 
     int loadAll();
     int getTool(const std::string& qualifiedName, SkillTool& tool) const;
     int getPrompt(const std::string& qualifiedName, Prompt& prompt) const;
+    int getManifest(SkillNamespace ns, const std::string& component, SkillManifest& manifest) const;
     int getPromptResolved(const std::string& qualifiedName, Prompt& out) const;
     int resolveName(const std::string& componentNs,
                     const std::string& componentName,

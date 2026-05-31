@@ -30,6 +30,18 @@ public:
      */
     json run(const Tool& tool, const json& params) override;
 
+    /**
+     * @brief  Streaming variant of run. Returns a StreamHandle.
+     * Supports both pooled (docker exec) and ephemeral (docker run --rm) modes.
+     * @param  tool    Tool descriptor
+     * @param  params  JSON parameters
+     * @param  onChunk Called from background thread with (data, direction)
+     * @return StreamHandle for polling/interaction
+     */
+    a0::StreamHandle runStreaming(const Tool& tool,
+                                   const json& params,
+                                   a0::StreamCallback onChunk) override;
+
 private:
     /**
      * @brief  Construct the shell command string from tool + params
@@ -52,6 +64,24 @@ private:
     std::string runEphemeral(const Tool& tool,
                               const std::string& command,
                               const std::string& stdinData) const;
+
+    /**
+     * @brief  Run a one-shot ephemeral container with streaming
+     * @param  image       Docker image
+     * @param  command     Shell command
+     * @param  stdinData   Optional stdin
+     * @param  timeoutSecs Timeout in seconds
+     * @param  networkFlag "--network=<name>" or empty
+     * @param  onChunk     Streaming callback
+     * @return StreamHandle
+     */
+    static a0::StreamHandle execDockerRunStreaming(
+        const std::string& image,
+        const std::string& command,
+        const std::string& stdinData,
+        int timeoutSecs,
+        const std::string& networkFlag,
+        a0::StreamCallback onChunk);
 
     ContainerManager* m_containerManager;
     ComposeManager* m_composeManager;
@@ -78,6 +108,8 @@ graph TB
         DTR[DockerToolRunnerImpl]
         BC[buildCommand]
         RE[runEphemeral]
+        RES[runEphemeralStreaming]
+        RS[runStreaming]
     end
 
     subgraph Managers
@@ -94,12 +126,17 @@ graph TB
     end
 
     SM -->|run| DTR
+    SM -->|runStreaming| DTR
     DTR -->|buildCommand| BC
-    DTR -->|tool.useContainerPool?| CM
-    DTR -->|runEphemeral| RE
-    RE -->|EDR| EDR
+    DTR -->|pooled| CM
+    DTR -->|ephemeral| RE
+    DTR -->|streaming pooled| RS
+    DTR -->|streaming ephemeral| RES
+    RE -->|execDockerRun| CR
+    RES -->|execDockerRunStreaming| CR
+    RS -->|CommandRunner::runStreaming| CR
     RE -->|getCurrentNetwork| CompM
-    EDR -->|CR| CR
+    RES -->|networkFlag| CompM
     CR --> Docker[docker CLI]
     CM --> DCW
 ```
@@ -117,7 +154,7 @@ sequenceDiagram
 
     S->>DTR: run(tool, params)
     DTR->>DTR: buildCommand(tool, params)
-    DTR->>DTR: tool.useContainerPool?
+    DTR->>DTR: m_poolEnabled && m_containerManager?
     alt pooled
         DTR->>CM: acquireContainer(tool)
         CM-->>DTR: containerId
@@ -131,6 +168,20 @@ sequenceDiagram
         EDR-->>DTR: output
     end
     DTR-->>S: return { "output": result }
+
+    S->>DTR: runStreaming(tool, params, onChunk)
+    DTR->>DTR: buildCommand
+    DTR->>CompM: getCurrentNetwork
+    alt pooled
+        DTR->>CM: acquireContainer(tool)
+        DTR->>CR: runStreaming("docker exec -i ...", onChunk, timeout)
+        CR-->>DTR: StreamHandle
+    else ephemeral
+        DTR->>DTR: execDockerRunStreaming(image, cmd, stdin, timeout, networkFlag, onChunk)
+        DTR->>CR: runStreaming("docker run --rm ...", onChunk, timeout)
+        CR-->>DTR: StreamHandle
+    end
+    DTR-->>S: StreamHandle
 ```
 
 ## 5. Error Handling
@@ -161,6 +212,11 @@ sequenceDiagram
 | `buildCommand` | Stdin mode | Extracts stdin, returns empty command if no other args |
 | `runEphemeral` | Normal execution | Returns stdout |
 | `runEphemeral` | Timeout | `std::runtime_error` thrown |
+| `runStreaming` | Pooled, normal | StreamHandle acquired, chunks received via callback |
+| `runStreaming` | Ephemeral, normal | StreamHandle acquired, `docker run --rm` path taken |
+| `runStreaming` | With compose network | `--network=<name>` flag included in docker command |
+| `runStreaming` | Timeout | Handle completes after timeout with partial data |
+| `execDockerRunStreaming` | Valid params | StreamHandle returned, command runner invoked |
 | `execDockerRun` | Valid params | CommandRunner exec succeeds, output returned |
 | `execDockerRun` | Non-zero exit | Error string returned, no exception |
 | `execDockerRun` | Timeout via alarm | `"ERROR: timeout"` returned |

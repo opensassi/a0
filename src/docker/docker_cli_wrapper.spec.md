@@ -42,6 +42,12 @@ public:
     /// \brief  Pull a Docker image
     static void pullImage(const std::string& image);
 
+    /// \brief  Get container ID for a named container, or empty string
+    static std::string getContainerId(const std::string& name);
+
+    /// \brief  Start a stopped container (errors swallowed)
+    static void startContainer(const std::string& name);
+
     /// \brief  Start a docker-compose stack
     static void composeUp(const std::string& composeFile,
                            const std::string& projectDir);

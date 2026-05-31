@@ -126,11 +126,16 @@ private:
     int m_c2Fd = -1;                     // -1 if not connected
     std::chrono::steady_clock::time_point m_lastC2Push;
     int m_listenFd = -1;
+    std::unordered_map<int64_t, int> m_streamOwners;  // streamId → peerFd
 
     int xHandleRegister(const ipc::Message& msg, int peerFd);
     int xHandleHeartbeat(const ipc::Message& msg, int peerPid);
     int xHandleUserPrompt(const ipc::Message& msg, int peerFd);
     int xHandlePromptReply(const ipc::Message& msg);
+    int xHandleStreamData(const ipc::Message& msg, int peerFd);
+    int xHandleStreamEnd(const ipc::Message& msg, int peerFd);
+    int xHandleStreamInput(const ipc::Message& msg);
+    int xHandleTerminalOpen(const ipc::Message& msg, int peerFd);
     int xDetectCrashes();
     int xPushSnapshotToC2();
     int xLaunchC2IfNeeded();
@@ -297,7 +302,44 @@ sequenceDiagram
     Note over A0: Reads tool response from persistence, resumes
 ```
 
-### 4.4 Self-Improvement Loop
+### 4.4 Streaming and Terminal IPC
+
+```mermaid
+sequenceDiagram
+    participant A0 as a0 Agent
+    participant B1 as b1 Supervisor
+    participant C2 as c2
+
+    rect rgb(230, 245, 255)
+        Note over A0,C2: Stream Data Forwarding
+
+        A0->>B1: {"type":"stream_data","streamId":42,"chunkSeq":1,"chunkDirection":"stdout","chunkData":"..."}
+        B1->>B1: xHandleStreamData → m_streamOwners[42] = fd
+        B1->>C2: forward stream_data
+
+        A0->>B1: {"type":"stream_end","streamId":42,"pid":0}
+        B1->>B1: xHandleStreamEnd → erase owner
+        B1->>C2: forward stream_end
+
+        C2->>B1: {"type":"stream_input","streamId":42,"data":"input"}
+        B1->>B1: xHandleStreamInput → m_streamOwners lookup
+        B1->>A0: forward stream_input
+    end
+
+    rect rgb(255, 240, 230)
+        Note over A0,C2: Terminal Open / Fork
+
+        C2->>B1: {"type":"terminal_open","terminalId":"t1","cwd":"/home/user/proj"}
+        B1->>B1: xHandleTerminalOpen → resolve a0 binary path
+        B1->>B1: fork(), child calls setsid()
+        B1->>B1: execlp(a0, "--terminal", "--cwd", "/home/user/proj", "--a0-dir", ..., "--terminal-id", "t1")
+        Note over B1: Child process launches new a0 in terminal mode
+        A0->>B1: {"type":"terminal_ready","terminalId":"t1","streamId":...,"pid":...}
+        B1->>C2: forward terminal_ready
+    end
+```
+
+### 4.5 Self-Improvement Loop
 
 ```mermaid
 sequenceDiagram

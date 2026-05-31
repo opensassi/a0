@@ -22,6 +22,31 @@ struct CommandResult {
     bool timedOut;         // true if killed by timeout
 };
 
+/// Callback invoked from a background thread during streaming.
+/// \param chunk   Data chunk from stdout or stderr
+/// \param direction "stdout" or "stderr"
+using StreamCallback = std::function<void(const std::string& chunk, const std::string& direction)>;
+
+/// Handle returned by runStreaming(). May be polled, waited on, cancelled, or fed input.
+class StreamHandle {
+public:
+    bool isDone() const;
+    int wait();
+    void cancel();
+    void sendInput(const std::string& data);
+private:
+    friend class CommandRunner;
+    struct State {
+        std::atomic<bool> done{false};
+        std::atomic<int> exitCode{-1};
+        pid_t childPid = -1;
+        int stdinFd = -1;
+        std::mutex mutex;
+        std::thread thread;
+    };
+    std::shared_ptr<State> m_state;
+};
+
 class CommandRunner {
 public:
     /// Run a single command synchronously.
@@ -42,6 +67,13 @@ public:
         const std::vector<std::string>& cmds,
         int timeoutSecs = 30,
         int maxParallel = 4);
+
+    /// Run a command with streaming output. Returns immediately with a handle.
+    /// onChunk is called from a background thread as data arrives from stdout/stderr.
+    /// The handle's wait() method blocks until the child exits.
+    static StreamHandle runStreaming(const std::string& cmd,
+                                      StreamCallback onChunk,
+                                      int timeoutSecs = 30);
 
     /// Single-quote shell escape.
     /// \param s  Raw string to escape
@@ -115,13 +147,33 @@ sequenceDiagram
     OS-->>CR: stdout chunks
     CR->>OS: alarm(0)
     alt timeout fired
-        CR->>OS: SIGKILL child PG
+        CR->>OS: SIGKILL child PG before waitpid
         CR-->>Caller: {timedOut:true}
     else child exited
         CR->>OS: waitpid
         OS-->>CR: exit status
         CR-->>Caller: {exitCode, stdout, stderr}
     end
+    deactivate CR
+
+    Note over Caller,CR: Streaming path:
+
+    Caller->>CR: runStreaming("cmd", onChunk, 30)
+    activate CR
+    CR->>OS: fork / pipe(stdout, stderr, stdin)
+    OS-->>CR: pid
+    CR-->>Caller: StreamHandle
+    Note over CR: Background thread polls stdout + stderr
+    loop poll chunks
+        CR->>OS: read stdout/stderr
+        OS-->>CR: chunk
+        CR->>CR: onChunk(chunk, direction)
+    end
+    Caller->>CR: handle.sendInput(data)
+    CR->>OS: write stdin pipe
+    Caller->>CR: handle.wait()
+    Note over CR: joins background thread
+    CR-->>Caller: exit code
     deactivate CR
 ```
 
@@ -132,10 +184,13 @@ sequenceDiagram
 | `pipe()` failure | Returns `{exitCode:-1, stderr:"pipe failed"}` |
 | `fork()` failure | Returns `{exitCode:-1, stderr:"fork failed"}` |
 | `exec()` failure (command not found) | Child `_exit(127)`; parent sees exit code 127 |
-| Timeout (30 s default) | `SIGKILL` sent to child process group; `timedOut=true` |
+| Timeout (30 s default) | `SIGKILL` sent to child process group **before** `waitpid`; `timedOut=true` |
 | `runAll` with empty cmds | Returns empty vector |
 | Large stdout (>1 MB) | Read in loop until pipe closes (kernel-bounded) |
 | Signal during read loop (EINTR) | Current impl does not retry on EINTR |
+| `runStreaming` fork failure | `StreamHandle::isDone()` returns true, `wait()` returns -1 |
+| `runStreaming` child killed by timeout | `onChunk` may receive partial data before kill |
+| `sendInput` after child done | No-op (data silently dropped) |
 
 ## 6. Edge Cases
 
@@ -166,6 +221,14 @@ sequenceDiagram
 | `shellEscape` | No special chars | `"hello"` | `"'hello'"` |
 | `shellEscape` | With single quote | `"it's"` | `"'it'\\''s'"` |
 | `shellEscape` | Empty string | `""` | `"''"` |
+| `runStreaming` | Basic echo | `"echo hello"`, null callback | Returns StreamHandle, isDone() eventually true |
+| `runStreaming` | Chunks via callback | `"echo -n a; sleep 0.1; echo b"`, callback collects chunks | Callback receives "a" then "b" |
+| `runStreaming` | Stdin via sendInput | `"cat"`, callback, sendInput("test") | Callback receives "test" |
+| `runStreaming` | Timeout | `"sleep 60"`, timeout=1 | handle.wait() returns, timedOut not applicable |
+| `runStreaming` | Cancellation | `"sleep 60"`, handle.cancel() after 100ms | handle.isDone() becomes true quickly |
+| `StreamHandle.isDone` | Before child exits | Immediately after runStreaming | Returns false |
+| `StreamHandle.wait` | Normal exit | `"echo ok"` | Returns 0 |
+| `StreamHandle.wait` | Non-zero exit | `"false"` | Returns 1 |
 
 ## 8. Integration
 

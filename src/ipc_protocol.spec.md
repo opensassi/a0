@@ -42,7 +42,7 @@ public:
 
 /// A framed JSON-line message from the protocol.
 struct Message {
-    std::string type;       // "register", "ack", "update", "heartbeat", "shutdown", "user_prompt", "prompt_reply"
+    std::string type;       // "register", "ack", "update", "heartbeat", "shutdown", "user_prompt", "prompt_reply", etc.
     int pid = 0;
     std::string sessionUuid;
     std::string workdir;
@@ -53,17 +53,32 @@ struct Message {
     std::string reason;
     std::string toolCallId;
     std::string prompt;
+
+    // Streaming fields
+    int64_t streamId = 0;
+    int chunkSeq = 0;
+    std::string chunkDirection;
+    std::string chunkData;
+    std::string terminalId;
+    std::string contextType;
+    std::string contextId;
+    std::string cwd;
 };
 
 /// Canonical message type name constants.
 namespace MessageType {
-    constexpr const char* REGISTER     = "register";
-    constexpr const char* ACK          = "ack";
-    constexpr const char* HEARTBEAT    = "heartbeat";
-    constexpr const char* UPDATE       = "update";
-    constexpr const char* SHUTDOWN     = "shutdown";
-    constexpr const char* USER_PROMPT  = "user_prompt";
-    constexpr const char* PROMPT_REPLY = "prompt_reply";
+    constexpr const char* REGISTER      = "register";
+    constexpr const char* ACK           = "ack";
+    constexpr const char* HEARTBEAT     = "heartbeat";
+    constexpr const char* UPDATE        = "update";
+    constexpr const char* SHUTDOWN      = "shutdown";
+    constexpr const char* USER_PROMPT   = "user_prompt";
+    constexpr const char* PROMPT_REPLY  = "prompt_reply";
+    constexpr const char* STREAM_DATA   = "stream_data";
+    constexpr const char* STREAM_END    = "stream_end";
+    constexpr const char* STREAM_INPUT  = "stream_input";
+    constexpr const char* TERMINAL_OPEN  = "terminal_open";
+    constexpr const char* TERMINAL_READY = "terminal_ready";
 }
 
 /// Serialize a Message to a JSON-line string (appends \n).
@@ -158,9 +173,10 @@ sequenceDiagram
 | send/recv round-trip | "hello" → "hello" |
 | send after peer close | Returns -1 |
 | connect timeout to non-existent path | Returns -1 |
-| Message serialize/deserialize round-trip | All fields survive round-trip, including toolCallId and prompt |
+| Message serialize/deserialize round-trip | All fields survive round-trip, including toolCallId, prompt, streamId, terminalId |
 | deserialize missing type | Returns -2 |
-| deserialize with new fields | toolCallId and prompt parse correctly |
+| deserialize with streaming fields | streamId, chunkSeq, chunkDirection, chunkData, terminalId parse correctly |
+| deserialize with new message types | STREAM_DATA, STREAM_END, TERMINAL_OPEN deserialize without error |
 | recvMessage message split across two recvs | Returns 0 after second recv completes line |
 | recvMessage timeout | Returns -2 |
 | pollWritable returns 1 | Socket is writable |

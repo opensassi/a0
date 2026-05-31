@@ -21,7 +21,7 @@ The Skills sub-module manages the lifecycle of agent skills — bundles of tools
 - `agent_interfaces.h` — core data structures (`Tool`, `SkillPrompt`)
 - `ToolRunner` / `DockerToolRunner` — executes tools at runtime
 - `InferenceProvider` — executes skill prompts at runtime
-- `InvocationLogger` — provides historical logs for upgrade validation
+- `PersistenceStore` (SQLite) — provides historical invocation records for upgrade validation
 - `SchemaInferenceEngine` — creates new skills via LLM inference (writes to `local/`)
 - `DependencyResolver` — validates transitive skill/tool dependencies
 
@@ -139,12 +139,12 @@ class SkillManager {
 public:
     /// \param skillsRoot   Path to skills/ directory (default: "./skills")
     /// \param storeRoot    Path to .a0/store/ directory (default: "./.a0/store")
-    /// \param persistence  Optional persistence store for invocation history
+    /// \param persistence  Persistence store for invocation history (SQLite); used by ValidationEngine
     SkillManager(const std::string& skillsRoot,
                  const std::string& storeRoot,
                  a0::persistence::PersistenceStore* persistence = nullptr);
-
-    virtual ~SkillManager();
+ 
+     virtual ~SkillManager();
 
     /// Load all namespaces: system/ (locked), local/, github_*/.
     /// Must be called before any lookup or operation.
@@ -398,11 +398,14 @@ private:
 
 ### 2.5 ValidationEngine
 
+Historical invocation records are stored in the SQLite `invocation` table (via `PersistenceStore`) rather than filesystem JSONL files. The `xLoadLogs` method queries `m_store->loadInvocations(type, component)` to retrieve records.
+
 ```cpp
 namespace a0::skills {
 
 /// Replays historical tool invocations against a candidate version.
 /// Uses CommandRunner for all subprocess execution.
+/// Invocation records are read from the persistence store (SQLite).
 /// Used by SkillManager::install() to validate upgrades.
 class ValidationEngine {
 public:
@@ -425,7 +428,7 @@ public:
                  std::string& report);
 
 private:
-    PersistenceStore* m_store;
+    a0::persistence::PersistenceStore* m_store;
 
     int xReplay(const InvocationRecord& record,
                 const SkillManifest& manifest,
@@ -439,7 +442,6 @@ private:
                      nlohmann::json& output);
     std::vector<InvocationRecord> xLoadLogs(const std::string& ns,
                                              const std::string& component) const;
-    void xWriteReport(const std::string& path, const std::string& details);
 };
 
 } // namespace a0::skills
@@ -557,7 +559,7 @@ sequenceDiagram
     participant SM as SkillManager
     participant SL as SkillLoader
 
-    Agent->>SIE: inferSkill("list files recursively")
+    Agent->>SIE: inferPrompt("list files recursively")
     SIE-->>Agent: SkillTool{name:"list_files", ...}
     Agent->>Agent: pick component name: "file_utils"
     Agent->>SM: addTool("file_utils", list_files_tool)
@@ -689,7 +691,7 @@ a0 skill pin <qualified-name>
 
 Wire-up in `main.cpp`:
 
-1. `SkillManager` is constructed at startup with paths: `./skills`, `./.a0/store`, and an optional `PersistenceStore*` for invocation history
+1. `SkillManager` is constructed at startup with paths: `./skills`, `./.a0/store`, and a `PersistenceStore*` for invocation history
 2. `SkillManager::loadAll()` called during initialization
 3. `AgentCore` receives a `SkillManager*`
 4. `SkillRunner` resolves tool/prompt lookups through `SkillManager`

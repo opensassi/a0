@@ -99,13 +99,13 @@ public:
 
     // Starts docker-compose up -d for the prompt's composeFile (if not already running).
     // Returns the network name that tools should attach to.
-    virtual std::string startEnvironment(const Prompt& skill, const std::string& skillDirectory) = 0;
+    virtual std::string startEnvironment(const Prompt& prompt, const std::string& skillDirectory) = 0;
 
     // Stops and removes containers for the compose environment (if idle).
-    virtual void stopEnvironment(const Prompt& skill) = 0;
+    virtual void stopEnvironment(const Prompt& prompt) = 0;
 
     // Updates last‑used timestamp for a prompt's compose environment.
-    virtual void markUsed(const Prompt& skill) = 0;
+    virtual void markUsed(const Prompt& prompt) = 0;
 
     // Set the current prompt for network resolution.
     virtual void setCurrentPrompt(const Prompt& prompt) = 0;
@@ -127,12 +127,28 @@ public:
                          ComposeManager* composeManager,
                          bool poolEnabled = true);
     json run(const Tool& tool, const json& params) override;
+    a0::StreamHandle runStreaming(const Tool& tool,
+                                   const json& params,
+                                   a0::StreamCallback onChunk) override;
 };
 ```
+
+**Implementation notes** — `run()` now checks `m_poolEnabled && m_containerManager` (null-safe) before pooling. The `runStreaming()` override supports both pooled (docker exec via `CommandRunner::runStreaming`) and ephemeral (`execDockerRunStreaming` static helper) modes. A new file-static helper `execDockerRunStreaming()` wraps `docker run --rm` with `CommandRunner::runStreaming`, optionally attaching a compose network via `--network=<name>`.
 
 ### 2.7 Host Tool Runner (renamed from `SubprocessToolRunner`)
 
 The existing `SubprocessToolRunner` remains, but is optionally renamed to `HostToolRunner` for clarity. It is used for tools with `dockerImage` empty and for the special `file_edit` tool.
+
+**2.7a DockerCLIWrapper additions**
+
+Two new static methods are added to support container lifecycle management:
+
+```cpp
+static std::string getContainerId(const std::string& name);
+static void startContainer(const std::string& name);
+```
+
+`getContainerId` returns the container ID for a named container (via `docker ps -aq --filter name=^/name$`), or empty string. `startContainer` starts a stopped container by name; errors are silently swallowed.
 
 ---
 
@@ -227,6 +243,36 @@ sequenceDiagram
     DockerRunner->>Docker: docker exec -i <containerId> sh -c '<command>'
     Docker-->>DockerRunner: stdout/stderr
     DockerRunner-->>SkillRunner: result (string)
+```
+
+### 4.2b Streaming Execution Inside Docker
+
+```mermaid
+sequenceDiagram
+    participant SkillRunner
+    participant DockerRunner
+    participant ContainerMgr
+    participant CompMgr
+    participant CR as CommandRunner
+    participant Docker
+
+    SkillRunner->>DockerRunner: runStreaming(tool, params, onChunk)
+    DockerRunner->>CompMgr: getCurrentNetwork()
+    DockerRunner->>DockerRunner: build command + network flag
+    alt pooled
+        DockerRunner->>ContainerMgr: acquireContainer(tool)
+        DockerRunner->>CR: runStreaming("docker exec -i ...", onChunk, timeout)
+        CR->>Docker: docker exec -i ... sh -c '...'
+        Docker-->>CR: streaming chunks
+        CR-->>DockerRunner: StreamHandle
+    else ephemeral
+        DockerRunner->>DockerRunner: execDockerRunStreaming(image, cmd, stdin, timeout, networkFlag, onChunk)
+        DockerRunner->>CR: runStreaming("docker run --rm ...", onChunk, timeout)
+        CR->>Docker: docker run --rm ...
+        Docker-->>CR: streaming chunks
+        CR-->>DockerRunner: StreamHandle
+    end
+    DockerRunner-->>SkillRunner: StreamHandle
 ```
 
 ### 4.3 Skill with Docker Compose Environment

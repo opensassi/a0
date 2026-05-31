@@ -16,32 +16,44 @@ Entry-point module. Parses CLI flags in two passes, loads `.env` files, resolves
 static void loadEnvFile(const std::string& path);
 ```
 
-### `hasFlag`
+### `killByPidFile`
 ```cpp
 /**
- * @param argc main() argument count
- * @param argv main() argument vector
- * @param name Flag name (e.g. "--no-docker")
- * @retval true  Flag present in argv
- * @retval false Flag absent
+ * @param path Path to a PID file
+ * Reads PID, sends SIGTERM, polls 10×100ms, then SIGKILL if alive.
+ * Unlinks the PID file on completion.
  */
-static bool hasFlag(int argc, char* argv[], const std::string& name);
+static void killByPidFile(const std::string& path);
 ```
 
-### `getFlag`
+### `xC2SocketFromProc`
 ```cpp
 /**
- * @param argc        main() argument count
- * @param argv        main() argument vector
- * @param name        Flag name (e.g. "--api-key")
- * @param defaultVal  Fallback value
- * @return Value from argv, then from env var A0_<NAME>
- *         (e.g. --container-idle-timeout → A0_CONTAINER_IDLE_TIMEOUT),
- *         then defaultVal.
+ * @param pid Process ID of a c2 instance
+ * @return The --socket argument from /proc/<pid>/cmdline, or empty.
  */
-static std::string getFlag(int argc, char* argv[],
-                            const std::string& name,
-                            const std::string& defaultVal);
+static std::string xC2SocketFromProc(int pid);
+```
+
+### `killByProcessName`
+```cpp
+/**
+ * @param name       Process name to kill (e.g. "c2", "b1")
+ * @param outSockets Optional: collects c2 socket paths found via cmdline
+ * @return Number of processes killed
+ */
+static int killByProcessName(const std::string& name,
+                              std::vector<std::string>* outSockets = nullptr);
+```
+
+### `cmdKillAll`
+```cpp
+/**
+ * Kills b1, c2 processes and unlinks sockets.
+ * @param a0Dir Path to .a0/ directory
+ * @return 0
+ */
+static int cmdKillAll(const std::string& a0Dir);
 ```
 
 ### `main`
@@ -53,9 +65,8 @@ static std::string getFlag(int argc, char* argv[],
  * @retval 0  Normal exit
  * @retval 1  Component initialization failure
  *
- * Flag parsing (two-pass):
- *   1st pass: extract --env-file before any env var reads
- *   2nd pass: --env-file, --a0-dir, --components-dir, --api-key, --mock-api, --resume
+ * Flag parsing uses CLI11.hpp instead of manual argv scanning.
+ * Two-pass: extract --env-file, then parse with CLI11.
  *
  * .a0/ initialization:
  *   After flag parsing, ensureA0Dir(a0Dir) creates the directory if missing.
@@ -73,15 +84,16 @@ static std::string getFlag(int argc, char* argv[],
  *   - absent:  DockerContainerManager, DockerComposeManager,
  *              DockerToolRunnerImpl allocated
  *
- * Wire-up order:
- *   skillManager (replaces legacy registry),
- *   toolRunner, provider, context, logger,
- *   depResolver, inferenceEngine, skillRunner → DefaultAgentCore
+ * Wire-up order (no InvocationLogger — logging via PersistenceStore):
+ *   SkillManager (with PersistenceStore*), SqliteStore,
+ *   toolRunner, provider, context,
+ *   depResolver, inferenceEngine, systemTools, skillRunner → DefaultAgentCore
  *
  * --kill-all flag:
- *   Reads b1.pid and a0-c2.pid, sends SIGTERM, polls kill(pid,0)
- *   every 100ms for 1s, sends SIGKILL if still alive.
- *   Unlinks socket and PID files.
+ *   Calls cmdKillAll() which does:
+ *   killByPidFile(b1.pid) + killByPidFile(c2.pid) +
+ *   killByProcessName("c2") + killByProcessName("b1") +
+ *   unlink b1.sock + unlink c2 socket + unlink c2.pid
  *
  * b1 auto-launch:
  *   Resolves binary path via readlink(/proc/self/exe) → finds b1
@@ -90,6 +102,7 @@ static std::string getFlag(int argc, char* argv[],
  *
  * CLI subcommand routing:
  *   "a0 skill list/install/remove/gc/validate/pin" → SkillManager methods
+ *   "a0 --run <skill>" → non-interactive skill execution
  *   Other arguments → interactive REPL via AgentCore.run()
  *
  * Post-init: resume session if --resume given,
@@ -97,9 +110,10 @@ static std::string getFlag(int argc, char* argv[],
  * Cleanup: delete Docker objects in reverse order.
  *
  * Wire-up detail:
- *   SkillManager is constructed with a0Dir + "/store", a0Dir + "/logs"
+ *   SkillManager constructed with a0Dir + "/store", PersistenceStore*
+ *   SqliteStore at a0Dir + "/db/sessions.db"
  *   SkillManager::loadAll() called during init
- *   DefaultAgentCore receives SkillManager* via new constructor parameter
+ *   DefaultAgentCore receives SkillManager* + PersistenceStore*
  */
 int main(int argc, char* argv[]);
 ```
@@ -111,20 +125,21 @@ graph TB
     subgraph Entry
         M[main]
         LF[loadEnvFile]
-        HF[hasFlag]
-        GF[getFlag]
+        KP[killByPidFile]
+        KPN[killByProcessName]
+        KA[cmdKillAll]
     end
 
     subgraph Core_Components
         SM[SkillManager]              # Skills sub-module facade
-        SKR[FileSystemSkillRegistry]  # Legacy adapter
         TR[SubprocessToolRunner]
         DP[DeepSeekProvider]
         CM[DefaultContextManager]
-        LG[JsonLinesLogger]
+        PS[SqliteStore]               # Persistence via SQLite
         DR[DefaultDependencyResolver]
         IE[DefaultSchemaInferenceEngine]
         SR[DefaultSkillRunner]
+        ST[SystemToolRegistry]
         CORE[DefaultAgentCore]
     end
 
@@ -132,6 +147,11 @@ graph TB
         SL[SkillLoader]
         VM[VersionManager]
         VE[ValidationEngine]
+    end
+
+    subgraph Persistence_SubModule
+        BI[BuildIdentity]
+        RE[ReplayEngine]
     end
 
     subgraph Docker_Components
@@ -149,7 +169,7 @@ graph TB
     M -->|first pass| CLI
     M -->|--env-file| ENV
     M -->|--api-key / env / ~/.deepseek.env| DP
-    M --> HF
+    M -->|--kill-all?| KA
     M -->|--no-docker?| DCM
     M -->|--no-docker?| DCoM
     M -->|--no-docker?| DTR
@@ -159,21 +179,23 @@ graph TB
     M --> TR
     M --> DP
     M --> CM
-    M --> LG
+    M --> PS
     M --> DR
     M --> IE
     M --> SR
+    M --> ST
     M --> CORE
 
     SM --> SL
     SM --> VM
     SM --> VE
-    VE --> LG
+    VE --> PS
 
     SR --> TR
     SR --> DP
     SR --> SM
     SR --> DR
+    SR --> ST
     SR --> DTR
     SR --> DCoM
 
@@ -182,14 +204,17 @@ graph TB
     CORE --> SR
     CORE --> DP
     CORE --> CM
-    CORE --> LG
+    CORE --> PS
     CORE --> DR
     CORE --> IE
+    CORE --> ST
     CORE --> DTR
     CORE --> DCoM
 
     DTR --> DCM
     DTR --> DCoM
+
+    PS --> DB[(.a0/db/sessions.db)]
 
     CLI --> LF
     LF --> ENV
@@ -204,18 +229,21 @@ sequenceDiagram
     participant M as main()
     participant LF as loadEnvFile()
     participant SM as SkillManager
+    participant PS as SqliteStore
     participant DP as DeepSeekProvider
     participant DockerMgr as Docker Managers
     participant SR as DefaultSkillRunner
     participant CORE as DefaultAgentCore
     participant User as User (stdin/stdout)
     participant SL as SkillLoader
+    participant ST as SystemToolRegistry
 
     OS->>M: argc, argv
-    M->>M: First pass: extract --env-file
-    M->>LF: loadEnvFile(".env")
-    M->>M: Second pass: parse remaining flags
+    M->>M: CLI11 parse --env-file first
+    M->>LF: loadEnvFile(envFilePath)
+    M->>M: CLI11 parse remaining flags
     M->>M: API key: --api-key ? env ? ~/.deepseek.env
+
     alt --no-docker absent
         M->>DockerMgr: new DockerContainerManager(...)
         M->>DockerMgr: new DockerComposeManager(...)
@@ -223,29 +251,44 @@ sequenceDiagram
     else --no-docker present
         M->>DockerMgr: All nullptr
     end
+
     M->>DP: DeepSeekProvider(apiKey)
-    M->>M: setMockUrl(mockUrl) if --mock-api
+    M->>DP: setMockUrl(mockUrl) if --mock-api
+
+    rect rgb(240, 240, 255)
+        Note over M,PS: Persistence sub-module init
+        M->>PS: SqliteStore(a0Dir + "/db/sessions.db")
+        PS-->>M: store ready
+    end
 
     rect rgb(240, 240, 255)
         Note over M,SM: Skills sub-module init
-        M->>SM: SkillManager("skills/", ".a0/store", ".a0/logs")
+        M->>SM: SkillManager("skills/", ".a0/store", persistenceStore)
         SM->>SL: loadAll()
         SL-->>SM: index built
         SM-->>M: ready
     end
 
-    M->>SR: DefaultSkillRunner(toolRunner, provider, skillManager, ...)
-    M->>CORE: DefaultAgentCore(skillManager, ..., dockerRunner, ...)
+    M->>ST: SystemToolRegistry()
+    M->>SR: DefaultSkillRunner(toolRunner, provider, skillManager, systemTools, ...)
+    M->>CORE: DefaultAgentCore(skillManager, ..., systemTools, persistenceStore, dockerRunner, ...)
 
-    alt argv == "a0 skill ..."
+    alt a0 --kill-all
+        M->>M: cmdKillAll(a0Dir)
+        M->>OS: return 0
+    else argv == "a0 skill ..."
         M->>SM: dispatch command (list/install/remove/gc/validate)
         SM-->>User: result
+        M->>OS: return 0
+    else --run mode
+        M->>CORE: runSkill(skillName, params)
+        CORE-->>User: JSON result
         M->>OS: return 0
     else interactive REPL
         alt --resume <id>
             M->>CORE: resumeSession(sessionId)
         end
-        M->>CORE: init(componentsDir)
+        M->>CORE: init(skillsDir)
         alt init fails
             CORE-->>M: false
             M->>OS: return 1
@@ -271,11 +314,13 @@ sequenceDiagram
 |---|---|---|
 | `loadEnvFile` file not found | Silent return | Not an error — env file is optional |
 | `.env` parse error (no `=`) | Line skipped | Malformed lines silently ignored |
-| CLI flag missing value (`--api-key` without arg) | Unexpected next flag used as value | Known limitation |
-| `std::stoi` parse failure | Falls back to default | Exceptions caught by `catch(...)` |
+| CLI11 parse failure | Prints error, `return 1` | CLI11 handles error messaging |
 | `core.init` fails | Prints error to `cerr`, `return 1` | |
 | Docker init with no Docker daemon | Likely throws in constructor | Propagates uncaught |
 | API key not found anywhere | Provider constructs with empty key | Runtime inference failure |
+| cmdKillAll no PID files | No-op, returns 0 | Graceful if b1/c2 not running |
+| killByProcessName process not found | Returns 0 | No error printed |
+| SkillManager::loadAll fails | Prints error, `return 1` | Fatal — skills directory required |
 
 ## 6. Edge Cases
 
@@ -299,9 +344,13 @@ sequenceDiagram
 | Method | Test Case |
 |---|---|
 | `loadEnvFile` | Valid file, missing file, malformed line, comment lines, duplicate keys |
-| `hasFlag` | Flag present, flag absent, partial match, `--` terminator |
-| `getFlag` | Flag with value, flag without value, env var fallback, default fallback, `A0_` env var mapping |
+| `killByPidFile` | Valid PID, stale PID, missing file, process refuses SIGTERM → SIGKILL |
+| `killByProcessName` | Process running, process not running, c2 with --socket flag |
+| `xC2SocketFromProc` | c2 with --socket arg, c2 without, non-existent PID |
+| `cmdKillAll` | b1+c2 running, nothing running, stale sockets |
 | `main` (integration) | No flags, all flags, `--no-docker`, `--resume` valid, `--resume` invalid, missing API key, Docker unavailable, init failure |
+| `main` (--kill-all) | `a0 --kill-all` → cmdKillAll called, b1/c2 cleaned up |
+| `main` (--run mode) | `a0 --run system:test --params '{}'` → skill executed, JSON printed |
 | `main` (`a0 skill` routing) | `a0 skill list` → SkillManager::listSkills called, output printed |
 | `main` (`a0 skill` install) | `a0 skill install https://github.com/alice/utils` → install flow executed |
 | `main` (`a0 skill` validation fail) | Install fails validation → error message printed, exit 1 |

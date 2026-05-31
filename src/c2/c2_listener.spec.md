@@ -41,6 +41,8 @@ private:
     int xHandleRegister(const nlohmann::json& msg, int peerFd);
     int xHandleUpdate(const nlohmann::json& msg);
     int xHandleUserPrompt(const nlohmann::json& msg);
+    int xHandleStreamData(const nlohmann::json& msg);
+    int xHandleStreamEnd(const nlohmann::json& msg);
     void xCleanupStaleSocket();
 };
 
@@ -107,6 +109,14 @@ sequenceDiagram
     B1->>L: {"type":"user_prompt","session":"ses_x","toolCallId":"c1","prompt":"..."}
     L->>EV: upsertPrompt("ses_x", "c1", "...", "")
     L->>SSE: broadcast("user_prompt", {session, toolCallId, prompt})
+
+    B1->>L: {"type":"stream_data","streamId":42,"chunkSeq":1,"chunkDirection":"stdout","chunkData":"..."}
+    L->>L: xHandleStreamData → build SSE event
+    L->>SSE: broadcast("stream_chunk", {streamId, seq, direction, data})
+
+    B1->>L: {"type":"stream_end","streamId":42,"pid":0}
+    L->>L: xHandleStreamEnd → build SSE event
+    L->>SSE: broadcast("stream_end", {streamId, exitCode})
 ```
 
 ## 5. Error Handling
@@ -119,6 +129,7 @@ sequenceDiagram
 | poll() returns error | Continues poll loop |
 | Socket path stale from crash | `xCleanupStaleSocket` unlinks before bind |
 | sendToB1 to disconnected b1 | Returns -1 (fd closed or not found) |
+| stream_data with missing fields | Returns -1, no SSE broadcast |
 
 ## 6. Testing Requirements
 

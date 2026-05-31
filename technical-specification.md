@@ -62,6 +62,19 @@ struct Tool {
     TrustLevel trustLevel = TrustLevel::MEDIUM;
     bool useContainerPool = true;                // false = ephemeral docker run --rm
     std::vector<std::string> aptDependencies;    // packages to install via apt
+    int timeoutSecs = 30;                        // per-tool timeout override
+};
+
+struct ToolCall {
+    std::string id;
+    std::string name;
+    json arguments;
+};
+
+struct ToolSchema {
+    std::string name;
+    std::string description;
+    json inputSchema;
 };
 
 struct ValidatorBinding {
@@ -69,16 +82,18 @@ struct ValidatorBinding {
     std::optional<std::string> transform; // future: JSONPath binding
 };
 
-struct Skill {
+struct Prompt {
     std::string name;
     std::string description;
     std::string prompt;                   // may contain {{tool:...}} and {{key}} placeholders
-    std::vector<std::string> dependencies;    // tool and skill names required
+    std::vector<std::string> dependencies;    // tool and prompt names required
     std::vector<ValidatorBinding> validators; // post-LLM processing chain
+    std::string ns;                            // namespace context for qualified-name resolution
+    std::string component;                     // component context for qualified-name resolution
 
     // Docker compose support
     std::string composeFile;                     // path to docker-compose.yml (relative to skill dir)
-    std::vector<std::string> aptDependencies;    // rolled up into container(s) used by skill's tools
+    std::vector<std::string> aptDependencies;    // rolled up into container(s) used by prompt's tools
 };
 ```
 
@@ -100,11 +115,18 @@ public:
 class ToolRunner {
 public:
     virtual ~ToolRunner() = default;
-    // Runs a tool with the given parameters. Must enforce a 30-second timeout.
+    // Runs a tool with the given parameters. Must enforce timeout from tool.timeoutSecs.
     // Returns the stdout output as a string (or JSON for structured outputs).
     // On timeout, returns a string starting with "ERROR: timeout".
     // On command failure, returns a string starting with "ERROR:".
     virtual json run(const Tool& tool, const json& params) = 0;
+
+    // Streaming variant: returns immediately with a StreamHandle.
+    // onChunk is called from a background thread with (chunk, direction).
+    // Default implementation delegates to CommandRunner::runStreaming.
+    virtual a0::StreamHandle runStreaming(const Tool& tool,
+                                           const json& params,
+                                           a0::StreamCallback onChunk);
 };
 
 class InferenceProvider {
@@ -131,60 +153,56 @@ public:
     virtual std::vector<ContextFrame> snapshot() const = 0;
 };
 
-struct LogEntry {
-    std::string sessionId;
-    int64_t timestamp;
-    std::string eventType;
-    std::string data;
-};
-
-class InvocationLogger {
-public:
-    virtual ~InvocationLogger() = default;
-    virtual void log(const LogEntry& entry) = 0;
-    virtual bool replay(const std::string& sessionId,
-                        std::function<void(const LogEntry&)> callback) = 0;
-    virtual std::vector<std::string> listSessions() const = 0;
-};
-
 class DependencyResolver {
 public:
     virtual ~DependencyResolver() = default;
     virtual bool checkToolDependencies(const Tool& tool) const = 0;
-    virtual bool checkSkillDependencies(const Skill& skill) const = 0;
-    virtual std::vector<std::string> missingDependencies(const Skill& skill) const = 0;
+    virtual bool checkPromptDependencies(const Prompt& prompt) const = 0;
+    virtual std::vector<std::string> missingDependencies(const Prompt& prompt) const = 0;
 };
 
 class SkillRunner {
 public:
     virtual ~SkillRunner() = default;
-    // Expands skill.prompt by:
+    // Expands prompt.prompt by:
     //   1. Replacing {{key}} placeholders with values from params (where key matches a top-level field).
     //   2. Replacing {{tool:name key="value" ...}} placeholders with the result of executing the named tool.
-    virtual std::string expandPrompt(const Skill& skill, const json& params) = 0;
+    //   3. Replacing {{tool_call:qualified_name}} placeholders with the short name.
+    virtual std::string expandPrompt(const Prompt& prompt, const json& params) = 0;
     // Runs the validator chain. If any validator returns a string starting with "ERROR:",
     // the final result is prefixed with "VALIDATOR_ERROR:".
-    virtual json runValidators(const Skill& skill, const json& input) = 0;
-    // Executes the skill: expandPrompt -> InferenceProvider.complete() -> runValidators.
+    virtual json runValidators(const Prompt& prompt, const json& input) = 0;
+    // Executes the prompt: expandPrompt -> InferenceProvider.complete() -> runValidators.
     // Before calling complete, it must verify that all dependencies are present (using DependencyResolver).
-    virtual json execute(const Skill& skill, const json& params) = 0;
+    virtual json execute(const Prompt& prompt, const json& params) = 0;
+
+    // Streaming variant: executes the prompt with streaming tool invocations.
+    virtual a0::StreamHandle executeStreaming(const Prompt& prompt,
+                                               const json& params,
+                                               a0::StreamCallback onChunk) = 0;
+
+    virtual void setGlobalVar(const std::string& key, const std::string& value) = 0;
+    virtual void setGlobalVars(const std::unordered_map<std::string, std::string>& vars) = 0;
 };
 
 class SchemaInferenceEngine {
 public:
     virtual ~SchemaInferenceEngine() = default;
     virtual Tool inferTool(const std::string& naturalLanguageDescription) = 0;
-    virtual Skill inferSkill(const std::string& naturalLanguageDescription) = 0;
+    virtual Prompt inferPrompt(const std::string& naturalLanguageDescription) = 0;
 };
 
 class AgentCore {
 public:
     virtual ~AgentCore() = default;
     virtual bool init(const std::string& componentsDir) = 0;
-    // Processes a user goal. Matches skills by exact name (case-sensitive) against the goal string.
-    // If no exact match, uses SchemaInferenceEngine to infer a new skill.
-    // Before executing a skill (whether found or inferred), checks dependencies via DependencyResolver.
+    // Processes a user goal. Matches prompts by exact name (case-sensitive) against the goal string.
+    // If no exact match, uses SchemaInferenceEngine to infer a new prompt.
+    // If inference also fails, enters the forked tool-calling loop (xRunForkedLoop).
     virtual json processGoal(const std::string& goal) = 0;
+    // Streaming variant: processes a goal with streaming tool invocations.
+    virtual a0::StreamHandle processGoalStreaming(const std::string& goal,
+                                                   a0::StreamCallback onChunk) = 0;
     virtual bool resumeSession(const std::string& sessionId) = 0;
     virtual std::string currentSessionId() const = 0;
     virtual void run() = 0;
@@ -206,9 +224,12 @@ public:
 class ComposeManager {
 public:
     virtual ~ComposeManager() = default;
-    virtual std::string startEnvironment(const Skill& skill, const std::string& skillDirectory) = 0;
-    virtual void stopEnvironment(const Skill& skill) = 0;
-    virtual void markUsed(const Skill& skill) = 0;
+    virtual std::string startEnvironment(const Prompt& prompt, const std::string& skillDirectory) = 0;
+    virtual void stopEnvironment(const Prompt& prompt) = 0;
+    virtual void markUsed(const Prompt& prompt) = 0;
+    virtual void setCurrentPrompt(const Prompt& prompt) = 0;
+    virtual std::string getCurrentNetwork() const = 0;
+    virtual void clearCurrentPrompt() = 0;
 };
 
 class DockerToolRunner : public ToolRunner {
@@ -237,15 +258,15 @@ graph TB
         DockerRunner[DockerToolRunner]
         SkillRunner[SkillRunner]
         InfEngine[SchemaInferenceEngine]
-        Logger[InvocationLogger]
         DepResolver[DependencyResolver]
+        Persistence[PersistenceStore]
+        SysTools[SystemToolRegistry]
         ContainerMgr[ContainerManager]
         ComposeMgr[ComposeManager]
     end
 
-    subgraph "File System"
-        ComponentsDir[(components/)]
-
+    subgraph "Persistence"
+        DB[(.a0/db/sessions.db)]
     end
 
     subgraph "Docker Engine"
@@ -253,9 +274,14 @@ graph TB
         ComposeStacks[(Compose Stacks)]
     end
 
+    subgraph "Filesystem"
+        SkillsDir[(skills/)]
+    end
+
     User --> Core
     Core --> Reg
     Core --> DepResolver
+    Core --> SysTools
     Core --> HostRunner
     Core --> DockerRunner
     Core --> SkillRunner
@@ -263,12 +289,13 @@ graph TB
     SkillRunner --> DeepSeek
     SkillRunner --> HostRunner
     SkillRunner --> DockerRunner
+    SkillRunner --> SysTools
     Core --> InfEngine
     InfEngine --> DeepSeek
     InfEngine --> Reg
-    Core --> Logger
-    Logger --> LogsDir
-    Reg --> ComponentsDir
+    Core --> Persistence
+    Persistence --> DB
+    Reg --> SkillsDir
 
     DockerRunner --> ContainerMgr
     DockerRunner --> ComposeMgr
@@ -276,7 +303,7 @@ graph TB
     ComposeMgr --> ComposeStacks
 ```
 
-**Caption**: The agent supports two tool runners: `HostToolRunner` (for direct subprocess execution) and `DockerToolRunner` (for containerized execution with pooling and compose environments). `ContainerManager` and `ComposeManager` are implemented in the `./src/docker` sub‑directory.
+**Caption**: The agent supports two tool runners: `HostToolRunner` (for direct subprocess execution) and `DockerToolRunner` (for containerized execution with pooling and compose environments). `ContainerManager` and `ComposeManager` are implemented in the `./src/docker` sub‑directory. All session I/O is persisted to SQLite via `PersistenceStore`. `InvocationLogger` has been replaced by the persistence layer.
 
 ---
 
@@ -359,16 +386,18 @@ sequenceDiagram
 | `ToolRunner`         | `run` with `split_lines` tool                               | Input "a\nb\nc" → output `["a","b","c"]`           |
 | `ToolRunner`         | `run` with `bash` tool                                      | Input "echo hello" → output "hello\n"              |
 | `ToolRunner`         | `run` with `args` mode and object params                    | Command receives `--file=test.txt` style arguments |
-| `ToolRunner`         | `run` with a command that sleeps 31 seconds                 | Returns `"ERROR: timeout"` (enforces 30s limit)    |
+| `ToolRunner`         | `run` with a command that sleeps 31 seconds                 | Returns `"ERROR: timeout"` (enforces timeoutSecs)  |
+| `ToolRunner`         | `runStreaming` basic echo                                   | onChunk called with output, handle.isDone() true   |
 | `SkillRunner`        | `expandPrompt` with `{{goal}}` placeholder                  | Substitutes value from `params["goal"]`            |
 | `SkillRunner`        | `expandPrompt` with eager tool call                         | Eager execution, substitution                      |
+| `SkillRunner`        | `expandPrompt` with `{{tool_call:...}}`                     | Short name substitution                            |
 | `SkillRunner`        | `runValidators` with failing validator                      | Result starts with `"VALIDATOR_ERROR: ERROR: ..."` |
 | `SkillRunner`        | `execute` when dependencies missing                         | Returns error message, does not call LLM           |
 | `SkillRegistry`      | `loadFromDirectory` with malformed JSON                     | Skips file, logs warning, continues                |
-| `DependencyResolver` | `checkSkillDependencies` on skill with missing tool         | Returns false, missing list includes the tool      |
-| `InvocationLogger`   | `log` then `replay`                                         | Log two entries, replay → callback receives both   |
-| `AgentCore`          | `processGoal` with exact skill name match                   | Uses the skill, does not infer a new one           |
-| `AgentCore`          | `processGoal` with non‑existent goal and inference disabled | Falls back to inference (or returns error)         |
+| `DependencyResolver` | `checkPromptDependencies` on prompt with missing tool       | Returns false, missing list includes the tool      |
+| `AgentCore`          | `processGoal` with exact prompt name match                  | Uses the prompt, does not infer a new one          |
+| `AgentCore`          | `processGoal` with non‑existent goal                        | Falls back to forked tool-calling loop             |
+| `AgentCore`          | `processGoal` forked loop max turns exceeded                | Returns `"ERROR: max tool call turns exceeded"`    |
 
 ### 5.2 End‑to‑End Tests (against mock DeepSeek)
 
@@ -379,8 +408,8 @@ sequenceDiagram
 | E2E‑01 | First run       | Start agent with empty components dir                                                                                    | Built‑in tools and meta‑skills created under `components/` |
 | E2E‑02 | Infer new tool  | Send goal: "create a tool that counts lines in a file"                                                                   | New tool `count_lines` appears; can be invoked             |
 | E2E‑03 | Use tool        | Invoke `count_lines` with `{path:"/etc/passwd"}`                                                                         | Returns number of lines                                    |
-| E2E‑04 | Infer new skill | Send goal: "create a skill that lists files in a directory and filters those containing 'log' using list_files and grep" | New skill appears; dependencies correct                    |
-| E2E‑05 | Use skill       | Invoke skill with `{directory:"/var/log"}`                                                                               | Returns array of existing files with "log" in name         |
+| E2E‑04 | Infer new prompt/skill | Send goal: "create a skill that lists files in a directory and filters those containing 'log' using list_files and grep" | New prompt appears; dependencies correct |
+| E2E‑05 | Use prompt       | Invoke prompt with `{directory:"/var/log"}`                                                                               | Returns array of existing files with "log" in name         |
 
 #### Negative E2E Tests (Critical for Guardrails)
 
@@ -402,6 +431,10 @@ sequenceDiagram
 | `ContainerManager`    | `pruneIdleContainers`              | Container idle > timeout removed                     |
 | `DependencyInstaller` | `installDependencies`              | Idempotent installation                              |
 | `ComposeManager`      | `startEnvironment`                 | `docker-compose up -d` called only once per skill    |
+| `DockerToolRunner`    | `run` with `args` mode             | Command arguments passed correctly inside container  |
+| `DockerToolRunner`    | `run` with timeout                 | Timeout enforced (kills container command)           |
+| `DockerToolRunner`    | `runStreaming` pooled              | StreamHandle returned, chunks via callback           |
+| `DockerToolRunner`    | `runStreaming` ephemeral           | StreamHandle returned, `docker run --rm` used        |
 
 #### End‑to‑End Tests (with real Docker daemon)
 
@@ -537,11 +570,13 @@ Follow these steps **in order**:
 - **Requirement**: line coverage ≥90%, function coverage ≥90%, branch coverage ≥90%.
 - Any uncovered lines must be justified (e.g., defensive `assert` or unreachable error handling).
 
-#### Step 7: Exhaustive trace logging with `#ifdef TRACE`
+#### Step 7: Session persistence with SQLite
 
-- Define `TRACE` macro in build.
-- Log every function entry, exit, important variable values, tool execution, LLM request/response, validator chain steps.
-- Log to `stderr` or a separate file (`trace.log`).
+- Wire `PersistenceStore` (SqliteStore) through AgentCore at startup.
+- Record every user message, LLM invocation, tool call, and result to the `message` table.
+- Use sub-session tracking (subSessionId + seq) for the forked tool-calling loop.
+- Enable `ValidationEngine` to read historical invocations from the `invocation` table for upgrade validation.
+- Implement streaming persistence: `Stream` + `StreamChunk` tables for live tool output recording.
 
 #### Step 8: Set up end‑to‑end testing with mock DeepSeek API
 
@@ -623,6 +658,8 @@ project/
 │   ├── schema_inference_engine.cpp/.h
 │   ├── dependency_resolver.cpp/.h
 │   ├── trace.h
+│   ├── stream_registry.h/.cpp           # Streaming IPC support
+│   ├── docker_security_filter.h/.cpp    # Docker command filtering
 │   ├── docker/                          # Docker sub‑module (required)
 │   │   ├── technical-specification.md
 │   │   ├── container_manager.cpp/.h

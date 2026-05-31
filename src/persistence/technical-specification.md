@@ -49,16 +49,66 @@ CREATE TABLE session (
 CREATE TABLE message (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL REFERENCES session(id),
+    sub_session_id INTEGER,
+    seq INTEGER NOT NULL DEFAULT 0,
     role TEXT NOT NULL,
     content TEXT NOT NULL DEFAULT '',
     tool_calls_json TEXT,
     tool_call_id TEXT,
     name TEXT,
     result_json TEXT,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    UNIQUE(session_id, sub_session_id, seq)
 );
 
 CREATE INDEX idx_message_session ON message(session_id, id);
+
+CREATE TABLE stream (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL REFERENCES session(id),
+    tool_call_id TEXT,
+    terminal_id TEXT,
+    name TEXT NOT NULL,
+    context_type TEXT NOT NULL,
+    context_id TEXT,
+    cwd TEXT,
+    created_at INTEGER NOT NULL,
+    ended_at INTEGER,
+    exit_code INTEGER
+);
+
+CREATE TABLE stream_chunk (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stream_id INTEGER NOT NULL REFERENCES stream(id),
+    seq INTEGER NOT NULL,
+    direction TEXT NOT NULL,
+    data TEXT NOT NULL,
+    timestamp INTEGER NOT NULL
+);
+
+CREATE INDEX idx_stream_session ON stream(session_id);
+CREATE INDEX idx_stream_chunk_stream ON stream_chunk(stream_id, seq);
+CREATE INDEX idx_stream_tool_call ON stream(tool_call_id);
+
+CREATE TABLE skill (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    UNIQUE(type, name)
+);
+
+CREATE TABLE invocation (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL REFERENCES message(id),
+    skill_id INTEGER NOT NULL REFERENCES skill(id),
+    tool_name TEXT NOT NULL,
+    params_json TEXT,
+    output_json TEXT,
+    timestamp INTEGER NOT NULL
+);
+
+CREATE INDEX idx_invocation_skill ON invocation(skill_id, tool_name);
+CREATE INDEX idx_invocation_message ON invocation(message_id);
 ```
 
 ### 2.2 Abstract Interface
@@ -97,22 +147,84 @@ public:
     virtual void endSession(int64_t sessionId) = 0;
 
     virtual int64_t appendMessage(int64_t sessionId,
-                                   const std::string& role,
-                                   const std::string& content,
-                                   const std::string& toolCallsJson,
-                                   const std::string& toolCallId,
-                                   const std::string& name,
-                                   const std::string& resultJson) = 0;
+                                    std::optional<int64_t> subSessionId,
+                                    int seq,
+                                    const std::string& role,
+                                    const std::string& content,
+                                    const std::string& toolCallsJson,
+                                    const std::string& toolCallId,
+                                    const std::string& name,
+                                    const std::string& resultJson) = 0;
 
-    virtual std::vector<Message> loadMessages(int64_t sessionId) = 0;
+    virtual std::vector<Message> loadMessages(int64_t sessionId,
+                                               std::optional<int64_t> subSessionId = std::nullopt) = 0;
     virtual int64_t findSessionByUuid(const std::string& uuid) const = 0;
     virtual void flush() = 0;
-};
 
-} // namespace a0::persistence
+    // --- Streaming ---
+    virtual int64_t createStream(int64_t sessionId,
+                                  const std::string& toolCallId,
+                                  const std::string& name,
+                                  const std::string& contextType,
+                                  const std::string& contextId,
+                                  const std::string& cwd,
+                                  const std::string& terminalId = "") = 0;
+    virtual int appendChunk(int64_t streamId, int seq,
+                             const std::string& direction,
+                             const std::string& data) = 0;
+    virtual int endStream(int64_t streamId, int exitCode) = 0;
+    virtual std::vector<StreamChunk> loadStreamChunks(int64_t streamId,
+                                                       int offset = 0,
+                                                       int limit = -1) = 0;
+    virtual std::vector<Stream> listSessionStreams(int64_t sessionId) = 0;
+
+    // --- Skill invocation tracking ---
+    virtual int ensureSkill(int type, const std::string& name) = 0;
+    virtual int64_t appendInvocation(int64_t messageId,
+                                      int skillId,
+                                      const std::string& toolName,
+                                      const std::string& paramsJson,
+                                      const std::string& outputJson) = 0;
+    virtual std::vector<InvocationRow> loadInvocations(int type,
+                                                        const std::string& name) const = 0;
+};
 ```
 
-### 2.3 SQLite Store
+### 2.3 Message struct updated
+
+```cpp
+struct Message {
+    // ...existing fields...
+    int64_t subSessionId = 0;
+    int seq = 0;
+};
+```
+
+### 2.4 New data structures
+
+```cpp
+struct Stream {
+    int64_t id, sessionId;
+    std::string toolCallId, terminalId, name, contextType, contextId, cwd;
+    int64_t createdAt, endedAt;
+    int exitCode;
+};
+
+struct StreamChunk {
+    int64_t id, streamId;
+    int seq;
+    std::string direction, data;
+    int64_t timestamp;
+};
+
+struct InvocationRow {
+    int64_t id, messageId, skillId;
+    std::string toolName, paramsJson, outputJson;
+    int64_t timestamp;
+};
+```
+
+### 2.5 SQLite Store
 
 ```cpp
 namespace a0::persistence {
@@ -126,13 +238,16 @@ public:
     int64_t createSession(int64_t rootId, int64_t parentId, int agentId) override;
     void endSession(int64_t sessionId) override;
     int64_t appendMessage(int64_t sessionId,
-                           const std::string& role,
-                           const std::string& content,
-                           const std::string& toolCallsJson,
-                           const std::string& toolCallId,
-                           const std::string& name,
-                           const std::string& resultJson) override;
-    std::vector<Message> loadMessages(int64_t sessionId) override;
+                            std::optional<int64_t> subSessionId,
+                            int seq,
+                            const std::string& role,
+                            const std::string& content,
+                            const std::string& toolCallsJson,
+                            const std::string& toolCallId,
+                            const std::string& name,
+                            const std::string& resultJson) override;
+    std::vector<Message> loadMessages(int64_t sessionId,
+                                       std::optional<int64_t> subSessionId = std::nullopt) override;
     int64_t findSessionByUuid(const std::string& uuid) const override;
     void flush() override;
 
@@ -301,6 +416,10 @@ sequenceDiagram
 | Replay: session not found | Returns -1 |
 | Replay: tool re-execution fails | Divergence captured with crash output |
 | `binarySha1` cannot read self | Returns empty string |
+| `createStream` with nonexistent session | Returns -1 |
+| `appendChunk` with invalid streamId | Returns -1 |
+| `loadStreamChunks` beyond available data | Returns up to available, no error |
+| `ensureSkill` with existing (type, name) | Returns existing id |
 
 ## 6. Edge Cases
 
@@ -313,6 +432,9 @@ sequenceDiagram
 | Very long LLM response (>1 MB) | Stored as-is in content column |
 | Binary rebuilt between runs | New SHA1 → new agent row |
 | No git repo detected | repo_url/commit_hash stored as NULL |
+| Stream with same toolCallId twice | Two separate stream rows (different ids) |
+| Invocation for unregistered skill | ensureSkill called first, creates row |
+| Sub-session with null sub_session_id | loadMessages filters to seq-only messages |
 
 ## 7. Testing Requirements
 
@@ -326,8 +448,19 @@ sequenceDiagram
 | `createSession` | Sub-session | parent_id set |
 | `endSession` | Existing session | ended_at set |
 | `appendMessage` | All four roles | Four rows with correct data |
+| `appendMessage` | With subSessionId and seq | sub_session_id and seq stored correctly |
 | `loadMessages` | Session with 10 messages | 10 messages in order |
 | `loadMessages` | Nonexistent | Empty vector |
+| `loadMessages` | Filtered by subSessionId | Only matching sub-session messages returned |
+| `createStream` | New stream | Returns stream id, fields match |
+| `appendChunk` | Single chunk | Stored with correct seq/direction/data |
+| `loadStreamChunks` | Multiple chunks | Returned in seq order |
+| `endStream` | Existing stream | exit_code set, ended_at set |
+| `listSessionStreams` | Session with 2 streams | Both streams returned |
+| `ensureSkill` | New (type, name) | Returns new id, unique constraint satisfied |
+| `ensureSkill` | Duplicate | Returns existing id |
+| `appendInvocation` | Valid messageId + skillId | Returns invocation id |
+| `loadInvocations` | By type + name | Returns matching rows |
 
 ### ReplayEngine
 
