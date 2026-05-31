@@ -38,9 +38,9 @@ protected:
 
         SkillTool tool;
         ASSERT_EQ(m_mgr->getTool("system:bash", tool), 0);
-        ASSERT_EQ(m_mgr->getTool("system:read", tool), 0);
-        ASSERT_EQ(m_mgr->getTool("system:glob", tool), 0);
-        ASSERT_EQ(m_mgr->getTool("system:grep", tool), 0);
+        ASSERT_EQ(m_mgr->getTool("system:fs:read", tool), 0);
+        ASSERT_EQ(m_mgr->getTool("system:fs:glob", tool), 0);
+        ASSERT_EQ(m_mgr->getTool("system:fs:grep", tool), 0);
 
         m_systemTools = new a0::SystemToolRegistry();
         m_toolRunner = new SubprocessToolRunner();
@@ -72,13 +72,13 @@ TEST_F(SystemToolsE2ETest, SystemToolChainExpandsCorrectly) {
         "Architecture Audit Report\n"
         "========================\n\n"
         "Subdirectories:\n"
-        "{{tool:system:glob pattern=\"src/*/\"}}\n\n"
+        "{{tool:system:fs:glob pattern=\"src/*/\"}}\n\n"
         "Docker module file count:\n"
         "{{tool:system:bash command=\"ls src/docker/*.cpp 2>/dev/null | wc -l\" description=\"count docker cpps\"}}\n\n"
         "Interface declarations:\n"
-        "{{tool:system:grep pattern=\"virtual .* = 0\" path=\"" + m_projectRoot + "/src\" include=\"*.h\"}}\n\n"
+        "{{tool:system:fs:grep pattern=\"virtual .* = 0\" path=\"" + m_projectRoot + "/src\" include=\"*.h\"}}\n\n"
         "Main entry (first 5 lines):\n"
-        "{{tool:system:read filePath=\"" + m_projectRoot + "/src/main.cpp\" offset=\"1\" limit=\"5\"}}\n\n"
+        "{{tool:system:fs:read filePath=\"" + m_projectRoot + "/src/main.cpp\" offset=\"1\" limit=\"5\"}}\n\n"
         "Persistence file count:\n"
         "{{tool:system:bash command=\"ls src/persistence/*.cpp 2>/dev/null | wc -l\" description=\"count persistence files\"}}";
 

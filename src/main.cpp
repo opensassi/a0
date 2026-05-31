@@ -13,6 +13,7 @@
 #include "docker/container_manager.h"
 #include "docker/compose_manager.h"
 #include "docker/docker_tool_runner.h"
+#include "docker_security_filter.h"
 #include "unix_socket.h"
 #include "ipc_protocol.h"
 #include "stream_registry.h"
@@ -315,6 +316,23 @@ int main(int argc, char* argv[]) {
     }
 
     a0::SystemToolRegistry systemTools;
+
+    // Docker security filter — protects system-managed sandbox containers
+    a0::DockerSecurityFilter dockerFilter;
+    // Register known system containers (populated from sandbox env)
+    const char* protectedEnv = std::getenv("A0_PROTECTED_CONTAINERS");
+    if (protectedEnv) {
+        std::string list(protectedEnv);
+        size_t pos = 0;
+        while ((pos = list.find(',')) != std::string::npos) {
+            dockerFilter.protectContainer(list.substr(0, pos));
+            list.erase(0, pos + 1);
+        }
+        if (!list.empty()) dockerFilter.protectContainer(list);
+    }
+    systemTools.setDockerSecurityFilter(&dockerFilter);
+    systemTools.setInferenceProvider(&provider);
+    systemTools.setSkillManager(&skillMgr);
 
     // Persistence store (SQLite under .a0/db/)
     a0::persistence::SqliteStore persistence(a0Dir + "/db/sessions.db");

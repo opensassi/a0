@@ -1,0 +1,33 @@
+{
+  "name": "fs",
+  "version": "1.0.0",
+  "description": "Filesystem tools — read, search, edit, and write files",
+  "tools": [
+    {
+      "name": "read",
+      "description": "Read a file or directory from the local filesystem",
+      "systemTool": true
+    },
+    {
+      "name": "glob",
+      "description": "Fast file pattern matching",
+      "systemTool": true
+    },
+    {
+      "name": "grep",
+      "description": "Fast content search using regular expressions",
+      "systemTool": true
+    },
+    {
+      "name": "edit",
+      "description": "Performs exact string replacements in files",
+      "systemTool": true
+    },
+    {
+      "name": "write",
+      "description": "Writes a file to the local filesystem",
+      "systemTool": true
+    }
+  ],
+  "prompts": []
+}

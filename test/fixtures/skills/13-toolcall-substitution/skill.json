@@ -21,8 +21,8 @@
     {
       "name": "uses_mixed",
       "description": "Prompt with both tool and tool_call",
-      "dependencies": ["system:read"],
-      "prompt": "Run {{tool:system:read filePath=\"/etc/hostname\"}} then {{tool_call:my_tool}} done."
+      "dependencies": ["system:fs:read"],
+      "prompt": "Run {{tool:system:fs:read filePath=\"/etc/hostname\"}} then {{tool_call:my_tool}} done."
     }
   ]
 }

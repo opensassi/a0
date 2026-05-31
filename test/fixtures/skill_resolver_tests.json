@@ -155,12 +155,12 @@
     "description": "Prompt depends on system:read \u2014 qualified name resolves, cross-pkg tool/tool_call expand",
     "fixtures": [
       "test/fixtures/skills/04-cross-package-deps/",
-      "skills/system/read/"
+      "skills/system/fs/"
     ],
     "steps": [
       {
         "action": "load",
-        "source": "skills/system/read/"
+        "source": "skills/system/fs/"
       },
       {
         "action": "load",
@@ -175,12 +175,12 @@
         "action": "assert_deps_resolved",
         "name": "local:04-cross-package-deps:uses_read",
         "contains": [
-          "system:read"
+          "system:fs:read"
         ]
       },
       {
         "action": "resolve_tool",
-        "name": "system:read",
+        "name": "system:fs:read",
         "expect": 0
       },
       {
@@ -326,17 +326,17 @@
     "description": "Chain + same-pkg + cross-pkg deps resolve; tool_call expansion works",
     "fixtures": [
       "test/fixtures/skills/07-mixed-deps/",
-      "skills/system/read/",
-      "skills/system/write/"
+      "skills/system/fs/",
+      "skills/system/fs/"
     ],
     "steps": [
       {
         "action": "load",
-        "source": "skills/system/read/"
+        "source": "skills/system/fs/"
       },
       {
         "action": "load",
-        "source": "skills/system/write/"
+        "source": "skills/system/fs/"
       },
       {
         "action": "load",
@@ -351,8 +351,8 @@
         "action": "assert_deps_resolved",
         "name": "local:07-mixed-deps:master",
         "contains": [
-          "system:read",
-          "system:write",
+          "system:fs:read",
+          "system:fs:write",
           "helper_tool"
         ]
       },
@@ -647,15 +647,15 @@
   },
   {
     "id": "13-tool-qualified",
-    "description": "{{tool:system:read ...}} expands with qualified name containing colon",
+    "description": "{{tool:system:fs:read ...}} expands with qualified name containing colon",
     "fixtures": [
       "test/fixtures/skills/04-cross-package-deps/",
-      "skills/system/read/"
+      "skills/system/fs/"
     ],
     "steps": [
       {
         "action": "load",
-        "source": "skills/system/read/"
+        "source": "skills/system/fs/"
       },
       {
         "action": "load",
@@ -663,14 +663,14 @@
       },
       {
         "action": "resolve_tool",
-        "name": "system:read",
+        "name": "system:fs:read",
         "expect": 0
       },
       {
         "action": "expand_prompt_text",
-        "prompt": "Open {{tool:system:read filePath=\"/etc/hostname\"}} closed",
+        "prompt": "Open {{tool:system:fs:read filePath=\"/etc/hostname\"}} closed",
         "dependencies": [
-          "system:read"
+          "system:fs:read"
         ],
         "expect": 0
       },
@@ -808,12 +808,12 @@
     "description": "{{tool:...}} and {{tool_call:...}} in one prompt both resolve",
     "fixtures": [
       "test/fixtures/skills/13-toolcall-substitution/",
-      "skills/system/read/"
+      "skills/system/fs/"
     ],
     "steps": [
       {
         "action": "load",
-        "source": "skills/system/read/"
+        "source": "skills/system/fs/"
       },
       {
         "action": "load",
@@ -821,7 +821,7 @@
       },
       {
         "action": "resolve_tool",
-        "name": "system:read",
+        "name": "system:fs:read",
         "expect": 0
       },
       {

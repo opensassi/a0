@@ -10,7 +10,7 @@ All skills, scripts, and tooling are delivered via the npm package.
 | `asm-optimizer` | SIMD/assembly optimization framework |
 | `daily-evaluation` | Aggregate session evaluations into dashboards |
 | `demo-video` | Produce narrated demo videos with multi-language subtitles |
-| `git` | Rebase-based single-commit-per-session workflow |
+| `git` | Fork-based rebase workflow with skill templates. Uses run_skill('/system/git/start_session'). Browse with show_skills('/system/git') |
 | `issue` | GitHub issue management |
 | `npm-optimizer` | Port an npm package to a C++ native addon |
 | `opensassi` | Bootstrap a new project environment |

@@ -1,0 +1,3558 @@
+{
+  "name": "git",
+  "version": "1.0.0",
+  "description": "Git workflow skills \u2014 rebase-based single-commit-per-session workflow",
+  "tools": [
+    {
+      "name": "add",
+      "description": "Add file contents to the index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "Stage all changes (-A)"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Show what would be added (--dry-run)"
+          },
+          "verbose": {
+            "type": "boolean",
+            "description": "Show verbose output (-v)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git add"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "am",
+      "description": "Apply a series of patches from a mailbox",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "3way": {
+            "type": "boolean",
+            "description": "Allow 3-way merge (--3way)"
+          },
+          "signoff": {
+            "type": "boolean",
+            "description": "Add Signed-off-by line (-s)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git am"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "annotate",
+      "description": "Annotate file lines with commit information",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git annotate"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "apply",
+      "description": "Apply a patch to files and/or to the index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git apply"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "archive",
+      "description": "Create an archive of files from a named tree",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "description": "Archive format (--format=tar|zip)"
+          },
+          "output": {
+            "type": "string",
+            "description": "Write to file (--output=FILE)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git archive"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "bisect",
+      "description": "Use binary search to find the commit that introduced a bug",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "bad": {
+            "type": "string",
+            "description": "Mark commit as bad"
+          },
+          "good": {
+            "type": "string",
+            "description": "Mark commit as good"
+          },
+          "reset": {
+            "type": "boolean",
+            "description": "Reset bisect state"
+          },
+          "start": {
+            "type": "boolean",
+            "description": "Start bisect session"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git bisect"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "blame",
+      "description": "Show what revision and author last modified each line of a file",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "File to blame"
+          },
+          "porcelain": {
+            "type": "boolean",
+            "description": "Porcelain format"
+          },
+          "revision": {
+            "type": "string",
+            "description": "Start from revision"
+          },
+          "show_email": {
+            "type": "boolean",
+            "description": "Show email (-e)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git blame"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "branch",
+      "description": "List, create, or delete branches",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "List all branches (-a)"
+          },
+          "delete": {
+            "type": "string",
+            "description": "Delete branch (-d)"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force delete/update"
+          },
+          "list": {
+            "type": "boolean",
+            "description": "List branches"
+          },
+          "move": {
+            "type": "boolean",
+            "description": "Move/rename branch (-m)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git branch"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "bugreport",
+      "description": "Collect information for user to file a bug report",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git bugreport"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "bundle",
+      "description": "Move objects and refs by archive",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git bundle"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "cat-file",
+      "description": "Provide contents or details of repository objects",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git cat-file"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "check-attr",
+      "description": "Display gitattributes information",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git check-attr"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "check-ignore",
+      "description": "Debug gitignore / exclude files",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git check-ignore"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "check-mailmap",
+      "description": "Show canonical names and email addresses of contacts",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git check-mailmap"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "check-ref-format",
+      "description": "Ensures that a reference name is well formed",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git check-ref-format"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "checkout",
+      "description": "Switch branches or restore working tree files",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "b": {
+            "type": "string",
+            "description": "Create and checkout new branch (-b)"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to checkout"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force checkout (-f)"
+          },
+          "merge": {
+            "type": "boolean",
+            "description": "Merge into new branch (--merge)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git checkout"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "checkout--worker",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git checkout--worker"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "checkout-index",
+      "description": "Copy files from the index to the working tree",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git checkout-index"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "cherry",
+      "description": "Find commits yet to be applied to upstream",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git cherry"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "cherry-pick",
+      "description": "Apply the changes introduced by some existing commits",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "commit": {
+            "type": "string",
+            "description": "Commit to cherry-pick"
+          },
+          "edit": {
+            "type": "boolean",
+            "description": "Edit commit message (-e)"
+          },
+          "no_commit": {
+            "type": "boolean",
+            "description": "Don't auto-commit (-n)"
+          },
+          "signoff": {
+            "type": "boolean",
+            "description": "Add Signed-off-by (-s)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git cherry-pick"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "clean",
+      "description": "Remove untracked files from the working tree",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "Show what would be removed (-n)"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force removal (-f)"
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "Interactive mode (-i)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git clean"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "clone",
+      "description": "Clone a repository into a new directory",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "Clone specific branch (-b)"
+          },
+          "depth": {
+            "type": "number",
+            "description": "Shallow clone depth (--depth=N)"
+          },
+          "directory": {
+            "type": "string",
+            "description": "Target directory"
+          },
+          "recurse_submodules": {
+            "type": "boolean",
+            "description": "Clone submodules"
+          },
+          "url": {
+            "type": "string",
+            "description": "Repository URL"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git clone"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "column",
+      "description": "Display data in columns",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git column"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "commit",
+      "description": "Record changes to the repository",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "Auto-stage modified/deleted (-a)"
+          },
+          "allow_empty": {
+            "type": "boolean",
+            "description": "Allow empty commit"
+          },
+          "amend": {
+            "type": "boolean",
+            "description": "Amend last commit (--amend)"
+          },
+          "message": {
+            "type": "string",
+            "description": "Commit message (-m)"
+          },
+          "no_verify": {
+            "type": "boolean",
+            "description": "Skip hooks (--no-verify)"
+          },
+          "signoff": {
+            "type": "boolean",
+            "description": "Add Signed-off-by (-s)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git commit"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "commit-graph",
+      "description": "Write and verify Git commit-graph files",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git commit-graph"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "commit-tree",
+      "description": "Create a new commit object",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git commit-tree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "config",
+      "description": "Get and set repository or global options",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "global": {
+            "type": "boolean",
+            "description": "Use global config (--global)"
+          },
+          "list": {
+            "type": "boolean",
+            "description": "List all config (-l)"
+          },
+          "local": {
+            "type": "boolean",
+            "description": "Use local config (--local)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Config key"
+          },
+          "value": {
+            "type": "string",
+            "description": "Value to set"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git config"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "count-objects",
+      "description": "Count unpacked number of objects and their disk consumption",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git count-objects"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "credential",
+      "description": "Retrieve and store user credentials",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git credential"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "credential-cache",
+      "description": "Helper to temporarily store passwords in memory",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git credential-cache"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "credential-cache--daemon",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git credential-cache--daemon"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "credential-store",
+      "description": "Helper to store credentials on disk",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git credential-store"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "daemon",
+      "description": "A really simple server for Git repositories",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git daemon"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "describe",
+      "description": "Give an object a human readable name based on an available ref",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "Use any ref (--all)"
+          },
+          "dirty": {
+            "type": "string",
+            "description": "Suffix for dirty tree"
+          },
+          "tags": {
+            "type": "boolean",
+            "description": "Use any ref (--tags)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git describe"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "diagnose",
+      "description": "Generate a zip archive of diagnostic information",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git diagnose"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "diff",
+      "description": "Show changes between commits, commit and working tree, etc",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cached": {
+            "type": "boolean",
+            "description": "Show staged changes (--cached)"
+          },
+          "name_only": {
+            "type": "boolean",
+            "description": "Show only names (--name-only)"
+          },
+          "stat": {
+            "type": "boolean",
+            "description": "Show diffstat (--stat)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git diff"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "diff-files",
+      "description": "Compares files in the working tree and the index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git diff-files"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "diff-index",
+      "description": "Compare a tree to the working tree or index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git diff-index"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "diff-tree",
+      "description": "Compares the content and mode of blobs found via two tree objects",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git diff-tree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "difftool",
+      "description": "Show changes using common diff tools",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git difftool"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "difftool--helper",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git difftool--helper"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fast-export",
+      "description": "Git data exporter",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git fast-export"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fast-import",
+      "description": "Backend for fast Git data importers",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git fast-import"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fetch",
+      "description": "Download objects and refs from another repository",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "Fetch all remotes (--all)"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to fetch"
+          },
+          "depth": {
+            "type": "number",
+            "description": "Depth of fetch"
+          },
+          "prune": {
+            "type": "boolean",
+            "description": "Prune deleted refs (-p)"
+          },
+          "remote": {
+            "type": "string",
+            "description": "Remote name"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git fetch"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fetch-pack",
+      "description": "Receive missing objects from another repository",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git fetch-pack"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "filter-branch",
+      "description": "Rewrite branches",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git filter-branch"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fmt-merge-msg",
+      "description": "Produce a merge commit message",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git fmt-merge-msg"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "for-each-ref",
+      "description": "Output information on each ref",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git for-each-ref"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "for-each-repo",
+      "description": "Run a Git command on a list of repositories",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git for-each-repo"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "format-patch",
+      "description": "Prepare patches for e-mail submission",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git format-patch"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fsck",
+      "description": "Verifies the connectivity and validity of the objects in the database",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git fsck"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fsck-objects",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git fsck-objects"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fsmonitor--daemon",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git fsmonitor--daemon"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "gc",
+      "description": "Cleanup unnecessary files and optimize the local repository",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "aggressive": {
+            "type": "boolean",
+            "description": "Aggressive optimization"
+          },
+          "auto": {
+            "type": "boolean",
+            "description": "Run only if needed (--auto)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git gc"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "get-tar-commit-id",
+      "description": "Extract commit ID from an archive created using git-archive",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git get-tar-commit-id"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "grep",
+      "description": "Print lines matching a pattern",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git grep"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "hash-object",
+      "description": "Compute object ID and optionally create an object from a file",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git hash-object"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "help",
+      "description": "Display help information about Git",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "List all commands (-a)"
+          },
+          "command": {
+            "type": "string",
+            "description": "Command to get help for"
+          },
+          "guides": {
+            "type": "boolean",
+            "description": "List guide pages (-g)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git help"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "hook",
+      "description": "Run git hooks",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git hook"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "http-backend",
+      "description": "Server side implementation of Git over HTTP",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git http-backend"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "http-fetch",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git http-fetch"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "http-push",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git http-push"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "imap-send",
+      "description": "Send a collection of patches from stdin to an IMAP folder",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git imap-send"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "index-pack",
+      "description": "Build pack index file for an existing packed archive",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git index-pack"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "init",
+      "description": "Create an empty Git repository or reinitialize an existing one",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "bare": {
+            "type": "boolean",
+            "description": "Create bare repository (--bare)"
+          },
+          "directory": {
+            "type": "string",
+            "description": "Directory to initialize"
+          },
+          "initial_branch": {
+            "type": "string",
+            "description": "Initial branch name"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git init"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "init-db",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git init-db"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "instaweb",
+      "description": "Instantly browse your working repository in gitweb",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git instaweb"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "interpret-trailers",
+      "description": "Add or parse structured information in commit messages",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git interpret-trailers"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "log",
+      "description": "Show commit logs",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "Show all branches (--all)"
+          },
+          "author": {
+            "type": "string",
+            "description": "Filter by author"
+          },
+          "graph": {
+            "type": "boolean",
+            "description": "Show ASCII graph (--graph)"
+          },
+          "max_count": {
+            "type": "number",
+            "description": "Limit commits (-n N)"
+          },
+          "oneline": {
+            "type": "boolean",
+            "description": "One line per commit (--oneline)"
+          },
+          "since": {
+            "type": "string",
+            "description": "Show commits since (--since=DATE)"
+          },
+          "until": {
+            "type": "string",
+            "description": "Show commits until (--until=DATE)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git log"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "ls-files",
+      "description": "Show information about files in the index and the working tree",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git ls-files"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "ls-remote",
+      "description": "List references in a remote repository",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git ls-remote"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "ls-tree",
+      "description": "List the contents of a tree object",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git ls-tree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "mailinfo",
+      "description": "Extracts patch and authorship from a single e-mail message",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git mailinfo"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "mailsplit",
+      "description": "Simple UNIX mbox splitter program",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git mailsplit"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "maintenance",
+      "description": "Run tasks to optimize Git repository data",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git maintenance"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge",
+      "description": "Join two or more development histories together",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "abort": {
+            "type": "boolean",
+            "description": "Abort merge"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to merge"
+          },
+          "continue": {
+            "type": "boolean",
+            "description": "Continue merge"
+          },
+          "no_ff": {
+            "type": "boolean",
+            "description": "Create merge commit (--no-ff)"
+          },
+          "squash": {
+            "type": "boolean",
+            "description": "Squash commits (--squash)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-base",
+      "description": "Find as good common ancestors as possible for a merge",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-base"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-file",
+      "description": "Run a three-way file merge",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-file"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-index",
+      "description": "Run a merge for files needing merging",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-index"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-octopus",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-octopus"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-one-file",
+      "description": "The standard helper program to use with git-merge-index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-one-file"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-ours",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-ours"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-recursive",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-recursive"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-recursive-ours",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-recursive-ours"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-recursive-theirs",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-recursive-theirs"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-resolve",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-resolve"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-subtree",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-subtree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "merge-tree",
+      "description": "Perform merge without touching index or working tree",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git merge-tree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "mergetool",
+      "description": "Run merge conflict resolution tools to resolve merge conflicts",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git mergetool"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "mktag",
+      "description": "Creates a tag object with extra validation",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git mktag"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "mktree",
+      "description": "Build a tree-object from ls-tree formatted text",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git mktree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "multi-pack-index",
+      "description": "Write and verify multi-pack-indexes",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git multi-pack-index"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "mv",
+      "description": "Move or rename a file, a directory, or a symlink",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git mv"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "name-rev",
+      "description": "Find symbolic names for given revs",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git name-rev"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "notes",
+      "description": "Add or inspect object notes",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git notes"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "pack-objects",
+      "description": "Create a packed archive of objects",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git pack-objects"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "pack-redundant",
+      "description": "Find redundant pack files",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git pack-redundant"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "pack-refs",
+      "description": "Pack heads and tags for efficient repository access",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git pack-refs"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "patch-id",
+      "description": "Compute unique ID for a patch",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git patch-id"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "pickaxe",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git pickaxe"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "prune",
+      "description": "Prune all unreachable objects from the object database",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git prune"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "prune-packed",
+      "description": "Remove extra objects that are already in pack files",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git prune-packed"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "pull",
+      "description": "Fetch from and integrate with another repository or a local branch",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "Branch to pull"
+          },
+          "ff_only": {
+            "type": "boolean",
+            "description": "Only allow fast-forward (--ff-only)"
+          },
+          "rebase": {
+            "type": "boolean",
+            "description": "Rebase instead of merge (--rebase)"
+          },
+          "remote": {
+            "type": "string",
+            "description": "Remote name"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git pull"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "push",
+      "description": "Update remote refs along with associated objects",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "Push all branches"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to push"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force push (-f)"
+          },
+          "force_with_lease": {
+            "type": "boolean",
+            "description": "Force with lease"
+          },
+          "remote": {
+            "type": "string",
+            "description": "Remote name"
+          },
+          "set_upstream": {
+            "type": "boolean",
+            "description": "Set upstream (-u)"
+          },
+          "tags": {
+            "type": "boolean",
+            "description": "Push tags"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git push"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "quiltimport",
+      "description": "Applies a quilt patchset onto the current branch",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git quiltimport"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "range-diff",
+      "description": "Compare two commit ranges (e.g. two versions of a branch)",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git range-diff"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "read-tree",
+      "description": "Reads tree information into the index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git read-tree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "rebase",
+      "description": "Reapply commits on top of another base tip",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "abort": {
+            "type": "boolean",
+            "description": "Abort rebase"
+          },
+          "autosquash": {
+            "type": "boolean",
+            "description": "Auto-squash fixup commits"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to rebase"
+          },
+          "continue": {
+            "type": "boolean",
+            "description": "Continue rebase"
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "Interactive mode (-i)"
+          },
+          "onto": {
+            "type": "string",
+            "description": "Upstream branch (--onto)"
+          },
+          "skip": {
+            "type": "boolean",
+            "description": "Skip current commit"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git rebase"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "receive-pack",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git receive-pack"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "reflog",
+      "description": "Manage reflog information",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git reflog"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "remote",
+      "description": "Manage set of tracked repositories",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "add": {
+            "type": "string",
+            "description": "Add remote name"
+          },
+          "remove": {
+            "type": "string",
+            "description": "Remove remote"
+          },
+          "rename": {
+            "type": "string",
+            "description": "Rename remote old name"
+          },
+          "url": {
+            "type": "string",
+            "description": "Remote URL"
+          },
+          "verbose": {
+            "type": "boolean",
+            "description": "Show verbose (-v)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git remote"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "remote-ext",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git remote-ext"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "remote-fd",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git remote-fd"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "remote-ftp",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git remote-ftp"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "remote-ftps",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git remote-ftps"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "remote-http",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git remote-http"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "remote-https",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git remote-https"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "repack",
+      "description": "Pack unpacked objects in a repository",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git repack"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "replace",
+      "description": "Create, list, delete refs to replace objects",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git replace"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "request-pull",
+      "description": "Generates a summary of pending changes",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git request-pull"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "rerere",
+      "description": "Reuse recorded resolution of conflicted merges",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git rerere"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "reset",
+      "description": "Reset current HEAD to the specified state",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "hard": {
+            "type": "boolean",
+            "description": "Hard reset (--hard)"
+          },
+          "mixed": {
+            "type": "boolean",
+            "description": "Mixed reset (--mixed)"
+          },
+          "soft": {
+            "type": "boolean",
+            "description": "Soft reset (--soft)"
+          },
+          "target": {
+            "type": "string",
+            "description": "Commit/branch to reset to"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git reset"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "restore",
+      "description": "Restore working tree files",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ours": {
+            "type": "boolean",
+            "description": "Use our version on conflicts"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source tree (-s)"
+          },
+          "staged": {
+            "type": "boolean",
+            "description": "Restore the index (--staged)"
+          },
+          "theirs": {
+            "type": "boolean",
+            "description": "Use their version on conflicts"
+          },
+          "worktree": {
+            "type": "boolean",
+            "description": "Restore working tree (--worktree)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git restore"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "rev-list",
+      "description": "Lists commit objects in reverse chronological order",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git rev-list"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "rev-parse",
+      "description": "Pick out and massage parameters",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git rev-parse"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "revert",
+      "description": "Revert some existing commits",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "commit": {
+            "type": "string",
+            "description": "Commit to revert"
+          },
+          "edit": {
+            "type": "boolean",
+            "description": "Edit commit message (-e)"
+          },
+          "no_commit": {
+            "type": "boolean",
+            "description": "Don't auto-commit (-n)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git revert"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "rm",
+      "description": "Remove files from the working tree and from the index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git rm"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "send-pack",
+      "description": "Push objects over Git protocol to another repository",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git send-pack"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "sh-i18n--envsubst",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git sh-i18n--envsubst"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "shell",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git shell"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "shortlog",
+      "description": "Summarize 'git log' output",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "max_count": {
+            "type": "number",
+            "description": "Limit commits (-n N)"
+          },
+          "numbered": {
+            "type": "boolean",
+            "description": "Number entries (-n)"
+          },
+          "summary": {
+            "type": "boolean",
+            "description": "Suppress commit descriptions (-s)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git shortlog"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "show",
+      "description": "Show various types of objects",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name_only": {
+            "type": "boolean",
+            "description": "Show only names (--name-only)"
+          },
+          "object": {
+            "type": "string",
+            "description": "Object to show"
+          },
+          "stat": {
+            "type": "boolean",
+            "description": "Show diffstat (--stat)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git show"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "show-branch",
+      "description": "Show branches and their commits",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git show-branch"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "show-index",
+      "description": "Show packed archive index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git show-index"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "show-ref",
+      "description": "List references in a local repository",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git show-ref"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "sparse-checkout",
+      "description": "Reduce your working tree to a subset of tracked files",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git sparse-checkout"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "stage",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git stage"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "stash",
+      "description": "Stash the changes in a dirty working directory away",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "apply": {
+            "type": "string",
+            "description": "Apply stash"
+          },
+          "drop": {
+            "type": "string",
+            "description": "Drop stash"
+          },
+          "include_untracked": {
+            "type": "boolean",
+            "description": "Include untracked (-u)"
+          },
+          "list": {
+            "type": "boolean",
+            "description": "List stashes"
+          },
+          "pop": {
+            "type": "boolean",
+            "description": "Apply and remove top stash"
+          },
+          "push": {
+            "type": "boolean",
+            "description": "Stash changes"
+          },
+          "show": {
+            "type": "string",
+            "description": "Show stash diff"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git stash"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "status",
+      "description": "Show the working tree status",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "boolean",
+            "description": "Show branch info (-b)"
+          },
+          "porcelain": {
+            "type": "number",
+            "description": "Porcelain format version"
+          },
+          "short": {
+            "type": "boolean",
+            "description": "Short format (-s)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git status"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "stripspace",
+      "description": "Remove unnecessary whitespace",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git stripspace"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "submodule",
+      "description": "Initialize, update or inspect submodules",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "add": {
+            "type": "string",
+            "description": "Add submodule URL"
+          },
+          "init": {
+            "type": "boolean",
+            "description": "Initialize submodules"
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Recurse into submodules"
+          },
+          "remote": {
+            "type": "boolean",
+            "description": "Track remote branches"
+          },
+          "update": {
+            "type": "boolean",
+            "description": "Update submodules"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git submodule"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "submodule--helper",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git submodule--helper"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "subtree",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git subtree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "switch",
+      "description": "Switch branches",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "Branch to switch to"
+          },
+          "create": {
+            "type": "string",
+            "description": "Create and switch to new branch (-c)"
+          },
+          "detach": {
+            "type": "boolean",
+            "description": "Detach HEAD (--detach)"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force switch (-f)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git switch"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "symbolic-ref",
+      "description": "Read, modify and delete symbolic refs",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git symbolic-ref"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "tag",
+      "description": "Create, list, delete or verify a tag object signed with GPG",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "annotate": {
+            "type": "boolean",
+            "description": "Create annotated tag (-a)"
+          },
+          "delete": {
+            "type": "string",
+            "description": "Delete tag (-d)"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force tag (-f)"
+          },
+          "list": {
+            "type": "string",
+            "description": "List tags (-l PATTERN)"
+          },
+          "message": {
+            "type": "string",
+            "description": "Tag message (-m)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tag name"
+          },
+          "sign": {
+            "type": "boolean",
+            "description": "GPG-sign tag (-s)"
+          },
+          "target": {
+            "type": "string",
+            "description": "Object to tag"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git tag"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "unpack-file",
+      "description": "Creates a temporary file with a blob's contents",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git unpack-file"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "unpack-objects",
+      "description": "Unpack objects from a packed archive",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git unpack-objects"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "update-index",
+      "description": "Register file contents in the working tree to the index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git update-index"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "update-ref",
+      "description": "Update the object name stored in a ref safely",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git update-ref"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "update-server-info",
+      "description": "Update auxiliary info file to help dumb servers",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git update-server-info"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "upload-archive",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git upload-archive"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "upload-archive--writer",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git upload-archive--writer"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "upload-pack",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git upload-pack"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "var",
+      "description": "Show a Git logical variable",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git var"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "verify-commit",
+      "description": "Check the GPG signature of commits",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git verify-commit"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "verify-pack",
+      "description": "Validate packed Git archive files",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git verify-pack"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "verify-tag",
+      "description": "Check the GPG signature of tags",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git verify-tag"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "version",
+      "description": "Display version information about Git",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git version"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "web--browse",
+      "description": "",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git web--browse"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "whatchanged",
+      "description": "Show logs with differences each commit introduces",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git whatchanged"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "worktree",
+      "description": "Manage multiple working trees",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "add": {
+            "type": "string",
+            "description": "Path for new working tree"
+          },
+          "list": {
+            "type": "boolean",
+            "description": "List linked working trees"
+          },
+          "prune": {
+            "type": "boolean",
+            "description": "Prune stale working trees"
+          },
+          "remove": {
+            "type": "string",
+            "description": "Remove a working tree"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git worktree"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "write-tree",
+      "description": "Create a tree object from the current index",
+      "systemTool": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional arguments passed to git write-tree"
+          }
+        },
+        "required": []
+      }
+    }
+  ],
+  "prompts": [
+    {
+      "name": "start_session",
+      "description": "Git session start: checkout main, pull --rebase origin main, verify working tree. The standard way to begin any git workflow.",
+      "promptFile": "prompts/start_session.md"
+    },
+    {
+      "name": "finish_session",
+      "description": "Git session finish: add, commit, rebase onto main, push. The standard way to end and publish a git session.",
+      "promptFile": "prompts/finish_session.md"
+    },
+    {
+      "name": "sync",
+      "description": "Git sync: fetch origin and rebase onto origin/main.",
+      "promptFile": "prompts/sync.md"
+    }
+  ]
+}

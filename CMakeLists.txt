@@ -13,7 +13,6 @@ set(LIB_SOURCES
     src/a0_dir.cpp
     src/agent_core.cpp
     src/base_prompt.cpp
-    src/system_tools.cpp
     src/tool_runner.cpp
     src/skill_runner.cpp
     src/deepseek_provider.cpp
@@ -48,11 +47,12 @@ add_subdirectory(src/skills)
 add_subdirectory(src/persistence)
 add_subdirectory(src/b1)
 add_subdirectory(src/c2)
+add_subdirectory(src/system_tools)
 
-target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib skills_lib persistence_lib cmd_runner_lib ipc_lib)
+target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib skills_lib persistence_lib cmd_runner_lib ipc_lib system_tools_lib)
 
 add_executable(a0 src/main.cpp)
-target_link_libraries(a0 PRIVATE a0_lib persistence_lib cmd_runner_lib)
+target_link_libraries(a0 PRIVATE a0_lib system_tools_lib persistence_lib cmd_runner_lib)
 
 option(ENABLE_TRACE "Enable trace logging" OFF)
 if(ENABLE_TRACE)
@@ -71,6 +71,7 @@ function(add_agent_test TEST_NAME TEST_SOURCE)
     add_executable(${TEST_NAME} ${TEST_SOURCE})
     target_link_libraries(${TEST_NAME} PRIVATE
         a0_lib
+        system_tools_lib
         GTest::gtest
         GTest::gtest_main
     )

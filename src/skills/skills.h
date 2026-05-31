@@ -117,6 +117,7 @@ public:
 
     int getTool(const std::string& qualifiedName, SkillTool& tool) const;
     int getPrompt(const std::string& qualifiedName, Prompt& prompt) const;
+    int getManifest(SkillNamespace ns, const std::string& component, SkillManifest& manifest) const;
 
     // Resolve a prompt, flattening its chain into a single concatenated prompt.
     // out.prompt = chain[0].prompt + "\n\n" + chain[1].prompt + "\n\n" + target.prompt

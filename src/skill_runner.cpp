@@ -123,14 +123,12 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
     }
 
     // Pass 2: replace {{tool:qualified_name key="value" ...}} eager tool calls
-    // Qualified names may contain colons and hyphens (e.g. local:my-pkg:tool_name)
     std::regex toolRe(R"(\{\{tool:([\w:-]+)\s+([^}]+)\}\})");
     std::smatch match;
     while (std::regex_search(result, match, toolRe)) {
         std::string toolName = match[1];
         std::string argsStr = match[2];
 
-        // Parse key="value" pairs with auto-type conversion
         json toolParams;
         std::regex argRe(R"((\w+)=["']([^"']*)["'])");
         std::smatch argMatch;
@@ -149,18 +147,15 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
             searchStart = argMatch.suffix().first;
         }
 
-        // Look up tool by qualified name via SkillManager
         a0::skills::SkillTool skillTool;
         Tool tool;
         bool found = false;
 
-        // Try direct qualified lookup first
         if (m_skillMgr && m_skillMgr->getTool(toolName, skillTool) == 0) {
             tool = skillToolToTool(skillTool);
             found = true;
         }
 
-        // If the name has no ':' and we have component context, try within-component resolution
         if (!found && toolName.find(':') == std::string::npos &&
             !prompt.ns.empty() && !prompt.component.empty()) {
             std::string within = a0::skills::buildQualifiedName(prompt.ns, prompt.component, toolName);
@@ -168,6 +163,14 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
                 tool = skillToolToTool(skillTool);
                 found = true;
             }
+        }
+
+        // Passthrough: check system tools
+        if (!found && m_systemTools && m_systemTools->isSystemTool(toolName)) {
+            auto sysResult = m_systemTools->execute(toolName, toolParams);
+            std::string replacement = sysResult.output;
+            result.replace(match.position(), match.length(), replacement);
+            continue;
         }
 
         if (!found) {
@@ -188,18 +191,12 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
         result.replace(match.position(), match.length(), replacement);
     }
 
-    // Pass 3: replace {{tool_call:qualified_name args...}} — substitute short LLM-facing name
-    // and register in dispatch table. During prompt expansion, the short name is unknown yet,
-    // so we keep the qualified name as-is and let the session-level dispatch registration
-    // handle the mapping at processGoal() time.
-    // For now, just strip the {{tool_call:...}} to the base name for readability.
     std::regex toolCallRe(R"(\{\{tool_call:([\w:-]+)\s*([^}]*)\}\})");
     std::string pass3;
     std::string::const_iterator pos3 = result.cbegin();
     std::smatch tcMatch;
     while (std::regex_search(pos3, result.cend(), tcMatch, toolCallRe)) {
         pass3.append(pos3, tcMatch[0].first);
-        // Extract just the short name (last segment of qualified name)
         std::string qName = tcMatch[1];
         auto lastColon = qName.find_last_of(':');
         std::string shortName = (lastColon != std::string::npos) ? qName.substr(lastColon + 1) : qName;

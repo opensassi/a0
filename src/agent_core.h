@@ -34,6 +34,11 @@ private:
     void xLogAndPush(const std::string& goal, const json& result);
     void xBuildDispatchTable();
 
+    std::string xRunForkedLoop(
+        const std::string& userInput,
+        const std::vector<ToolSchema>& tools,
+        int maxTurns);
+
     std::string m_basePrompt;
     int m_agentDbId = -1;
     int64_t m_sessionDbId = 0;
@@ -53,6 +58,5 @@ private:
     std::string m_sessionId;
     bool m_initialized;
 
-    /// Dispatch: short LLM-facing name → qualified internal name
     std::unordered_map<std::string, std::string> m_dispatch;
 };

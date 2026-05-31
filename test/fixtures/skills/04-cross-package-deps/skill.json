@@ -6,19 +6,19 @@
     {
       "name": "uses_read",
       "description": "Prompt that depends on system:read",
-      "dependencies": ["system:read"],
+      "dependencies": ["system:fs:read"],
       "prompt": "READ_DEPENDENT_PROMPT"
     },
     {
       "name": "uses_read_expand",
       "description": "Prompt with cross-package {{tool:...}}",
-      "dependencies": ["system:read"],
-      "prompt": "Read {{tool:system:read filePath=\"/etc/hostname\"}} end"
+      "dependencies": ["system:fs:read"],
+      "prompt": "Read {{tool:system:fs:read filePath=\"/etc/hostname\"}} end"
     },
     {
       "name": "uses_read_toolcall",
       "description": "Prompt with cross-package {{tool_call:...}}",
-      "dependencies": ["system:read"],
+      "dependencies": ["system:fs:read"],
       "prompt": "Use {{tool_call:system:read}} for reading"
     }
   ]

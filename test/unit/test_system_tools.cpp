@@ -35,7 +35,7 @@ protected:
 
 TEST_F(SystemToolsTest, ListTools) {
     auto names = tools.listTools();
-    EXPECT_GT(names.size(), 0);
+    EXPECT_GE(names.size(), 6);
     EXPECT_NE(std::find(names.begin(), names.end(), "bash"), names.end());
     EXPECT_NE(std::find(names.begin(), names.end(), "read"), names.end());
     EXPECT_NE(std::find(names.begin(), names.end(), "glob"), names.end());

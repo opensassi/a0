@@ -162,6 +162,127 @@ void DefaultAgentCore::xBuildDispatchTable() {
 // processGoal
 // ---------------------------------------------------------------------------
 
+std::string DefaultAgentCore::xRunForkedLoop(
+    const std::string& userInput,
+    const std::vector<ToolSchema>& tools,
+    int maxTurns)
+{
+    // Local messages vector — this IS the fork/rewind mechanism.
+    // Everything in this vector is discarded when the function returns.
+    std::vector<Message> messages;
+    messages.push_back({"user", userInput});
+
+    // Auto-analyze: inject tools_for_prompt result as the second message.
+    // The analysis text guides the LLM to the right skills/tools for this input.
+    // This message is rewound when the fork completes.
+    if (m_systemTools) {
+        auto analysis = m_systemTools->execute(
+            "tools_for_prompt", {{"prompt", userInput}});
+        if (!analysis.output.empty()) {
+            messages.push_back({"assistant", analysis.output});
+        }
+    }
+
+    const size_t maxPayloadBytes = 512 * 1024;
+
+    for (int turn = 0; turn < maxTurns; ++turn) {
+        std::vector<ToolSchema> combinedSchemas = tools;
+
+        // Add dispatch table entries (skill tools/prompts not already in schemas)
+        for (const auto& [shortName, qualifiedName] : m_dispatch) {
+            if (m_systemTools && m_systemTools->isSystemTool(shortName)) continue;
+            bool alreadyIn = false;
+            for (const auto& ts : combinedSchemas) {
+                if (ts.name == shortName) { alreadyIn = true; break; }
+            }
+            if (alreadyIn) continue;
+
+            ToolSchema ts;
+            ts.name = shortName;
+            a0::skills::SkillTool st;
+            if (m_skillMgr && m_skillMgr->getTool(qualifiedName, st) == 0) {
+                ts.description = st.description;
+            } else {
+                Prompt sp;
+                if (m_skillMgr && m_skillMgr->getPrompt(qualifiedName, sp) == 0) {
+                    ts.description = sp.description;
+                }
+            }
+                ts.inputSchema = {{"type", "object"}, {"properties", json::object()}, {"required", json::array()}};
+                combinedSchemas.push_back(ts);
+        }
+
+        auto response = m_provider->complete(m_basePrompt, messages, combinedSchemas);
+
+        if (!response.toolCalls.empty()) {
+            Message asstMsg("assistant", "");
+            asstMsg.toolCalls = response.toolCalls;
+            messages.push_back(asstMsg);
+
+            for (auto& tc : response.toolCalls) {
+                TRACE_LOG("forked_tool_call[" << turn << "]: " << tc.name
+                          << " args=" << tc.arguments.dump());
+
+                std::string result;
+
+                if (m_systemTools && m_systemTools->isSystemTool(tc.name)) {
+                    result = m_systemTools->execute(tc.name, tc.arguments).output;
+                } else {
+                    auto dit = m_dispatch.find(tc.name);
+                    if (dit != m_dispatch.end()) {
+                        const std::string& qualifiedName = dit->second;
+                        a0::skills::SkillTool st;
+                        if (m_skillMgr && m_skillMgr->getTool(qualifiedName, st) == 0) {
+                            Tool t;
+                            t.name = st.name;
+                            t.description = st.description;
+                            t.command = st.command;
+                            t.inputMode = st.inputMode;
+                            t.dockerImage = st.dockerImage;
+                            t.trustLevel = st.trustLevel;
+                            t.aptDependencies = st.aptDependencies;
+                            auto runner = (!t.dockerImage.empty() && m_dockerRunner)
+                                ? m_dockerRunner : m_toolRunner;
+                            auto r = runner->run(t, tc.arguments);
+                            result = r.is_string() ? r.get<std::string>() : r.dump();
+                        } else {
+                            Prompt resolved;
+                            if (m_skillMgr && m_skillMgr->getPromptResolved(qualifiedName, resolved) == 0) {
+                                auto r = m_skillRunner->execute(resolved, tc.arguments);
+                                result = r.is_string() ? r.get<std::string>() : r.dump();
+                            } else {
+                                result = "ERROR: dispatch target not found: " + tc.name;
+                            }
+                        }
+                    } else {
+                        result = "ERROR: unknown tool: " + tc.name;
+                    }
+                }
+
+                std::string safeOutput = sanitizeUtf8(truncateForLLM(result));
+                messages.push_back({"tool", safeOutput, tc.id});
+
+                size_t totalBytes = 0;
+                for (const auto& m : messages)
+                    totalBytes += m.content.size();
+                if (totalBytes > maxPayloadBytes) {
+                    return "ERROR: cumulative message payload (" +
+                        std::to_string(totalBytes) + " bytes) exceeds limit";
+                }
+            }
+            continue;
+        }
+
+        if (!response.content.empty()) {
+            return sanitizeUtf8(response.content);
+        }
+
+        return "ERROR: LLM returned empty response";
+    }
+
+    return "ERROR: max tool call turns (" + std::to_string(maxTurns) + ") exceeded";
+}
+
 json DefaultAgentCore::processGoal(const std::string& goal) {
     TRACE_LOG("processGoal(" << goal << ")");
     if (!m_initialized) {
@@ -173,7 +294,6 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
 
     m_context->push({"user", goal});
 
-    // Persistence: create a session for this goal processing
     if (m_persistence && m_agentDbId > 0) {
         m_sessionDbId = m_persistence->createSession(0, 0, m_agentDbId);
         m_persistence->appendMessage(m_sessionDbId, "user", goal, "", "", "", "");
@@ -182,7 +302,6 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
     // Phase 1: Check for exact goal → prompt match in SkillManager
     if (m_skillMgr) {
         Prompt resolved;
-        // Try as qualified name first
         if (m_skillMgr->getPromptResolved(goal, resolved) == 0) {
             auto result = m_skillRunner->execute(resolved, {{"goal", goal}});
             xLogAndPush(goal, result);
@@ -191,10 +310,8 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
             return result;
         }
 
-        // Also try simple name match by searching all loaded prompts
         auto allSkills = m_skillMgr->listSkills(std::nullopt);
         for (const auto& comp : allSkills) {
-            // Try local:component:goal, system:component:goal
             for (const auto& ns : {"local", "system"}) {
                 std::string qn = std::string(ns) + ":" + comp + ":" + goal;
                 if (m_skillMgr->getPromptResolved(qn, resolved) == 0) {
@@ -208,141 +325,26 @@ json DefaultAgentCore::processGoal(const std::string& goal) {
         }
     }
 
-    // Phase 2: No exact match — use tool-calling loop with tool discovery
+    // Phase 2: Forked tool-calling loop with 10 default tools
+    // All intermediate messages stay in the local fork and get rewound.
+    xBuildDispatchTable();
+
     auto toolSchemas = m_systemTools ? m_systemTools->schemas()
                                       : std::vector<ToolSchema>();
 
     if (!toolSchemas.empty()) {
-        std::vector<Message> messages;
-        messages.push_back({"user", goal});
-
-        // Build dispatch table for this session
-        xBuildDispatchTable();
-
-        const int maxTurns = 10;
-        const size_t maxPayloadBytes = 512 * 1024; // 512 KB total
-
-        for (int turn = 0; turn < maxTurns; ++turn) {
-            // Merge system tool schemas with skill tool schemas
-            std::vector<ToolSchema> combinedSchemas = toolSchemas;
-
-            // Add skill tools and prompts as LLM-callable tools (skip system tools — already added)
-            for (const auto& [shortName, qualifiedName] : m_dispatch) {
-                if (m_systemTools && m_systemTools->isSystemTool(shortName)) continue;
-
-                ToolSchema ts;
-                ts.name = shortName;
-                a0::skills::SkillTool st;
-                if (m_skillMgr && m_skillMgr->getTool(qualifiedName, st) == 0) {
-                    ts.description = st.description;
-                } else {
-                    Prompt sp;
-                    if (m_skillMgr && m_skillMgr->getPrompt(qualifiedName, sp) == 0) {
-                        ts.description = sp.description;
-                    }
-                }
-                ts.inputSchema = {{"type", "object"}, {"properties", {}}, {"required", {}}};
-                combinedSchemas.push_back(ts);
-            }
-
-            auto response = m_provider->complete(m_basePrompt, messages, combinedSchemas);
-
-            if (!response.toolCalls.empty()) {
-                Message asstMsg("assistant", "");
-                asstMsg.toolCalls = response.toolCalls;
-                messages.push_back(asstMsg);
-
-                for (auto& tc : response.toolCalls) {
-                    TRACE_LOG("tool_call[" << turn << "]: " << tc.name
-                              << " args=" << tc.arguments.dump());
-
-                    // Look up in dispatch table
-                    auto dit = m_dispatch.find(tc.name);
-                    if (dit != m_dispatch.end()) {
-                        const std::string& qualifiedName = dit->second;
-                        std::string result;
-
-                        if (m_systemTools && m_systemTools->isSystemTool(tc.name)) {
-                            result = m_systemTools->execute(tc.name, tc.arguments).output;
-                        } else {
-                            // Try as skill tool first
-                            a0::skills::SkillTool st;
-                            if (m_skillMgr && m_skillMgr->getTool(qualifiedName, st) == 0) {
-                                Tool t;
-                                t.name = st.name;
-                                t.description = st.description;
-                                t.command = st.command;
-                                t.inputMode = st.inputMode;
-                                t.dockerImage = st.dockerImage;
-                                t.trustLevel = st.trustLevel;
-                                t.aptDependencies = st.aptDependencies;
-                                auto runner = (!t.dockerImage.empty() && m_dockerRunner)
-                                    ? m_dockerRunner : m_toolRunner;
-                                auto r = runner->run(t, tc.arguments);
-                                result = r.is_string() ? r.get<std::string>() : r.dump();
-                            } else {
-                                // Try as skill prompt
-                                Prompt resolved;
-                                if (m_skillMgr && m_skillMgr->getPromptResolved(qualifiedName, resolved) == 0) {
-                                    auto r = m_skillRunner->execute(resolved, tc.arguments);
-                                    result = r.is_string() ? r.get<std::string>() : r.dump();
-                                } else {
-                                    result = "ERROR: dispatch target not found: " + tc.name;
-                                }
-                            }
-                        }
-
-                        std::string safeOutput = sanitizeUtf8(truncateForLLM(result));
-                        messages.push_back({"tool", safeOutput, tc.id});
-
-                        if (m_persistence && m_sessionDbId > 0) {
-                            m_persistence->appendMessage(m_sessionDbId, "tool_call", "",
-                                                          tc.arguments.dump(), tc.id,
-                                                          tc.name, safeOutput);
-                        }
-                    } else {
-                        // Unknown tool — fall back to system tools directly
-                        auto result = m_systemTools->execute(tc.name, tc.arguments);
-                        std::string safeOutput = sanitizeUtf8(truncateForLLM(result.output));
-                        messages.push_back({"tool", safeOutput, tc.id});
-                    }
-
-                    // Check cumulative payload size
-                    size_t totalBytes = 0;
-                    for (const auto& m : messages)
-                        totalBytes += m.content.size();
-                    if (totalBytes > maxPayloadBytes) {
-                        std::string err = "ERROR: cumulative message payload (" +
-                            std::to_string(totalBytes) + " bytes) exceeds limit";
-                        if (m_persistence && m_sessionDbId > 0)
-                            m_persistence->endSession(m_sessionDbId);
-                        return json(err);
-                    }
-                }
-                continue;
-            }
-
-            if (!response.content.empty()) {
-                auto result = json(sanitizeUtf8(response.content));
-                xLogAndPush(goal, result);
-                if (m_persistence && m_sessionDbId > 0)
-                    m_persistence->endSession(m_sessionDbId);
-                return result;
-            }
-
-            return json("ERROR: LLM returned empty response");
-        }
-
+        std::string result = xRunForkedLoop(goal, toolSchemas, 10);
+        json finalResult = json(result);
+        xLogAndPush(goal, finalResult);
         if (m_persistence && m_sessionDbId > 0)
             m_persistence->endSession(m_sessionDbId);
-        return json("ERROR: max tool call turns (" + std::to_string(maxTurns) + ") exceeded");
+        return finalResult;
     }
 
-    // Fallback: use SchemaInferenceEngine (backward compat for tests / no system tools)
+    // Fallback: use SchemaInferenceEngine
     json result;
     try {
         auto prompt = m_inferenceEngine->inferPrompt(goal);
-        // Use SkillManager to add the inferred prompt to local namespace
         if (m_skillMgr) {
             m_skillMgr->addPrompt("inferred", prompt);
         }

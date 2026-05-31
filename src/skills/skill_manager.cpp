@@ -186,6 +186,11 @@ int SkillManager::resolveName(const std::string& componentNs,
     return 1; // not found but no error — may resolve at call site
 }
 
+int SkillManager::getManifest(SkillNamespace ns, const std::string& component, SkillManifest& manifest) const
+{
+    return m_loader->getManifest(ns, component, manifest);
+}
+
 std::vector<std::string> SkillManager::listSkills(std::optional<SkillNamespace> ns) const
 {
     if (ns.has_value()) {

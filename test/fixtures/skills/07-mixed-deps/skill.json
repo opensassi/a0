@@ -20,7 +20,7 @@
       "name": "master",
       "description": "Master prompt with mixed dependencies",
       "chain": ["base"],
-      "dependencies": ["helper_tool", "system:read", "system:write"],
+      "dependencies": ["helper_tool", "system:fs:read", "system:fs:write"],
       "prompt": "MASTER_TXT"
     },
     {
