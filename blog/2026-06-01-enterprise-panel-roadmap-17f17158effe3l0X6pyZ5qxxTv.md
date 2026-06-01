@@ -1,9 +1,5 @@
 # Self-Hoisting the Product: How We Used Expert Panels to Define a0's Roadmap
 
-**Date:** 2026-06-01
-**Session:** `2026-06-01-enterprise-panel-roadmap-17f17158effe3l0X6pyZ5qxxTv`
-**Tag:** `enterprise-panel`, `product-roadmap`, `security-audit`, `agentic-development`
-
 ---
 
 In one eight-hour session, we went from zero to a complete product roadmap with 81 tracked issues, a zero-trust security model, a self-hoisting compiler test, and a public project board — all driven by a structured expert panel methodology running inside an AI agent.
@@ -20,16 +16,16 @@ The panel's output is structured issues on GitHub, organized by release phase, w
 
 ## The Numbers
 
-| Metric | Value |
-|--------|-------|
-| Session duration | 8 hours prompter time |
-| Equivalent SME time | 120-160 hours |
-| AI multiplier | 15-20x |
-| Issues created | 81 |
-| Release phases | 3 (Open Source, Cloud Beta, Enterprise) |
-| Expert panels | 2 (Enterprise Stakeholder, System Design Review) |
-| Audit findings | 43 mapped to 21 blocker issues |
-| Tests passed | 27/27 (100%) |
+| Metric              | Value                                            |
+| ------------------- | ------------------------------------------------ |
+| Session duration    | 8 hours prompter time                            |
+| Equivalent SME time | 120-160 hours                                    |
+| AI multiplier       | 15-20x                                           |
+| Issues created      | 81                                               |
+| Release phases      | 3 (Open Source, Cloud Beta, Enterprise)          |
+| Expert panels       | 2 (Enterprise Stakeholder, System Design Review) |
+| Audit findings      | 43 mapped to 21 blocker issues                   |
+| Tests passed        | 27/27 (100%)                                     |
 
 ## The Architecture That Emerged
 
@@ -55,6 +51,7 @@ This is the software equivalent of a self-hosting compiler (GCC compiling itself
 The session used a two-phase execution process:
 
 **Phase 1 — Feature Review** (Enterprise Stakeholder Panel):
+
 1. Load 80+ source files and all spec documents into context
 2. Cluster open issues by system context (spec tree, source tree, test tree, UI, infrastructure)
 3. Run the 5-expert panel against each cluster
@@ -62,6 +59,7 @@ The session used a two-phase execution process:
 5. Create issues on GitHub with milestones, phase assignments, and size estimates
 
 **Phase 2 — Audit Reconciliation** (System Design Review Panel):
+
 1. Run the 7-expert technical panel over each new feature issue
 2. Identify gaps between features and audit requirements
 3. Add user stories or create new blocker issues
@@ -85,6 +83,7 @@ This is the opposite of the usual AI coding narrative. The focus wasn't on gener
 The handoff documents in `handoffs/2026-06-01-enterprise-panel-roadmap/` define the execution process for the next session: load context, enumerate issues, run panels, decompose, create sub-issues, implement. The process is self-similar — it applies at every level of granularity, from product roadmap down to individual method implementation.
 
 The delivery timeline:
+
 - **Open Source:** June 15 (2 weeks)
 - **Cloud Beta:** July 1 (4 weeks)
 - **Enterprise candidate:** August 15 (10 weeks)
@@ -92,5 +91,3 @@ The delivery timeline:
 All 81 issues are tracked publicly at [github.com/orgs/opensassi/projects/1](https://github.com/orgs/opensassi/projects/1).
 
 ---
-
-*Post-session commentary written after `git finish-session` on commit `62e674e`, with 27/27 tests passing and the single atomic commit pushed to `opensassi/a0 main`.*
