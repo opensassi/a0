@@ -1,0 +1,431 @@
+{
+  "dashboard": {
+    "metadata": {
+      "generated_at": "2026-05-31T23:48:46.931Z",
+      "audited": false,
+      "audit_note": "Auto-generated from session evaluation files"
+    },
+    "daily_summary": {
+      "date": "2026-05-31",
+      "total_prompter_time_hours": 9.5,
+      "total_sme_time_hours": 35,
+      "ai_multiplier": 3.7,
+      "total_sessions": 5,
+      "top_subject_areas": [
+        {
+          "name": "C++",
+          "prompter_time_hours": 0.08,
+          "sme_time_hours": 2.55,
+          "ai_multiplier": 33.2
+        },
+        {
+          "name": "persistence",
+          "prompter_time_hours": 0.32,
+          "sme_time_hours": 2.36,
+          "ai_multiplier": 7.4
+        },
+        {
+          "name": "specification",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "code-audit",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "staleness-check",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "revision",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "SQLite",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "IPC",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "Docker",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "tool-calling",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "streaming",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "session-evaluation",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 2,
+          "ai_multiplier": 49.7
+        },
+        {
+          "name": "agent",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "tool-accumulation",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "schema-validation",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "codebase-exploration",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "implementation",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "system-tools",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "discovery",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "LLM-integration",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "function-calling",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "test-driven",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.55,
+          "ai_multiplier": 15
+        },
+        {
+          "name": "sqlite",
+          "prompter_time_hours": 0.28,
+          "sme_time_hours": 0.36,
+          "ai_multiplier": 1.3
+        },
+        {
+          "name": "session-id",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "uuid",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "hex-encoding",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "cpp17",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "entropy",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "random-generation",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "codebase-audit",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "refactoring",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "opensassi",
+          "prompter_time_hours": 0.04,
+          "sme_time_hours": 0.27,
+          "ai_multiplier": 7.5
+        },
+        {
+          "name": "C++ agent architecture",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "LLM tool calling",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "skill execution pipeline",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "base prompt design",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "dynamic tool discovery",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "schema validation",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "worktree testing",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "meta-skill scaffolding",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "CLI tool generation",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "session evaluation",
+          "prompter_time_hours": 0.55,
+          "sme_time_hours": 0.1,
+          "ai_multiplier": 0.2
+        },
+        {
+          "name": "schema-design",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "CLI-refactor",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "C++17",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "CMake",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "test-driven-development",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "session-management",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "JSON",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "data-migration",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "command-line-parsing",
+          "prompter_time_hours": 0.24,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.4
+        }
+      ]
+    },
+    "session_breakdown": [
+      {
+        "session_id": "2026-05-31-agent-core-tool-calling-architecture",
+        "duration_minutes": 330,
+        "prompter_time_minutes": 330,
+        "sme_time_minutes": 60,
+        "top_component_summary": "Agent execution loop — `DefaultAgentCore::processGoal` refactored to expand skill prompts and feed them through the tool-calling forked loop, enabling multi-step autonomous execution with verified tool discovery.",
+        "tags": [
+          "C++ agent architecture",
+          "LLM tool calling",
+          "skill execution pipeline",
+          "base prompt design",
+          "dynamic tool discovery",
+          "schema validation",
+          "worktree testing",
+          "meta-skill scaffolding",
+          "CLI tool generation",
+          "session evaluation"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-31-dynamic-tool-accumulation",
+        "duration_minutes": 24,
+        "prompter_time_minutes": 24,
+        "sme_time_minutes": 360,
+        "top_component_summary": "Dynamic tool accumulation pipeline replacing the static `isSystemTool` filter with a validated discovery model where `tools_for_prompt` generates structured JSON with schemas, C++ validates the output, and only validated tools are added to subsequent LLM function-calling turns.",
+        "tags": [
+          "C++",
+          "agent",
+          "tool-accumulation",
+          "schema-validation",
+          "codebase-exploration",
+          "implementation",
+          "system-tools",
+          "discovery",
+          "LLM-integration",
+          "function-calling",
+          "test-driven"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-31-hex-session-id-format",
+        "duration_minutes": 34,
+        "prompter_time_minutes": 24,
+        "sme_time_minutes": 180,
+        "top_component_summary": "`src/hex_session_id.h` — standalone header providing `generateHexSessionId()` using `std::random_device` → `std::mt19937` → 16 random bytes → 32 hex chars, 128 bits of entropy per ID.",
+        "tags": [
+          "session-id",
+          "uuid",
+          "hex-encoding",
+          "cpp17",
+          "entropy",
+          "random-generation",
+          "sqlite",
+          "persistence",
+          "codebase-audit",
+          "refactoring",
+          "opensassi"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-31-spec-staleness-revision",
+        "duration_minutes": 29,
+        "prompter_time_minutes": 29,
+        "sme_time_minutes": 1440,
+        "top_component_summary": "Specification tree revision — 27 spec files updated across 7 sub-module areas to reflect code changes from three recent commits (streaming terminal infrastructure, git/docker/system-tools refactor, SQLite persistence overhaul).",
+        "tags": [
+          "specification",
+          "code-audit",
+          "staleness-check",
+          "revision",
+          "C++",
+          "SQLite",
+          "IPC",
+          "Docker",
+          "persistence",
+          "tool-calling",
+          "streaming",
+          "session-evaluation"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-31-sqlite-persistence-overhaul",
+        "duration_minutes": 161,
+        "prompter_time_minutes": 161,
+        "sme_time_minutes": 60,
+        "top_component_summary": "SQLite persistence subsystem with sub-session fork tracking and CLI export/list commands.",
+        "tags": [
+          "sqlite",
+          "persistence",
+          "schema-design",
+          "CLI-refactor",
+          "C++17",
+          "CMake",
+          "test-driven-development",
+          "session-management",
+          "JSON",
+          "data-migration",
+          "command-line-parsing"
+        ],
+        "human_confidence": "medium"
+      }
+    ]
+  }
+}

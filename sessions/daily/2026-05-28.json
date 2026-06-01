@@ -1,0 +1,321 @@
+{
+  "dashboard": {
+    "metadata": {
+      "generated_at": "2026-05-31T23:48:46.929Z",
+      "audited": false,
+      "audit_note": "Auto-generated from session evaluation files"
+    },
+    "daily_summary": {
+      "date": "2026-05-28",
+      "total_prompter_time_hours": 2.9,
+      "total_sme_time_hours": 3,
+      "ai_multiplier": 1,
+      "total_sessions": 3,
+      "top_subject_areas": [
+        {
+          "name": "C++17",
+          "prompter_time_hours": 0.16,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.8
+        },
+        {
+          "name": "TDD",
+          "prompter_time_hours": 0.16,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.8
+        },
+        {
+          "name": "unit testing",
+          "prompter_time_hours": 0.16,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.8
+        },
+        {
+          "name": "code coverage",
+          "prompter_time_hours": 0.16,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.8
+        },
+        {
+          "name": "E2E testing",
+          "prompter_time_hours": 0.16,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.8
+        },
+        {
+          "name": "docker",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "containers",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "cpp17",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "cmake",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "docker-compose",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "container-pooling",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "unit-testing",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "e2e-testing",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "posix-processes",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "static-library",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "cli-flags",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "agent-integration",
+          "prompter_time_hours": 0.03,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 2.6
+        },
+        {
+          "name": "subprocess timeout",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "fork/exec/waitpid",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "SIGALRM",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "dependency resolution",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "transitive deps",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "parameter substitution",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "args mode",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "negative testing",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "Linux systems programming",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "signal handling",
+          "prompter_time_hours": 0.07,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 1
+        },
+        {
+          "name": "C++ agent",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "DeepSeek API",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "libcurl",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "CMake",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "Google Test",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "mock server",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "REPL loop",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "subprocess",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "JSON Lines",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "virtual interfaces",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "dependency injection",
+          "prompter_time_hours": 0.09,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.7
+        }
+      ]
+    },
+    "session_breakdown": [
+      {
+        "session_id": "`2026-05-28-a0-mvp`",
+        "duration_minutes": 90,
+        "prompter_time_minutes": 90,
+        "sme_time_minutes": 60,
+        "top_component_summary": "`a0` — compiled C++17 agent binary with full REPL loop, DeepSeek API integration, tool/skill execution engine, JSON Lines session logging, and CLI argument parsing.",
+        "tags": [
+          "C++17",
+          "C++ agent",
+          "DeepSeek API",
+          "libcurl",
+          "CMake",
+          "TDD",
+          "unit testing",
+          "Google Test",
+          "code coverage",
+          "E2E testing",
+          "mock server",
+          "REPL loop",
+          "subprocess",
+          "JSON Lines",
+          "virtual interfaces",
+          "dependency injection"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-28-docker-sub-module",
+        "duration_minutes": 23,
+        "prompter_time_minutes": 23,
+        "sme_time_minutes": 60,
+        "top_component_summary": "Docker sub‑module source code and build integration — 10 new files, 7 modified files, static library `docker_lib` linked into the existing `a0_lib`.",
+        "tags": [
+          "docker",
+          "containers",
+          "cpp17",
+          "cmake",
+          "docker-compose",
+          "container-pooling",
+          "unit-testing",
+          "e2e-testing",
+          "posix-processes",
+          "static-library",
+          "cli-flags",
+          "agent-integration"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "`2026-05-28-v2-spec-revisions`",
+        "duration_minutes": 60,
+        "prompter_time_minutes": 60,
+        "sme_time_minutes": 60,
+        "top_component_summary": "`a0` v0.1.0 — C++17 agent binary with revised ToolRunner (fork/exec/waitpid + alarm-based timeout, args mode), SkillRunner ({{key}} parameter substitution, optional dependency resolver injection, VALIDATOR_ERROR prefix), AgentCore (exact skill match, tree-level dep check), and recursive DependencyResolver.",
+        "tags": [
+          "C++17",
+          "subprocess timeout",
+          "fork/exec/waitpid",
+          "SIGALRM",
+          "dependency resolution",
+          "transitive deps",
+          "parameter substitution",
+          "args mode",
+          "TDD",
+          "unit testing",
+          "E2E testing",
+          "negative testing",
+          "code coverage",
+          "Linux systems programming",
+          "signal handling"
+        ],
+        "human_confidence": "medium"
+      }
+    ]
+  }
+}

@@ -1,0 +1,290 @@
+{
+  "dashboard": {
+    "metadata": {
+      "generated_at": "2026-05-31T23:48:46.931Z",
+      "audited": false,
+      "audit_note": "Auto-generated from session evaluation files"
+    },
+    "daily_summary": {
+      "date": "2026-05-29",
+      "total_prompter_time_hours": 9.2,
+      "total_sme_time_hours": 42,
+      "ai_multiplier": 4.6,
+      "total_sessions": 3,
+      "top_subject_areas": [
+        {
+          "name": "system-tools",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "function-calling",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "deepseek-api",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "cpp17",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "agent-orchestration",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "persistence",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "sqlite",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "filesystem-scanning",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "utf-8-sanitization",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "glob-pattern-matching",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "e2e-testing",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "opencode-compatibility",
+          "prompter_time_hours": 0.25,
+          "sme_time_hours": 3.33,
+          "ai_multiplier": 13.6
+        },
+        {
+          "name": "C++",
+          "prompter_time_hours": 0.52,
+          "sme_time_hours": 0.17,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "CMake",
+          "prompter_time_hours": 0.52,
+          "sme_time_hours": 0.17,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "systems programming",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "IPC",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "Unix sockets",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "Docker",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "container pooling",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "process supervision",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "uWebSockets",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "dashboard",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "TDD",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "E2E testing",
+          "prompter_time_hours": 0.23,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "agent architecture",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "skill ecosystem",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "subprocess management",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "SQLite persistence",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "deterministic replay",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "POSIX",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "version management",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "LLM tool orchestration",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "command runner",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        },
+        {
+          "name": "build system",
+          "prompter_time_hours": 0.29,
+          "sme_time_hours": 0.08,
+          "ai_multiplier": 0.3
+        }
+      ]
+    },
+    "session_breakdown": [
+      {
+        "session_id": "2026-05-29-agent-ecosystem-b1-c2",
+        "duration_minutes": 165,
+        "prompter_time_minutes": 165,
+        "sme_time_minutes": 60,
+        "top_component_summary": "Agent supervision and monitoring subsystem (b1 + c2 + IPC)",
+        "tags": [
+          "C++",
+          "systems programming",
+          "IPC",
+          "Unix sockets",
+          "Docker",
+          "container pooling",
+          "process supervision",
+          "uWebSockets",
+          "dashboard",
+          "TDD",
+          "E2E testing",
+          "CMake"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-29-agentic-tool-system",
+        "duration_minutes": 177,
+        "prompter_time_minutes": 177,
+        "sme_time_minutes": 2400,
+        "top_component_summary": "Complete system tool layer with agentic LLM tool dispatch",
+        "tags": [
+          "system-tools",
+          "function-calling",
+          "deepseek-api",
+          "cpp17",
+          "agent-orchestration",
+          "persistence",
+          "sqlite",
+          "filesystem-scanning",
+          "utf-8-sanitization",
+          "glob-pattern-matching",
+          "e2e-testing",
+          "opencode-compatibility"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-29-skills-persistence-command-runner",
+        "duration_minutes": 727,
+        "prompter_time_minutes": 210,
+        "sme_time_minutes": 60,
+        "top_component_summary": "Three new sub-modules: Skills (`src/skills/`), CommandRunner (`src/command_runner/`), Persistence (`src/persistence/`)",
+        "tags": [
+          "C++",
+          "agent architecture",
+          "skill ecosystem",
+          "subprocess management",
+          "SQLite persistence",
+          "deterministic replay",
+          "CMake",
+          "POSIX",
+          "version management",
+          "LLM tool orchestration",
+          "command runner",
+          "build system"
+        ],
+        "human_confidence": "medium"
+      }
+    ]
+  }
+}

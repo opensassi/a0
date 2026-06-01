@@ -1,0 +1,470 @@
+{
+  "dashboard": {
+    "metadata": {
+      "generated_at": "2026-05-31T23:48:46.931Z",
+      "audited": false,
+      "audit_note": "Auto-generated from session evaluation files"
+    },
+    "daily_summary": {
+      "date": "2026-05-30",
+      "total_prompter_time_hours": 14.3,
+      "total_sme_time_hours": 83,
+      "ai_multiplier": 5.8,
+      "total_sessions": 5,
+      "top_subject_areas": [
+        {
+          "name": "docker",
+          "prompter_time_hours": 0.65,
+          "sme_time_hours": 7.08,
+          "ai_multiplier": 11
+        },
+        {
+          "name": "skill-system",
+          "prompter_time_hours": 0.65,
+          "sme_time_hours": 7.08,
+          "ai_multiplier": 11
+        },
+        {
+          "name": "cmake",
+          "prompter_time_hours": 0.65,
+          "sme_time_hours": 7.08,
+          "ai_multiplier": 11
+        },
+        {
+          "name": "gtest",
+          "prompter_time_hours": 0.46,
+          "sme_time_hours": 4.09,
+          "ai_multiplier": 9
+        },
+        {
+          "name": "c++",
+          "prompter_time_hours": 0.32,
+          "sme_time_hours": 4,
+          "ai_multiplier": 12.5
+        },
+        {
+          "name": "test-framework",
+          "prompter_time_hours": 0.32,
+          "sme_time_hours": 4,
+          "ai_multiplier": 12.5
+        },
+        {
+          "name": "prompt-engineering",
+          "prompter_time_hours": 0.32,
+          "sme_time_hours": 4,
+          "ai_multiplier": 12.5
+        },
+        {
+          "name": "bash",
+          "prompter_time_hours": 0.32,
+          "sme_time_hours": 4,
+          "ai_multiplier": 12.5
+        },
+        {
+          "name": "template-engine",
+          "prompter_time_hours": 0.32,
+          "sme_time_hours": 4,
+          "ai_multiplier": 12.5
+        },
+        {
+          "name": "session-evaluation",
+          "prompter_time_hours": 0.32,
+          "sme_time_hours": 4,
+          "ai_multiplier": 12.5
+        },
+        {
+          "name": "git",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "docker-compose",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "system-tools",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "cpp17",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "security-filter",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "function-calling",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "tool-discovery",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "agent-architecture",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "sub-module",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "test-refactoring",
+          "prompter_time_hours": 0.33,
+          "sme_time_hours": 3.08,
+          "ai_multiplier": 9.4
+        },
+        {
+          "name": "SSE",
+          "prompter_time_hours": 0.36,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "WebComponents",
+          "prompter_time_hours": 0.36,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "IPC",
+          "prompter_time_hours": 0.36,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "uWebSockets",
+          "prompter_time_hours": 0.36,
+          "sme_time_hours": 0.13,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "code-coverage",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "unit-testing",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "c++17",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "integration-testing",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "mock-server",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "e2e-testing",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "gcov",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "lcov",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "test-automation",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "refactoring",
+          "prompter_time_hours": 0.14,
+          "sme_time_hours": 0.09,
+          "ai_multiplier": 0.7
+        },
+        {
+          "name": "c2-dashboard",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "real-time-events",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "unix-sockets",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "daemon-lifecycle",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "signal-handling",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "build-system",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "kill-all",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "user-prompt",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "conversation-viewer",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "multi-host",
+          "prompter_time_hours": 0.19,
+          "sme_time_hours": 0.07,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "C++",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "streaming",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "terminal",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "PTY",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "xterm.js",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "SQLite",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "fork/exec",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "realpath",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "agent",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "Docker",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "process management",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        },
+        {
+          "name": "concurrent execution",
+          "prompter_time_hours": 0.17,
+          "sme_time_hours": 0.06,
+          "ai_multiplier": 0.4
+        }
+      ]
+    },
+    "session_breakdown": [
+      {
+        "session_id": "2026-05-30-c2-web-ui-sse",
+        "duration_minutes": 163,
+        "prompter_time_minutes": 163,
+        "sme_time_minutes": 60,
+        "top_component_summary": "c2 web-based dashboard with SSE push, REST API for multi-host agent management, and interactive user prompt routing.",
+        "tags": [
+          "c2-dashboard",
+          "SSE",
+          "WebComponents",
+          "real-time-events",
+          "IPC",
+          "unix-sockets",
+          "uWebSockets",
+          "daemon-lifecycle",
+          "signal-handling",
+          "build-system",
+          "kill-all",
+          "user-prompt",
+          "conversation-viewer",
+          "multi-host"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-30-coverage-improvement",
+        "duration_minutes": 120,
+        "prompter_time_minutes": 90,
+        "sme_time_minutes": 60,
+        "top_component_summary": "Comprehensive test suite expansion raising overall line coverage from 55% to 79.2% and achieving 90%+ on 12 of 18 source files.",
+        "tags": [
+          "code-coverage",
+          "unit-testing",
+          "gtest",
+          "c++17",
+          "integration-testing",
+          "mock-server",
+          "e2e-testing",
+          "gcov",
+          "lcov",
+          "test-automation",
+          "refactoring"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-30-git-docker-system-tools",
+        "duration_minutes": 254,
+        "prompter_time_minutes": 254,
+        "sme_time_minutes": 2400,
+        "top_component_summary": "Git system skill + skill-based tool infrastructure (handler groups, skill manifests, template expansion, discovery)",
+        "tags": [
+          "git",
+          "docker",
+          "docker-compose",
+          "system-tools",
+          "cpp17",
+          "skill-system",
+          "security-filter",
+          "function-calling",
+          "tool-discovery",
+          "agent-architecture",
+          "cmake",
+          "sub-module",
+          "test-refactoring"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-30-skill-porting",
+        "duration_minutes": 192,
+        "prompter_time_minutes": 192,
+        "sme_time_minutes": 2400,
+        "top_component_summary": "a0 skill system infrastructure — `SkillManager`, `SkillLoader`, `DefaultSkillRunner`, `DefaultAgentCore` — with two ported skills (system-design: 18 commands, session-evaluation: 2 commands).",
+        "tags": [
+          "c++",
+          "skill-system",
+          "cmake",
+          "test-framework",
+          "prompt-engineering",
+          "bash",
+          "docker",
+          "gtest",
+          "template-engine",
+          "session-evaluation"
+        ],
+        "human_confidence": "medium"
+      },
+      {
+        "session_id": "2026-05-30-streaming-terminal-infrastructure",
+        "duration_minutes": 160,
+        "prompter_time_minutes": 160,
+        "sme_time_minutes": 60,
+        "top_component_summary": "Streaming tool execution + web terminal — allowing tools to produce output incrementally (rather than blocking) and enabling interactive shell sessions from the c2 web dashboard.",
+        "tags": [
+          "C++",
+          "streaming",
+          "terminal",
+          "PTY",
+          "IPC",
+          "SSE",
+          "WebComponents",
+          "xterm.js",
+          "SQLite",
+          "fork/exec",
+          "realpath",
+          "uWebSockets",
+          "agent",
+          "Docker",
+          "process management",
+          "concurrent execution"
+        ],
+        "human_confidence": "medium"
+      }
+    ]
+  }
+}
