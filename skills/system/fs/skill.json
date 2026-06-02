@@ -6,27 +6,121 @@
     {
       "name": "read",
       "description": "Read a file or directory from the local filesystem",
-      "systemTool": true
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file or directory to read"
+          },
+          "offset": {
+            "type": "number",
+            "description": "The line number to start reading from (1-indexed)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of lines to read",
+            "default": 2000
+          }
+        },
+        "required": ["file_path"]
+      }
     },
     {
       "name": "glob",
       "description": "Fast file pattern matching",
-      "systemTool": true
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Glob pattern (e.g. **/*.js)"
+          },
+          "path": {
+            "type": "string",
+            "description": "Directory to search in"
+          }
+        },
+        "required": ["pattern"]
+      }
     },
     {
       "name": "grep",
       "description": "Fast content search using regular expressions",
-      "systemTool": true
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The regex pattern to search for"
+          },
+          "path": {
+            "type": "string",
+            "description": "Directory to search in"
+          },
+          "include": {
+            "type": "string",
+            "description": "File pattern (e.g. *.cpp)"
+          }
+        },
+        "required": ["pattern"]
+      }
     },
     {
       "name": "edit",
       "description": "Performs exact string replacements in files",
-      "systemTool": true
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file to modify"
+          },
+          "old_string": {
+            "type": "string",
+            "description": "The text to replace"
+          },
+          "new_string": {
+            "type": "string",
+            "description": "The text to replace it with"
+          },
+          "replace_all": {
+            "type": "boolean",
+            "description": "Replace all occurrences (default false)",
+            "default": false
+          }
+        },
+        "required": ["file_path", "old_string", "new_string"]
+      }
     },
     {
       "name": "write",
-      "description": "Writes a file to the local filesystem",
-      "systemTool": true
+      "description": "Writes content to a file on the local filesystem",
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The absolute path to the file to write"
+          },
+          "content": {
+            "type": "string",
+            "description": "The content to write to the file"
+          }
+        },
+        "required": ["file_path", "content"]
+      }
     }
   ],
   "prompts": []

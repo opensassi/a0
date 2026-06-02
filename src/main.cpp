@@ -2,7 +2,7 @@
 #include "a0_dir.h"
 #include "agent_core.h"
 #include "persistence/sqlite_store.h"
-#include "system_tools.h"
+#include "system_handlers.h"
 #include "skills/skills.h"
 #include "context_manager.h"
 #include "deepseek_provider.h"
@@ -322,6 +322,44 @@ static int cmdSessionList(const std::string& a0Dir,
 // Build full agent stack (shared by repl and run)
 // ---------------------------------------------------------------------------
 
+static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
+                                     a0::DockerSecurityFilter* dockerFilter,
+                                     InferenceProvider* provider) {
+    // Core handlers
+    mgr.registerHandler("system:bash:bash", [](const json& p) { return a0::xBash(p); });
+    mgr.registerHandler("system:fs:read", [](const json& p) { return a0::xRead(p); });
+    mgr.registerHandler("system:fs:glob", [](const json& p) { return a0::xGlob(p); });
+    mgr.registerHandler("system:fs:grep", [](const json& p) { return a0::xGrep(p); });
+    mgr.registerHandler("system:fs:edit", [](const json& p) { return a0::xEdit(p); });
+    mgr.registerHandler("system:fs:write", [](const json& p) { return a0::xWrite(p); });
+
+    // Git wildcard: any "system:git:<subcmd>" routes through xGitCommand
+    mgr.registerHandler("system:git:*", [](const json& p) {
+        return a0::xGitCommand(p.value("_subcommand", ""), p);
+    });
+
+    // Docker wildcard
+    mgr.registerHandler("system:docker:*", [dockerFilter](const json& p) {
+        return a0::xDockerCommand(p.value("_subcommand", ""), p, dockerFilter);
+    });
+
+    // Docker compose wildcard
+    mgr.registerHandler("system:docker_compose:*", [](const json& p) {
+        return a0::xDockerComposeCommand(p.value("_subcommand", ""), p);
+    });
+
+    // Meta handlers (need SkillManager + InferenceProvider)
+    mgr.registerHandler("system:meta:show_skills", [&mgr](const json& p) {
+        return a0::xShowSkills(p, &mgr);
+    });
+    mgr.registerHandler("system:meta:show_skill_tools", [&mgr](const json& p) {
+        return a0::xShowSkillTools(p, &mgr);
+    });
+    mgr.registerHandler("system:meta:tools_for_prompt", [&mgr, provider](const json& p) {
+        return a0::xToolsForPrompt(p, &mgr, provider);
+    });
+}
+
 struct AgentStack {
     a0::persistence::SqliteStore persistence;
     a0::skills::SkillManager skillMgr;
@@ -333,7 +371,6 @@ struct AgentStack {
     a0::docker::DockerContainerManager* containerMgr = nullptr;
     a0::docker::DockerComposeManager* composeMgr = nullptr;
     a0::docker::DockerToolRunnerImpl* dockerRunner = nullptr;
-    a0::SystemToolRegistry systemTools;
     a0::DockerSecurityFilter dockerFilter;
     DefaultSkillRunner* skillRunner = nullptr;
     DefaultAgentCore* core = nullptr;
@@ -373,16 +410,21 @@ struct AgentStack {
             }
             if (!list.empty()) dockerFilter.protectContainer(list);
         }
-        systemTools.setDockerSecurityFilter(&dockerFilter);
-        systemTools.setInferenceProvider(&provider);
-        systemTools.setSkillManager(&skillMgr);
+
+        // Wire ToolRunner/DockerRunner into SkillManager for command tools
+        skillMgr.setToolRunner(&toolRunner);
+        if (dockerRunner) skillMgr.setDockerRunner(dockerRunner);
+        skillMgr.setDockerSecurityFilter(&dockerFilter);
+
+        // Register all system tool C++ handlers
+        xRegisterSystemHandlers(skillMgr, &dockerFilter, &provider);
 
         skillRunner = new DefaultSkillRunner(&toolRunner, &provider, &skillMgr,
-            &depResolver, &systemTools, dockerRunner, composeMgr);
+            &depResolver, dockerRunner, composeMgr);
         skillRunner->setSkillsDir(skillsDir);
 
         core = new DefaultAgentCore(&toolRunner, skillRunner, &provider, &context,
-            &depResolver, &inferenceEngine, &systemTools, &skillMgr,
+            &depResolver, &inferenceEngine, &skillMgr,
             &persistence, dockerRunner, composeMgr);
     }
 

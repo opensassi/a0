@@ -1,7 +1,6 @@
 #pragma once
 
 #include "agent_interfaces.h"
-#include "system_tools.h"
 #include "skills/skills.h"
 #include <unordered_map>
 
@@ -11,7 +10,6 @@ public:
                        InferenceProvider* provider,
                        a0::skills::SkillManager* skillMgr,
                        DependencyResolver* depResolver,
-                       a0::SystemToolRegistry* systemTools = nullptr,
                        DockerToolRunner* dockerRunner = nullptr,
                        ComposeManager* composeMgr = nullptr);
 
@@ -32,7 +30,6 @@ private:
     std::string m_basePrompt;
 
     ToolRunner* m_toolRunner;
-    a0::SystemToolRegistry* m_systemTools;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
     InferenceProvider* m_provider;

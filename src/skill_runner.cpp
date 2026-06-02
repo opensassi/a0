@@ -6,8 +6,6 @@
 #include <sstream>
 #include <iostream>
 
-using a0::SystemToolRegistry;
-
 static ToolRunner* selectRunner(const Tool& tool, ToolRunner* host, DockerToolRunner* docker) {
     if (!tool.dockerImage.empty() && docker) {
         return docker;
@@ -15,56 +13,46 @@ static ToolRunner* selectRunner(const Tool& tool, ToolRunner* host, DockerToolRu
     return host;
 }
 
-static json runTool(const Tool& tool, const json& params,
-                     ToolRunner* hostRunner, DockerToolRunner* dockerRunner,
-                     SystemToolRegistry* systemTools) {
-    if (systemTools && SystemToolRegistry::isSystemTool(tool.name)) {
-        auto result = systemTools->execute(tool.name, params);
-        return json(result.output);
-    }
-    ToolRunner* runner = selectRunner(tool, hostRunner, dockerRunner);
-    return runner->run(tool, params);
+static json runTool(const a0::skills::SkillTool& skillTool, const json& params,
+                     ToolRunner* hostRunner, DockerToolRunner* dockerRunner) {
+    Tool t;
+    t.name = skillTool.name;
+    t.description = skillTool.description;
+    t.command = skillTool.command;
+    t.inputMode = skillTool.inputMode;
+    t.dockerImage = skillTool.dockerImage;
+    t.trustLevel = skillTool.trustLevel;
+    t.aptDependencies = skillTool.aptDependencies;
+    t.timeoutSecs = skillTool.timeoutSecs;
+    ToolRunner* runner = selectRunner(t, hostRunner, dockerRunner);
+    return runner->run(t, params);
 }
 
-static a0::StreamHandle runToolStreaming(const Tool& tool, const json& params,
+static a0::StreamHandle runToolStreaming(const a0::skills::SkillTool& skillTool,
+                                           const json& params,
                                            a0::StreamCallback onChunk,
                                            ToolRunner* hostRunner,
-                                           DockerToolRunner* dockerRunner,
-                                           SystemToolRegistry* systemTools) {
-    if (systemTools && SystemToolRegistry::isSystemTool(tool.name)) {
-        // System tools don't support streaming yet; run synchronously
-        auto result = systemTools->execute(tool.name, params);
-        // Create a completed handle
-        a0::StreamHandle h;
-        return h;
-    }
-    ToolRunner* runner = selectRunner(tool, hostRunner, dockerRunner);
-    return runner->runStreaming(tool, params, std::move(onChunk));
-}
-
-/// Convert a SkillTool to the legacy Tool struct for runTool dispatch.
-static Tool skillToolToTool(const a0::skills::SkillTool& st) {
+                                           DockerToolRunner* dockerRunner) {
     Tool t;
-    t.name = st.name;
-    t.description = st.description;
-    t.command = st.command;
-    t.inputMode = st.inputMode;
-    t.dockerImage = st.dockerImage;
-    t.trustLevel = st.trustLevel;
-    t.aptDependencies = st.aptDependencies;
-    t.timeoutSecs = st.timeoutSecs;
-    return t;
+    t.name = skillTool.name;
+    t.description = skillTool.description;
+    t.command = skillTool.command;
+    t.inputMode = skillTool.inputMode;
+    t.dockerImage = skillTool.dockerImage;
+    t.trustLevel = skillTool.trustLevel;
+    t.aptDependencies = skillTool.aptDependencies;
+    t.timeoutSecs = skillTool.timeoutSecs;
+    ToolRunner* runner = selectRunner(t, hostRunner, dockerRunner);
+    return runner->runStreaming(t, params, std::move(onChunk));
 }
 
 DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
                                         InferenceProvider* provider,
                                         a0::skills::SkillManager* skillMgr,
                                         DependencyResolver* depResolver,
-                                        SystemToolRegistry* systemTools,
                                         DockerToolRunner* dockerRunner,
                                         ComposeManager* composeMgr)
     : m_toolRunner(toolRunner)
-    , m_systemTools(systemTools)
     , m_dockerRunner(dockerRunner)
     , m_composeMgr(composeMgr)
     , m_provider(provider)
@@ -148,29 +136,19 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
         }
 
         a0::skills::SkillTool skillTool;
-        Tool tool;
+        std::string resolveName = toolName;
         bool found = false;
 
         if (m_skillMgr && m_skillMgr->getTool(toolName, skillTool) == 0) {
-            tool = skillToolToTool(skillTool);
             found = true;
         }
 
         if (!found && toolName.find(':') == std::string::npos &&
             !prompt.ns.empty() && !prompt.component.empty()) {
-            std::string within = a0::skills::buildQualifiedName(prompt.ns, prompt.component, toolName);
-            if (m_skillMgr && m_skillMgr->getTool(within, skillTool) == 0) {
-                tool = skillToolToTool(skillTool);
+            resolveName = a0::skills::buildQualifiedName(prompt.ns, prompt.component, toolName);
+            if (m_skillMgr && m_skillMgr->getTool(resolveName, skillTool) == 0) {
                 found = true;
             }
-        }
-
-        // Passthrough: check system tools
-        if (!found && m_systemTools && m_systemTools->isSystemTool(toolName)) {
-            auto sysResult = m_systemTools->execute(toolName, toolParams);
-            std::string replacement = sysResult.output;
-            result.replace(match.position(), match.length(), replacement);
-            continue;
         }
 
         if (!found) {
@@ -178,8 +156,14 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
             continue;
         }
 
-        json toolResult = runTool(tool, toolParams,
-                                   m_toolRunner, m_dockerRunner, m_systemTools);
+        json toolResult;
+        if (skillTool.systemTool && m_skillMgr) {
+            auto hr = m_skillMgr->executeToolWithMeta(resolveName, toolParams);
+            toolResult = hr.output;
+        } else {
+            toolResult = runTool(skillTool, toolParams,
+                                  m_toolRunner, m_dockerRunner);
+        }
 
         std::string replacement;
         if (toolResult.is_string()) {
@@ -187,7 +171,6 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
         } else {
             replacement = toolResult.dump();
         }
-
         result.replace(match.position(), match.length(), replacement);
     }
 
@@ -214,10 +197,8 @@ json DefaultSkillRunner::runValidators(const Prompt& prompt, const json& input) 
     json current = input;
     for (const auto& vb : prompt.validators) {
         a0::skills::SkillTool skillTool;
-        Tool tool;
         bool found = false;
         if (m_skillMgr && m_skillMgr->getTool(vb.toolName, skillTool) == 0) {
-            tool = skillToolToTool(skillTool);
             found = true;
         }
 
@@ -233,8 +214,8 @@ json DefaultSkillRunner::runValidators(const Prompt& prompt, const json& input) 
             params["input"] = current.dump();
         }
 
-        json validatorResult = runTool(tool, params,
-                                        m_toolRunner, m_dockerRunner, m_systemTools);
+        json validatorResult = runTool(skillTool, params,
+                                        m_toolRunner, m_dockerRunner);
 
         if (validatorResult.is_string()) {
             std::string out = validatorResult.get<std::string>();
@@ -270,13 +251,12 @@ a0::StreamHandle DefaultSkillRunner::executeStreaming(
     if (!toolName.empty() && streaming) {
         a0::skills::SkillTool skillTool;
         if (m_skillMgr && m_skillMgr->getTool(toolName, skillTool) == 0) {
-            Tool tool = skillToolToTool(skillTool);
             json toolParams = params;
             toolParams.erase("_tool");
             toolParams.erase("streaming");
-            return runToolStreaming(tool, toolParams,
+            return runToolStreaming(skillTool, toolParams,
                                      std::move(onChunk),
-                                     m_toolRunner, m_dockerRunner, m_systemTools);
+                                     m_toolRunner, m_dockerRunner);
         }
     }
 

@@ -13,6 +13,7 @@
 #include <algorithm>
 
 using a0::persistence::BuildIdentity;
+using a0::skills::SkillTool;
 
 // ---------------------------------------------------------------------------
 // UTF-8 sanitization: replace invalid bytes with '?' so nlohmann/json
@@ -63,14 +64,12 @@ DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
                                     ContextManager* context,
                                     DependencyResolver* depResolver,
                                     SchemaInferenceEngine* inferenceEngine,
-                                    a0::SystemToolRegistry* systemTools,
                                     a0::skills::SkillManager* skillMgr,
                                     a0::persistence::PersistenceStore* persistence,
                                     DockerToolRunner* dockerRunner,
                                     ComposeManager* composeMgr)
     : m_skillMgr(skillMgr)
     , m_toolRunner(toolRunner)
-    , m_systemTools(systemTools)
     , m_persistence(persistence)
     , m_dockerRunner(dockerRunner)
     , m_composeMgr(composeMgr)
@@ -87,6 +86,19 @@ bool DefaultAgentCore::init(const std::string& skillsDir) {
     // Load all skills from disk
     if (m_skillMgr && m_skillMgr->loadAll() != 0) {
         std::cerr << "Warning: SkillManager::loadAll() returned non-zero" << std::endl;
+    }
+
+    // Validate all systemTool entries have registered C++ handlers
+    if (m_skillMgr) {
+        auto missing = m_skillMgr->missingHandlers();
+        if (!missing.empty()) {
+            for (const auto& qn : missing) {
+                std::cerr << "FATAL: system tool '" << qn
+                          << "' declared in skill.json but has no C++ handler." << std::endl;
+            }
+            std::cerr << "Register handlers via SkillManager::registerHandler() in main.cpp." << std::endl;
+            return false;
+        }
     }
 
     m_sessionId = generateHexSessionId();
@@ -185,9 +197,9 @@ std::string DefaultAgentCore::xRunForkedLoop(
 
     // Auto-analyze: inject tools_for_prompt result and accumulate validated tools.
     m_accumulatedTools.clear();
-    if (m_systemTools) {
-        auto analysis = m_systemTools->execute(
-            "tools_for_prompt", {{"prompt", userInput}});
+    if (m_skillMgr) {
+        auto analysis = m_skillMgr->executeToolWithMeta(
+            "system:meta:tools_for_prompt", {{"prompt", userInput}});
         if (!analysis.output.empty()) {
             messages.push_back({"assistant", analysis.output});
             for (const auto& t : analysis.recommendedTools)
@@ -236,18 +248,19 @@ std::string DefaultAgentCore::xRunForkedLoop(
             bool promptExpanded = false;
             std::string expandedText;
             for (const auto& tc : response.toolCalls) {
-                if (!m_systemTools || !m_systemTools->isSystemTool(tc.name)) {
-                    auto dit = m_dispatch.find(tc.name);
-                    if (dit != m_dispatch.end()) {
-                        a0::skills::SkillTool st;
-                        if (!(m_skillMgr && m_skillMgr->getTool(dit->second, st) == 0)) {
-                            Prompt resolved;
-                            if (m_skillMgr && m_skillMgr->getPromptResolved(dit->second, resolved) == 0) {
-                                expandedText = m_skillRunner->expandPrompt(resolved, tc.arguments);
-                                promptExpanded = true;
-                                break;
-                            }
-                        }
+                auto dit = m_dispatch.find(tc.name);
+                if (dit != m_dispatch.end()) {
+                    const std::string& qn = dit->second;
+                    // If it's a registered tool (system or command), skip prompt expansion
+                    SkillTool st;
+                    if (m_skillMgr && m_skillMgr->getTool(qn, st) == 0)
+                        continue;
+                    // Not a tool — try prompt expansion
+                    Prompt resolved;
+                    if (m_skillMgr && m_skillMgr->getPromptResolved(qn, resolved) == 0) {
+                        expandedText = m_skillRunner->expandPrompt(resolved, tc.arguments);
+                        promptExpanded = true;
+                        break;
                     }
                 }
             }
@@ -286,33 +299,17 @@ std::string DefaultAgentCore::xRunForkedLoop(
 
                 std::string result;
 
-                if (m_systemTools && m_systemTools->isSystemTool(tc.name)) {
-                    result = m_systemTools->execute(tc.name, tc.arguments).output;
-                } else {
-                    auto dit = m_dispatch.find(tc.name);
-                    if (dit != m_dispatch.end()) {
-                        const std::string& qualifiedName = dit->second;
-                        a0::skills::SkillTool st;
-                        if (m_skillMgr && m_skillMgr->getTool(qualifiedName, st) == 0) {
-                            Tool t;
-                            t.name = st.name;
-                            t.description = st.description;
-                            t.command = st.command;
-                            t.inputMode = st.inputMode;
-                            t.dockerImage = st.dockerImage;
-                            t.trustLevel = st.trustLevel;
-                            t.aptDependencies = st.aptDependencies;
-                            auto runner = (!t.dockerImage.empty() && m_dockerRunner)
-                                ? m_dockerRunner : m_toolRunner;
-                            auto r = runner->run(t, tc.arguments);
-                            result = r.is_string() ? r.get<std::string>() : r.dump();
-                        } else {
-                            // Already handled via promptExpanded above — should not reach here
-                            result = "ERROR: dispatch target not found: " + tc.name;
-                        }
+                auto dit = m_dispatch.find(tc.name);
+                if (dit != m_dispatch.end()) {
+                    const std::string& qualifiedName = dit->second;
+                    if (m_skillMgr) {
+                        auto handlerResult = m_skillMgr->executeToolWithMeta(qualifiedName, tc.arguments);
+                        result = handlerResult.output;
                     } else {
-                        result = "ERROR: unknown tool: " + tc.name;
+                        result = "ERROR: no SkillManager available";
                     }
+                } else {
+                    result = "ERROR: unknown tool: " + tc.name;
                 }
 
                 std::string safeOutput = sanitizeUtf8(truncateForLLM(result));
@@ -396,8 +393,8 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
         if (m_skillMgr->getPromptResolved(goal, resolved) == 0) {
             std::string expanded = m_skillRunner->expandPrompt(resolved, params);
             xBuildDispatchTable();
-            auto toolSchemas = m_systemTools ? m_systemTools->schemas()
-                                              : std::vector<ToolSchema>();
+            auto toolSchemas = m_skillMgr ? m_skillMgr->schemas(true)
+                                           : std::vector<ToolSchema>();
             std::string result = toolSchemas.empty()
                 ? expanded
                 : xRunForkedLoop(expanded, toolSchemas, 25);
@@ -418,8 +415,8 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
                 if (m_skillMgr->getPromptResolved(qn, resolved) == 0) {
                     std::string expanded = m_skillRunner->expandPrompt(resolved, params);
                     xBuildDispatchTable();
-                    auto toolSchemas = m_systemTools ? m_systemTools->schemas()
-                                                      : std::vector<ToolSchema>();
+                    auto toolSchemas = m_skillMgr ? m_skillMgr->schemas(true)
+                                                   : std::vector<ToolSchema>();
                     std::string result = toolSchemas.empty()
                         ? expanded
                         : xRunForkedLoop(expanded, toolSchemas, 25);
@@ -439,8 +436,8 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
     // Phase 2: Forked tool-calling loop
     xBuildDispatchTable();
 
-    auto toolSchemas = m_systemTools ? m_systemTools->schemas()
-                                      : std::vector<ToolSchema>();
+    auto toolSchemas = m_skillMgr ? m_skillMgr->schemas(true)
+                                   : std::vector<ToolSchema>();
 
     if (!toolSchemas.empty()) {
         std::string result = xRunForkedLoop(goal, toolSchemas, 25);

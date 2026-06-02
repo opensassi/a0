@@ -11,7 +11,7 @@ namespace a0::skills {
 /// Invocation records are read from the persistence store (SQLite).
 class ValidationEngine {
 public:
-    explicit ValidationEngine(a0::persistence::PersistenceStore* store);
+    explicit ValidationEngine(::a0::persistence::PersistenceStore* store);
 
     int validate(SkillNamespace ns,
                  const std::string& component,
@@ -20,7 +20,7 @@ public:
                  std::string& report);
 
 private:
-    a0::persistence::PersistenceStore* m_store;
+    ::a0::persistence::PersistenceStore* m_store;
 
     int xReplay(const InvocationRecord& record,
                 const SkillManifest& manifest,

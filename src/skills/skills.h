@@ -8,10 +8,24 @@
 #include <ctime>
 #include "nlohmann/json.hpp"
 #include "../agent_interfaces.h"
+#include "../handler_results.h"
 
+namespace a0 { class DockerSecurityFilter; }
 namespace a0::persistence { class PersistenceStore; }
 
+// Forward decls for types in global scope
+class ToolRunner;
+class DockerToolRunner;
+
 namespace a0::skills {
+
+// ---------------------------------------------------------------------------
+// Tool handler — C++ function that implements a system tool
+// ---------------------------------------------------------------------------
+
+using ToolHandler = std::function<::a0::HandlerResult(const nlohmann::json& params)>;
+
+// ---------------------------------------------------------------------------
 
 /// Namespace identifier for a skill source.
 enum class SkillNamespace {
@@ -39,7 +53,9 @@ struct SkillTool {
     TrustLevel trustLevel = TrustLevel::MEDIUM;
     std::vector<std::string> aptDependencies;
     bool systemTool = false;
+    bool default_ = false;
     int timeoutSecs = 30;
+    nlohmann::json parameters;   // JSON Schema for LLM function calling
 };
 
 struct CompatBridge {
@@ -100,6 +116,7 @@ std::string buildQualifiedName(const std::string& ns,
 class SkillLoader;
 class VersionManager;
 class ValidationEngine;
+class DockerSecurityFilter;
 
 // ---------------------------------------------------------------------------
 // SkillManager — public facade
@@ -109,7 +126,7 @@ class SkillManager {
 public:
     SkillManager(const std::string& skillsRoot,
                  const std::string& storeRoot,
-                 a0::persistence::PersistenceStore* persistence = nullptr);
+                 ::a0::persistence::PersistenceStore* persistence = nullptr);
     virtual ~SkillManager();
 
     int loadAll();
@@ -149,12 +166,46 @@ public:
                  const std::string& commit,
                  std::string& report);
 
+    // --- Handler registry (C++ system tool dispatch) ---
+
+    /// Register a C++ handler function for a system tool.
+    /// For wildcard handlers (e.g. "system:git:*"), the function receives
+    /// params["_subcommand"] set to the tool name after the last colon.
+    void registerHandler(const std::string& qualifiedName, ToolHandler handler);
+
+    /// Execute a tool by qualified name. Resolution order:
+    ///   1. Exact match in registered C++ handlers
+    ///   2. Wildcard match (ns:component:*) with _subcommand param
+    ///   3. If tool has command field, run via SubprocessToolRunner/DockerToolRunner
+    ///   4. Error if tool not found or unhandled
+    json executeTool(const std::string& qualifiedName, const json& params);
+
+    /// Full result with recommendedTools (for tools_for_prompt).
+    ::a0::HandlerResult executeToolWithMeta(const std::string& qualifiedName, const json& params);
+
+    /// Build LLM tool schemas from loaded manifests.
+    /// When defaultOnly = true, only includes tools with default_ = true.
+    std::vector<::ToolSchema> schemas(bool defaultOnly = true) const;
+
+    /// Returns all systemTool qualified names that have no registered
+    /// C++ handler (exact, wildcard, or 2-part alias). Empty vector = all good.
+    std::vector<std::string> missingHandlers() const;
+
+    /// Set runners for non-system tool execution (command-based tools).
+    void setToolRunner(::ToolRunner* runner);
+    void setDockerRunner(::DockerToolRunner* runner);
+    void setDockerSecurityFilter(::a0::DockerSecurityFilter* filter);
+
 private:
     std::string m_skillsRoot;
     std::string m_storeRoot;
     SkillLoader* m_loader;
     VersionManager* m_versionMgr;
     ValidationEngine* m_validator;
+    std::unordered_map<std::string, ToolHandler> m_handlers;
+    ::ToolRunner* m_toolRunner = nullptr;
+    ::DockerToolRunner* m_dockerRunner = nullptr;
+    ::a0::DockerSecurityFilter* m_dockerSecurityFilter = nullptr;
 
     SkillManager(const SkillManager&) = delete;
     SkillManager& operator=(const SkillManager&) = delete;

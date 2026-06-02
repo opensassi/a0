@@ -243,7 +243,7 @@ public:
 
 ## 3. System Architecture
 
-The architecture includes both host and Docker execution paths, with mandatory dependency check and container pooling.
+The architecture includes both host and Docker execution paths, with mandatory dependency check and container pooling. The `SystemToolRegistry` has been eliminated — all tool dispatch (both C++ system handlers and command-based subprocess tools) goes through `SkillManager`'s handler registry.
 
 ```mermaid
 graph TB
@@ -253,14 +253,14 @@ graph TB
     subgraph "Agent Process"
         Core[AgentCore]
         Context[ContextManager]
-        Reg[SkillRegistry]
+        SkillMgr[SkillManager]
+        SkillMgr_Handlers[m_handlers: xBash, xRead, xGitCommand, ...]
         HostRunner[HostToolRunner]
         DockerRunner[DockerToolRunner]
         SkillRunner[SkillRunner]
         InfEngine[SchemaInferenceEngine]
         DepResolver[DependencyResolver]
         Persistence[PersistenceStore]
-        SysTools[SystemToolRegistry]
         ContainerMgr[ContainerManager]
         ComposeMgr[ComposeManager]
     end
@@ -279,23 +279,25 @@ graph TB
     end
 
     User --> Core
-    Core --> Reg
+    Core --> SkillMgr
     Core --> DepResolver
-    Core --> SysTools
     Core --> HostRunner
     Core --> DockerRunner
     Core --> SkillRunner
+    Core --> InfEngine
+    SkillMgr --> SkillMgr_Handlers
+    SkillMgr --> HostRunner
+    SkillMgr --> DockerRunner
     SkillRunner --> DepResolver
     SkillRunner --> DeepSeek
+    SkillRunner --> SkillMgr
     SkillRunner --> HostRunner
     SkillRunner --> DockerRunner
-    SkillRunner --> SysTools
-    Core --> InfEngine
     InfEngine --> DeepSeek
-    InfEngine --> Reg
+    InfEngine --> SkillMgr
     Core --> Persistence
     Persistence --> DB
-    Reg --> SkillsDir
+    SkillMgr --> SkillsDir
 
     DockerRunner --> ContainerMgr
     DockerRunner --> ComposeMgr
@@ -303,7 +305,7 @@ graph TB
     ComposeMgr --> ComposeStacks
 ```
 
-**Caption**: The agent supports two tool runners: `HostToolRunner` (for direct subprocess execution) and `DockerToolRunner` (for containerized execution with pooling and compose environments). `ContainerManager` and `ComposeManager` are implemented in the `./src/docker` sub‑directory. All session I/O is persisted to SQLite via `PersistenceStore`. `InvocationLogger` has been replaced by the persistence layer.
+**Caption**: `SkillManager` owns both the manifest index (loaded from `skills/`) and the `m_handlers` registry of C++ system tool handlers. It dispatches to `HostToolRunner`/`DockerToolRunner` for command-based tools. All built-in tools (bash, read, edit, git, docker, etc.) are registered as handlers on `SkillManager` at startup.
 
 ---
 
@@ -538,6 +540,7 @@ Follow these steps **in order**:
 - Before writing any implementation, create compile‑time or runtime assertions that verify each interface’s contract is internally consistent.
   - For `ToolRunner`: write a test that expects `run` to handle `inputMode == "args"` and enforce a timeout (even with a stub).
   - For `SkillRunner`: write a test that passes a `params` object with a `{{goal}}` placeholder and asserts that the expanded prompt contains the substituted value.
+  - For `SkillManager`: write a test that registers a handler via `registerHandler`, calls `executeTool` with the exact key, and asserts the handler output is returned. Also test wildcard resolution (`system:git:*` with `_subcommand`).
   - These tests initially fail against stubs, forcing the implementer to provide the required behaviour.
 
 #### Step 2: Write stub implementations with no logic
@@ -622,6 +625,8 @@ The Skills sub‑module is a **required** part of the agent for tool/skill lifec
 11.7 Write unit tests with fixture skill trees and mock historical logs.
 11.8 Write integration tests for install/remove/gc with a mock GitHub endpoint.
 
+All built-in tool handlers are registered directly on `SkillManager` via `registerHandler()` in `main.cpp`'s `xRegisterSystemHandlers()`. Each handler is a free-standing function in `namespace a0` (`xBash`, `xRead`, `xGitCommand`, etc.) returning `HandlerResult`. `SkillManager::executeTool()` resolves through exact match → 2-part alias → wildcard → command tool subprocess, providing a single dispatch path for all tools.
+
 All skills‑related code must be placed in `./src/skills/`, with its own `CMakeLists.txt` included from the top‑level `CMakeLists.txt`.
 
 #### Step 12: Implement CommandRunner utility
@@ -648,10 +653,11 @@ project/
 ├── src/
 │   ├── a0_dir.h/.cpp                    # .a0/ directory lifecycle (create, gitignore)
 │   ├── command_runner.h/.cpp            # All subprocess management (fork/exec/pipe/alarm)
+│   ├── handler_results.h                # HandlerResult struct for system tool dispatch
+│   ├── system_handlers.h/.cpp           # Free-standing C++ handler functions (xBash, xRead, xGitCommand, etc.)
 │   ├── main.cpp
 │   ├── agent_core.cpp/.h
-│   ├── skill_registry.cpp/.h            # Flat file scanner (legacy)
-│   ├── tool_runner.cpp/.h               # HostToolRunner
+│   ├── tool_runner.cpp/.h               # HostToolRunner + DockerToolRunner
 │   ├── skill_runner.cpp/.h
 │   ├── deepseek_provider.cpp/.h
 │   ├── context_manager.cpp/.h
@@ -669,7 +675,7 @@ project/
 │   │   └── CMakeLists.txt
 │   └── skills/                          # Skills sub‑module (required)
 │       ├── technical-specification.md   # Full skills integration spec
-│       ├── skills.h                     # Data structures + SkillManager facade
+│       ├── skills.h                     # Data structures + SkillManager facade + ToolHandler typedef
 │       ├── skill_manager.cpp
 │       ├── skill_loader.h/.cpp
 │       ├── version_manager.h/.cpp
@@ -746,6 +752,8 @@ The complete technical specification for the Docker sub‑module is provided in 
 ## Appendix B: Skills Sub‑Module Specification
 
 The complete technical specification for the Skills sub‑module is provided in a separate document: `./src/skills/technical-specification.md`. It includes detailed class specifications, sequence diagrams, configuration options, and testing requirements. The sub‑module is **required** — it implements a three-tier namespace system with version validation via historical log replay and GitHub distribution support.
+
+`SkillManager` serves as the unified tool dispatch layer, replacing `SystemToolRegistry`. A handler registry (`m_handlers`) holds C++ functions registered at startup by `xRegisterSystemHandlers()` in `main.cpp`. `executeTool()` and `schemas()` provide the single point of dispatch and schema generation for the LLM.
 
 **Location**: `./src/skills/technical-specification.md`  
 **Source code**: `./src/skills/`

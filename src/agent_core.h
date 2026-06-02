@@ -2,7 +2,6 @@
 
 #include <unordered_set>
 #include "agent_interfaces.h"
-#include "system_tools.h"
 #include "skills/skills.h"
 
 namespace a0::persistence { class PersistenceStore; }
@@ -15,7 +14,6 @@ public:
                      ContextManager* context,
                      DependencyResolver* depResolver,
                      SchemaInferenceEngine* inferenceEngine,
-                     a0::SystemToolRegistry* systemTools,
                      a0::skills::SkillManager* skillMgr,
                      a0::persistence::PersistenceStore* persistence = nullptr,
                      DockerToolRunner* dockerRunner = nullptr,
@@ -47,7 +45,6 @@ private:
 
     a0::skills::SkillManager* m_skillMgr;
     ToolRunner* m_toolRunner;
-    a0::SystemToolRegistry* m_systemTools;
     a0::persistence::PersistenceStore* m_persistence;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;

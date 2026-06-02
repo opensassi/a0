@@ -74,9 +74,24 @@ struct SkillTool {
     ToolSchema schema;
     std::string dockerImage;
     TrustLevel trustLevel = TrustLevel::MEDIUM;
-    bool useContainerPool = true;
     std::vector<std::string> aptDependencies;
+    bool systemTool = false;       // implemented as C++ handler, not subprocess
+    bool default_ = false;         // included in LLM anchor schema
+    int timeoutSecs = 30;
+    nlohmann::json parameters;     // JSON Schema for LLM function calling
 };
+
+/// Return type for C++ system tool handler functions.
+/// Carries output text and optional tool recommendations for dynamic accumulation.
+struct HandlerResult {
+    std::string output;
+    std::vector<std::string> recommendedTools;
+};
+
+/// Function signature for system tool C++ handlers.
+/// Previously `SystemToolRegistry` static methods, now free functions
+/// registered onto SkillManager via registerHandler().
+using ToolHandler = std::function<::a0::HandlerResult(const nlohmann::json& params)>;
 
 /// A prompt-based capability within a skill package.
 struct SkillPrompt {
@@ -239,13 +254,47 @@ public:
                  const std::string& commit,
                  std::string& report);
 
+    // --- Handler registry (unified dispatch) ---
+
+    /// Register a C++ handler function for a system tool.
+    /// Supports wildcard keys (e.g. "system:git:*") — params["_subcommand"]
+    /// receives the tool name after the last colon.
+    void registerHandler(const std::string& qualifiedName, ToolHandler handler);
+
+    /// Execute any tool by qualified name. Resolution:
+    ///   1. Exact handler match → C++ handler
+    ///   2. 2-part alias (ns:comp → ns:comp:comp when name==component)
+    ///   3. Wildcard (ns:comp:* → params["_subcommand"] set)
+    ///   4. Command tool (systemTool=false) → ToolRunner/DockerToolRunner
+    ///   5. Error if not found
+    nlohmann::json executeTool(const std::string& qualifiedName, const nlohmann::json& params);
+
+    /// Full result with recommendedTools (used by tools_for_prompt).
+    ::a0::HandlerResult executeToolWithMeta(const std::string& qualifiedName, const nlohmann::json& params);
+
+    /// Build LLM tool schemas from loaded manifests.
+    /// defaultOnly=true → only tools with default_=true.
+    std::vector<::ToolSchema> schemas(bool defaultOnly = true) const;
+
+    /// Validate all systemTool entries have registered C++ handlers.
+    /// Empty = all good. Non-empty = fatal configuration error.
+    std::vector<std::string> missingHandlers() const;
+
+    /// Wire runners for command-based non-system tools.
+    void setToolRunner(::ToolRunner* runner);
+    void setDockerRunner(::DockerToolRunner* runner);
+    void setDockerSecurityFilter(::a0::DockerSecurityFilter* filter);
+
 private:
     std::string m_skillsRoot;
     std::string m_storeRoot;
-    std::string m_logDir;
     SkillLoader* m_loader;
     VersionManager* m_versionMgr;
     ValidationEngine* m_validator;
+    std::unordered_map<std::string, ToolHandler> m_handlers;
+    ::ToolRunner* m_toolRunner = nullptr;
+    ::DockerToolRunner* m_dockerRunner = nullptr;
+    ::a0::DockerSecurityFilter* m_dockerSecurityFilter = nullptr;
 
     SkillManager(const SkillManager&) = delete;
     SkillManager& operator=(const SkillManager&) = delete;
@@ -462,35 +511,27 @@ graph TB
 
     subgraph "Skills Sub-module"
         SM[SkillManager]
+        HR[m_handlers registry]
         SL[SkillLoader]
         VM[VersionManager]
         VE[ValidationEngine]
     end
 
+    subgraph "System Handlers"
+        SH[system_handlers.cpp]
+        GH[GitHub]
+    end
+
     subgraph "Runners"
         TR[ToolRunner]
+        DTR[DockerToolRunner]
         IP[InferenceProvider]
     end
 
-    subgraph "External"
-        GH[GitHub]
+    subgraph "Persistence"
         LOG[(Historical Logs)]
+        PS[(SQLite)]
     end
-
-    Core --> SM
-    Core --> SR
-    SIE --> SM
-    SR --> SM
-    SR --> TR
-    SR --> IP
-    SR --> DR
-    DR --> SM
-    SM --> SL
-    SM --> VM
-    SM --> VE
-    VE --> LOG
-    VE --> TR
-    SM --> GH
 
     subgraph "Filesystem"
         SK_DIR[skills/]
@@ -498,14 +539,33 @@ graph TB
         LCK[.a0/lock.json]
     end
 
-    subgraph "Persistence"
-        PS[(SQLite)]
-    end
+    Core --> SM
+    Core --> SR
+    SIE --> SM
+    SR --> SM
+    SR --> TR
+    SR --> DTR
+    SR --> IP
+    SR --> DR
+    DR --> SM
+
+    SM --> HR
+    SM --> SL
+    SM --> VM
+    SM --> VE
+    SM --> TR
+    SM --> DTR
+
+    HR --> SH
+    HR --> GH
+
+    VE --> LOG
+    VE --> TR
+    VE --> PS
 
     SL --> SK_DIR
     VM --> STORE
     VM --> LCK
-    VE --> PS
 
     SK_DIR --> SYS[system/]
     SK_DIR --> LOC[local/]
@@ -622,6 +682,25 @@ Covered by the parent module's D3 animation. The sub-module's state machine (ins
 | `gc` | Orphaned version in store | Version removed |
 | `gc` | All versions referenced | 0 removed |
 
+### 6.2 Handler Registry
+
+| Method | Test Case | Expected Outcome |
+|--------|-----------|-----------------|
+| `registerHandler` | New handler | Stored, executable via executeTool |
+| `executeTool` | Exact match | Handler output returned |
+| `executeTool` | 2-part alias (`system:bash`) | Resolves to `system:bash:bash` handler |
+| `executeTool` | Wildcard (`system:git:*`) | `_subcommand` set, handler dispatched |
+| `executeTool` | Command tool via ToolRunner | Subprocess output returned |
+| `executeTool` | System tool with no handler | Error string |
+| `executeTool` | Command tool with no runners | Error "no ToolRunner available" |
+| `executeToolWithMeta` | tools_for_prompt | HandlerResult with recommendedTools |
+| `executeToolWithMeta` | Normal tool | HandlerResult with empty recommendedTools |
+| `schemas` | defaultOnly=true | Only `default_=true` tools with parameters |
+| `schemas` | defaultOnly=false | All tools with parameters |
+| `missingHandlers` | All registered | Empty vector |
+| `missingHandlers` | One unregistered systemTool | Vector with that tool's qualified name |
+| `missingHandlers` | Wildcard covers all | Empty (git/docker wildcards handle 120+ tools) |
+
 ### 6.2 VersionManager
 
 | Method | Test Case | Expected Outcome |
@@ -692,12 +771,15 @@ a0 skill pin <qualified-name>
 Wire-up in `main.cpp`:
 
 1. `SkillManager` is constructed at startup with paths: `./skills`, `./.a0/store`, and a `PersistenceStore*` for invocation history
-2. `SkillManager::loadAll()` called during initialization
-3. `AgentCore` receives a `SkillManager*`
-4. `SkillRunner` resolves tool/prompt lookups through `SkillManager`
-5. `DependencyResolver` uses `SkillManager` for dependency checking
-6. `SchemaInferenceEngine` writes inferred skills via `SkillManager::addTool`/`addPrompt`
-7. CLI parser routes `a0 skill ...` commands to `SkillManager` methods
+2. ToolRunner/DockerToolRunner pointers are set via `SkillManager::setToolRunner()` and `setDockerRunner()`
+3. All C++ system tool handlers are registered via `xRegisterSystemHandlers()` which calls `SkillManager::registerHandler()` for each handler (core fs tools, git/docker wildcards, meta tools)
+4. `SkillManager::loadAll()` called during `AgentCore::init()` — loads skill.json manifests from disk
+5. `SkillManager::missingHandlers()` validates every `systemTool=true` entry has a registered C++ handler; any missing triggers a fatal error listing all unregistered tools
+6. `AgentCore` receives a `SkillManager*` for all tool dispatch — no separate `SystemToolRegistry`
+7. `SkillRunner` resolves tool/prompt lookups through `SkillManager`
+8. `DependencyResolver` uses `SkillManager` for dependency checking
+9. `SchemaInferenceEngine` writes inferred skills via `SkillManager::addTool`/`addPrompt`
+10. CLI parser routes `a0 skill ...` commands to `SkillManager` methods
 
 ---
 

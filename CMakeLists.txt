@@ -19,7 +19,9 @@ set(LIB_SOURCES
     src/context_manager.cpp
     src/schema_inference_engine.cpp
     src/dependency_resolver.cpp
+    src/docker_security_filter.cpp
     src/stream_registry.cpp
+    src/system_handlers.cpp
     src/skills/skill_manager.cpp
     src/skills/skill_loader.cpp
     src/skills/version_manager.cpp
@@ -46,13 +48,12 @@ add_subdirectory(src/skills)
 add_subdirectory(src/persistence)
 add_subdirectory(src/b1)
 add_subdirectory(src/c2)
-add_subdirectory(src/system_tools)
 
-target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib skills_lib persistence_lib cmd_runner_lib ipc_lib system_tools_lib)
+target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib skills_lib persistence_lib cmd_runner_lib ipc_lib)
 
 add_executable(a0 src/main.cpp)
 target_include_directories(a0 PRIVATE thirdparty)
-target_link_libraries(a0 PRIVATE a0_lib system_tools_lib persistence_lib cmd_runner_lib)
+target_link_libraries(a0 PRIVATE a0_lib persistence_lib cmd_runner_lib)
 
 option(ENABLE_TRACE "Enable trace logging" OFF)
 if(ENABLE_TRACE)
@@ -71,7 +72,6 @@ function(add_agent_test TEST_NAME TEST_SOURCE)
     add_executable(${TEST_NAME} ${TEST_SOURCE})
     target_link_libraries(${TEST_NAME} PRIVATE
         a0_lib
-        system_tools_lib
         GTest::gtest
         GTest::gtest_main
     )

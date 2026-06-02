@@ -3,7 +3,7 @@
 #include "tool_runner.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
-#include "system_tools.h"
+#include "system_handlers.h"
 #include "context_manager.h"
 #include "schema_inference_engine.h"
 #include "persistence/persistence_store.h"
@@ -22,7 +22,6 @@ protected:
     std::string m_pid;
 
     SkillManager* m_mgr = nullptr;
-    a0::SystemToolRegistry* m_systemTools = nullptr;
     SubprocessToolRunner* m_toolRunner = nullptr;
     DeepSeekProvider* m_provider = nullptr;
     DefaultDependencyResolver* m_depResolver = nullptr;
@@ -44,7 +43,6 @@ protected:
         fs::create_directories(m_storeDir);
 
         m_mgr = new SkillManager(m_skillsDir, m_storeDir, nullptr);
-        m_systemTools = new a0::SystemToolRegistry();
         m_toolRunner = new SubprocessToolRunner();
         m_provider = new DeepSeekProvider("test-key");
         m_depResolver = new DefaultDependencyResolver(m_mgr);
@@ -52,8 +50,10 @@ protected:
         m_persistence = new a0::persistence::NullStore();
         m_inference = new DefaultSchemaInferenceEngine(m_provider);
 
+        m_mgr->setToolRunner(m_toolRunner);
+
         m_skillRunner = new DefaultSkillRunner(
-            m_toolRunner, m_provider, m_mgr, m_depResolver, m_systemTools);
+            m_toolRunner, m_provider, m_mgr, m_depResolver);
         m_skillRunner->setSkillsDir(m_skillsDir);
 
         m_mockUrl = "http://127.0.0.1:18999/v1/chat/completions";
@@ -61,7 +61,7 @@ protected:
 
         m_core = new DefaultAgentCore(
             m_toolRunner, m_skillRunner, m_provider, m_context,
-            m_depResolver, m_inference, m_systemTools, m_mgr,
+            m_depResolver, m_inference, m_mgr,
             m_persistence, nullptr, nullptr);
     }
 
@@ -74,7 +74,6 @@ protected:
         delete m_provider;
         delete m_persistence;
         delete m_toolRunner;
-        delete m_systemTools;
         delete m_mgr;
         fs::remove_all(m_skillsDir);
         fs::remove_all(m_storeDir);

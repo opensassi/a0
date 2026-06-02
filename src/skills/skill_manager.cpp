@@ -2,11 +2,26 @@
 #include "skill_loader.h"
 #include "version_manager.h"
 #include "validation_engine.h"
+#include "tool_runner.h"
 #include <algorithm>
 #include <sstream>
 #include <cassert>
 
 namespace a0::skills {
+
+// Convert SkillTool to legacy Tool for ToolRunner dispatch.
+static ::Tool skillToolToTool(const SkillTool& st) {
+    ::Tool t;
+    t.name = st.name;
+    t.description = st.description;
+    t.command = st.command;
+    t.inputMode = st.inputMode;
+    t.dockerImage = st.dockerImage;
+    t.trustLevel = st.trustLevel;
+    t.aptDependencies = st.aptDependencies;
+    t.timeoutSecs = st.timeoutSecs;
+    return t;
+}
 
 // ---------------------------------------------------------------------------
 // Qualified name helpers
@@ -49,7 +64,7 @@ std::string buildQualifiedName(const std::string& ns,
 
 SkillManager::SkillManager(const std::string& skillsRoot,
                            const std::string& storeRoot,
-                           a0::persistence::PersistenceStore* persistence)
+                           ::a0::persistence::PersistenceStore* persistence)
     : m_skillsRoot(skillsRoot)
     , m_storeRoot(storeRoot)
     , m_loader(new SkillLoader(skillsRoot))
@@ -376,6 +391,143 @@ int SkillManager::xInstallFromGit(const std::string& url,
     (void)manifest;
     // TODO: Phase 5 — git clone, parse manifest, validate, archive
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Handler registry
+// ---------------------------------------------------------------------------
+
+void SkillManager::registerHandler(const std::string& qualifiedName, ToolHandler handler)
+{
+    m_handlers[qualifiedName] = std::move(handler);
+}
+
+void SkillManager::setToolRunner(::ToolRunner* runner)
+{
+    m_toolRunner = runner;
+}
+
+void SkillManager::setDockerRunner(::DockerToolRunner* runner)
+{
+    m_dockerRunner = runner;
+}
+
+void SkillManager::setDockerSecurityFilter(::a0::DockerSecurityFilter* filter)
+{
+    m_dockerSecurityFilter = filter;
+}
+
+json SkillManager::executeTool(const std::string& qualifiedName, const json& params)
+{
+    return executeToolWithMeta(qualifiedName, params).output;
+}
+
+::a0::HandlerResult SkillManager::executeToolWithMeta(const std::string& qualifiedName, const json& params)
+{
+    // 1. Exact match in registered C++ handlers
+    {
+        auto it = m_handlers.find(qualifiedName);
+        if (it != m_handlers.end()) {
+            return it->second(params);
+        }
+    }
+
+    // 1b. 2-part name alias: "system:bash" → try "system:bash:bash"
+    {
+        std::string ns, comp, name;
+        if (parseQualifiedName(qualifiedName, ns, comp, name) && !name.empty()) {
+            // Always build 3-part form for handler lookup
+            std::string qn3 = ns + ":" + comp + ":" + name;
+            if (qn3 != qualifiedName) {
+                auto it = m_handlers.find(qn3);
+                if (it != m_handlers.end()) return it->second(params);
+            }
+        }
+    }
+
+    // 2. Wildcard match (ns:component:*)
+    {
+        auto lastColon = qualifiedName.rfind(':');
+        if (lastColon != std::string::npos) {
+            std::string wildcard = qualifiedName.substr(0, lastColon) + ":*";
+            auto wit = m_handlers.find(wildcard);
+            if (wit != m_handlers.end()) {
+                json p = params;
+                p["_subcommand"] = qualifiedName.substr(lastColon + 1);
+                return wit->second(p);
+            }
+        }
+    }
+
+    // 3. Look up the tool definition
+    SkillTool tool;
+    if (getTool(qualifiedName, tool) != 0) {
+        return {"ERROR: tool not found: " + qualifiedName};
+    }
+
+    // 4. System tool with no handler registered
+    if (tool.systemTool) {
+        return {"ERROR: no C++ handler registered for system tool: " + qualifiedName};
+    }
+
+    // 5. Non-system tool: run via ToolRunner
+    if (m_toolRunner) {
+        ::ToolRunner* runner = (!tool.dockerImage.empty() && m_dockerRunner)
+            ? m_dockerRunner : m_toolRunner;
+        auto r = runner->run(skillToolToTool(tool), params);
+        std::string result;
+        if (r.is_string()) result = r;
+        else result = r.dump();
+        return {result};
+    }
+
+    return {"ERROR: no ToolRunner available for command tool: " + qualifiedName};
+}
+
+std::vector<std::string> SkillManager::missingHandlers() const
+{
+    std::vector<std::string> missing;
+    for (auto ns : {SkillNamespace::SYSTEM, SkillNamespace::LOCAL, SkillNamespace::GITHUB}) {
+        auto components = m_loader->listComponents(ns);
+        for (const auto& comp : components) {
+            SkillManifest manifest;
+            if (m_loader->getManifest(ns, comp, manifest) != 0) continue;
+            std::string nsStr = (ns == SkillNamespace::SYSTEM) ? "system"
+                              : (ns == SkillNamespace::LOCAL) ? "local" : "github";
+            for (const auto& tool : manifest.tools) {
+                if (!tool.systemTool) continue;
+                std::string qn3 = nsStr + ":" + comp + ":" + tool.name;
+                // Check exact, wildcard (ns:comp:*), and 2-part (ns:name if name==comp)
+                if (m_handlers.find(qn3) != m_handlers.end()) continue;
+                if (m_handlers.find(nsStr + ":" + comp + ":*") != m_handlers.end()) continue;
+                if (tool.name == comp && m_handlers.find(nsStr + ":" + comp) != m_handlers.end()) continue;
+                missing.push_back(qn3);
+            }
+        }
+    }
+    return missing;
+}
+
+std::vector<::ToolSchema> SkillManager::schemas(bool defaultOnly) const
+{
+    std::vector<::ToolSchema> result;
+    for (auto ns : {SkillNamespace::SYSTEM, SkillNamespace::LOCAL, SkillNamespace::GITHUB}) {
+        auto components = m_loader->listComponents(ns);
+        for (const auto& comp : components) {
+            SkillManifest manifest;
+            if (m_loader->getManifest(ns, comp, manifest) != 0) continue;
+            for (const auto& tool : manifest.tools) {
+                if (defaultOnly && !tool.default_) continue;
+                if (tool.parameters.is_null() || tool.parameters.empty()) continue;
+                ::ToolSchema ts;
+                ts.name = tool.name;
+                ts.description = tool.description;
+                ts.inputSchema = tool.parameters;
+                result.push_back(std::move(ts));
+            }
+        }
+    }
+    return result;
 }
 
 } // namespace a0::skills

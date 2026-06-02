@@ -20,7 +20,7 @@ static int xNsToType(SkillNamespace ns) {
     return 0;
 }
 
-ValidationEngine::ValidationEngine(a0::persistence::PersistenceStore* store)
+ValidationEngine::ValidationEngine(::a0::persistence::PersistenceStore* store)
     : m_store(store)
 {
 }

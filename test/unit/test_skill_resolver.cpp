@@ -1,7 +1,8 @@
 #include "skills/skills.h"
 #include "skill_runner.h"
 #include "tool_runner.h"
-#include "system_tools.h"
+#include "system_handlers.h"
+#include "handler_results.h"
 #include "dependency_resolver.h"
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -47,7 +48,6 @@ protected:
     SkillManager* m_mgr = nullptr;
     DefaultSkillRunner* m_skillRunner = nullptr;
     SubprocessToolRunner* m_toolRunner = nullptr;
-    a0::SystemToolRegistry* m_systemTools = nullptr;
     DefaultDependencyResolver* m_depResolver = nullptr;
     std::vector<std::string> m_sandboxes;
     std::string m_lastExpanded;
@@ -59,10 +59,17 @@ protected:
                                  "/tmp/a0_test_store_" + std::to_string(::getpid()),
                                  nullptr);
         m_toolRunner = new SubprocessToolRunner();
-        m_systemTools = new a0::SystemToolRegistry();
+        m_mgr->setToolRunner(m_toolRunner);
+        // Register core system tool handlers for prompt expansion tests
+        m_mgr->registerHandler("system:fs:read", [](const json& p) { return a0::xRead(p); });
+        m_mgr->registerHandler("system:fs:glob", [](const json& p) { return a0::xGlob(p); });
+        m_mgr->registerHandler("system:fs:grep", [](const json& p) { return a0::xGrep(p); });
+        m_mgr->registerHandler("system:fs:edit", [](const json& p) { return a0::xEdit(p); });
+        m_mgr->registerHandler("system:fs:write", [](const json& p) { return a0::xWrite(p); });
+        m_mgr->registerHandler("system:bash:bash", [](const json& p) { return a0::xBash(p); });
         m_depResolver = new DefaultDependencyResolver(m_mgr);
         m_skillRunner = new DefaultSkillRunner(m_toolRunner, nullptr, m_mgr,
-                                                m_depResolver, m_systemTools,
+                                                m_depResolver,
                                                 nullptr, nullptr);
         m_skillRunner->setSkillsDir(skillsRoot);
         m_lastExpanded.clear();
@@ -72,12 +79,10 @@ protected:
     void TearDown() override {
         delete m_skillRunner;
         delete m_depResolver;
-        delete m_systemTools;
         delete m_toolRunner;
         delete m_mgr;
         m_skillRunner = nullptr;
         m_depResolver = nullptr;
-        m_systemTools = nullptr;
         m_toolRunner = nullptr;
         m_mgr = nullptr;
         for (const auto& sb : m_sandboxes) {

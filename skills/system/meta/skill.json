@@ -1,0 +1,58 @@
+{
+  "name": "meta",
+  "version": "1.0.0",
+  "description": "Meta-tools for skill browsing and tool discovery",
+  "tools": [
+    {
+      "name": "show_skills",
+      "description": "Browse the skill tree by path. Lists available skills with descriptions.",
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Skill tree path (e.g. /system/git)",
+            "default": "/"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "show_skill_tools",
+      "description": "Browse available tools by category. Lists tool names, descriptions, and parameters.",
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Tool tree path (e.g. /git/porcelain)",
+            "default": "/"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "tools_for_prompt",
+      "description": "Analyze user intent and recommend skills/tools for a given prompt.",
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "The user's prompt to analyze"
+          }
+        },
+        "required": ["prompt"]
+      }
+    }
+  ],
+  "prompts": []
+}

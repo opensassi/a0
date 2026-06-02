@@ -1,4 +1,4 @@
-#include "system_tools.h"
+#include "system_handlers.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>
@@ -8,7 +8,6 @@ using json = nlohmann::json;
 
 class SystemToolsTest : public ::testing::Test {
 protected:
-    a0::SystemToolRegistry tools;
     std::string m_tmp;
 
     void SetUp() override {
@@ -30,59 +29,21 @@ protected:
 };
 
 // ---------------------------------------------------------------------------
-// listTools
-// ---------------------------------------------------------------------------
-
-TEST_F(SystemToolsTest, ListTools) {
-    auto names = tools.listTools();
-    EXPECT_GE(names.size(), 6);
-    EXPECT_NE(std::find(names.begin(), names.end(), "bash"), names.end());
-    EXPECT_NE(std::find(names.begin(), names.end(), "read"), names.end());
-    EXPECT_NE(std::find(names.begin(), names.end(), "glob"), names.end());
-    EXPECT_NE(std::find(names.begin(), names.end(), "grep"), names.end());
-    EXPECT_NE(std::find(names.begin(), names.end(), "edit"), names.end());
-    EXPECT_NE(std::find(names.begin(), names.end(), "write"), names.end());
-}
-
-// ---------------------------------------------------------------------------
-// isSystemTool
-// ---------------------------------------------------------------------------
-
-TEST_F(SystemToolsTest, IsSystemTool) {
-    EXPECT_TRUE(a0::SystemToolRegistry::isSystemTool("bash"));
-    EXPECT_TRUE(a0::SystemToolRegistry::isSystemTool("read"));
-    EXPECT_TRUE(a0::SystemToolRegistry::isSystemTool("glob"));
-    EXPECT_TRUE(a0::SystemToolRegistry::isSystemTool("grep"));
-    EXPECT_TRUE(a0::SystemToolRegistry::isSystemTool("edit"));
-    EXPECT_TRUE(a0::SystemToolRegistry::isSystemTool("write"));
-    EXPECT_FALSE(a0::SystemToolRegistry::isSystemTool("nonexistent"));
-}
-
-// ---------------------------------------------------------------------------
-// execute — unknown tool
-// ---------------------------------------------------------------------------
-
-TEST_F(SystemToolsTest, ExecuteUnknownTool) {
-    auto result = tools.execute("nonexistent", {});
-    EXPECT_TRUE(result.output.find("ERROR: unknown system tool") != std::string::npos);
-}
-
-// ---------------------------------------------------------------------------
 // xBash
 // ---------------------------------------------------------------------------
 
 TEST_F(SystemToolsTest, BashMissingCommand) {
-    auto result = tools.execute("bash", {});
+    auto result = a0::xBash({});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, BashEcho) {
-    auto result = tools.execute("bash", {{"command", "echo hello"}});
+    auto result = a0::xBash({{"command", "echo hello"}});
     EXPECT_TRUE(result.output.find("hello") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, BashWithWorkdir) {
-    auto result = tools.execute("bash", {
+    auto result = a0::xBash({
         {"command", "pwd"},
         {"workdir", m_tmp}
     });
@@ -90,7 +51,7 @@ TEST_F(SystemToolsTest, BashWithWorkdir) {
 }
 
 TEST_F(SystemToolsTest, BashTimeoutCapping) {
-    auto result = tools.execute("bash", {
+    auto result = a0::xBash({
         {"command", "echo timeout_works"},
         {"timeout", 120000}
     });
@@ -102,12 +63,12 @@ TEST_F(SystemToolsTest, BashTimeoutCapping) {
 // ---------------------------------------------------------------------------
 
 TEST_F(SystemToolsTest, ReadMissingFilePath) {
-    auto result = tools.execute("read", {});
+    auto result = a0::xRead({});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, ReadFileNotFound) {
-    auto result = tools.execute("read", {{"filePath", m_tmp + "/no_such_file.txt"}});
+    auto result = a0::xRead({{"filePath", m_tmp + "/no_such_file.txt"}});
     EXPECT_TRUE(result.output.find("ERROR: file not found") != std::string::npos);
 }
 
@@ -115,7 +76,7 @@ TEST_F(SystemToolsTest, ReadDirectoryListing) {
     writeFile(m_tmp + "/alpha.txt", "aaa");
     writeFile(m_tmp + "/beta.txt", "bbb");
     fs::create_directories(m_tmp + "/subdir");
-    auto result = tools.execute("read", {{"filePath", m_tmp}});
+    auto result = a0::xRead({{"filePath", m_tmp}});
     EXPECT_TRUE(result.output.find("alpha.txt") != std::string::npos);
     EXPECT_TRUE(result.output.find("beta.txt") != std::string::npos);
     EXPECT_TRUE(result.output.find("subdir/") != std::string::npos);
@@ -123,7 +84,7 @@ TEST_F(SystemToolsTest, ReadDirectoryListing) {
 
 TEST_F(SystemToolsTest, ReadBinaryFile) {
     writeFile(m_tmp + "/image.png", "fake png content");
-    auto result = tools.execute("read", {{"filePath", m_tmp + "/image.png"}});
+    auto result = a0::xRead({{"filePath", m_tmp + "/image.png"}});
     EXPECT_TRUE(result.output.find("binary") != std::string::npos);
 }
 
@@ -134,13 +95,13 @@ TEST_F(SystemToolsTest, ReadFileTooLarge) {
         std::string chunk(1024 * 1024, 'X');
         for (int i = 0; i < 11; ++i) f << chunk;
     }
-    auto result = tools.execute("read", {{"filePath", path}});
+    auto result = a0::xRead({{"filePath", path}});
     EXPECT_TRUE(result.output.find("over size limit") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, ReadOffsetExceedsFileLength) {
     writeFile(m_tmp + "/short.txt", "line1\nline2\nline3");
-    auto result = tools.execute("read", {
+    auto result = a0::xRead({
         {"filePath", m_tmp + "/short.txt"},
         {"offset", 100}
     });
@@ -153,22 +114,22 @@ TEST_F(SystemToolsTest, ReadOffsetExceedsFileLength) {
 // ---------------------------------------------------------------------------
 
 TEST_F(SystemToolsTest, EditMissingFilePath) {
-    auto result = tools.execute("edit", {{"oldString", "foo"}, {"newString", "bar"}});
+    auto result = a0::xEdit({{"oldString", "foo"}, {"newString", "bar"}});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, EditMissingOldString) {
-    auto result = tools.execute("edit", {{"filePath", m_tmp + "/x.txt"}, {"newString", "bar"}});
+    auto result = a0::xEdit({{"filePath", m_tmp + "/x.txt"}, {"newString", "bar"}});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, EditMissingNewString) {
-    auto result = tools.execute("edit", {{"filePath", m_tmp + "/x.txt"}, {"oldString", "foo"}});
+    auto result = a0::xEdit({{"filePath", m_tmp + "/x.txt"}, {"oldString", "foo"}});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, EditFileNotFound) {
-    auto result = tools.execute("edit", {
+    auto result = a0::xEdit({
         {"filePath", m_tmp + "/nonexistent.txt"},
         {"oldString", "foo"},
         {"newString", "bar"}
@@ -178,7 +139,7 @@ TEST_F(SystemToolsTest, EditFileNotFound) {
 
 TEST_F(SystemToolsTest, EditSingleReplace) {
     writeFile(m_tmp + "/edit_single.txt", "hello foo world");
-    auto result = tools.execute("edit", {
+    auto result = a0::xEdit({
         {"filePath", m_tmp + "/edit_single.txt"},
         {"oldString", "foo"},
         {"newString", "bar"}
@@ -192,7 +153,7 @@ TEST_F(SystemToolsTest, EditSingleReplace) {
 
 TEST_F(SystemToolsTest, EditReplaceAll) {
     writeFile(m_tmp + "/edit_all.txt", "foo and foo and foo");
-    auto result = tools.execute("edit", {
+    auto result = a0::xEdit({
         {"filePath", m_tmp + "/edit_all.txt"},
         {"oldString", "foo"},
         {"newString", "bar"},
@@ -207,7 +168,7 @@ TEST_F(SystemToolsTest, EditReplaceAll) {
 
 TEST_F(SystemToolsTest, EditMultiMatchError) {
     writeFile(m_tmp + "/edit_multi.txt", "foo and foo again");
-    auto result = tools.execute("edit", {
+    auto result = a0::xEdit({
         {"filePath", m_tmp + "/edit_multi.txt"},
         {"oldString", "foo"},
         {"newString", "bar"}
@@ -217,7 +178,7 @@ TEST_F(SystemToolsTest, EditMultiMatchError) {
 
 TEST_F(SystemToolsTest, EditOldStringNotFound) {
     writeFile(m_tmp + "/edit_notfound.txt", "hello world");
-    auto result = tools.execute("edit", {
+    auto result = a0::xEdit({
         {"filePath", m_tmp + "/edit_notfound.txt"},
         {"oldString", "zzzzz"},
         {"newString", "bar"}
@@ -227,7 +188,7 @@ TEST_F(SystemToolsTest, EditOldStringNotFound) {
 
 TEST_F(SystemToolsTest, EditReplaceAllNotFound) {
     writeFile(m_tmp + "/edit_all_notfound.txt", "hello world");
-    auto result = tools.execute("edit", {
+    auto result = a0::xEdit({
         {"filePath", m_tmp + "/edit_all_notfound.txt"},
         {"oldString", "zzzzz"},
         {"newString", "bar"},
@@ -241,18 +202,18 @@ TEST_F(SystemToolsTest, EditReplaceAllNotFound) {
 // ---------------------------------------------------------------------------
 
 TEST_F(SystemToolsTest, WriteMissingFilePath) {
-    auto result = tools.execute("write", {{"content", "hello"}});
+    auto result = a0::xWrite({{"content", "hello"}});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, WriteMissingContent) {
-    auto result = tools.execute("write", {{"filePath", m_tmp + "/x.txt"}});
+    auto result = a0::xWrite({{"filePath", m_tmp + "/x.txt"}});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, WriteNewFile) {
     std::string path = m_tmp + "/newfile.txt";
-    auto result = tools.execute("write", {{"filePath", path}, {"content", "hello world"}});
+    auto result = a0::xWrite({{"filePath", path}, {"content", "hello world"}});
     EXPECT_TRUE(result.output.find("Wrote file successfully") != std::string::npos);
     EXPECT_TRUE(fs::exists(path));
     std::ifstream f(path);
@@ -263,7 +224,7 @@ TEST_F(SystemToolsTest, WriteNewFile) {
 
 TEST_F(SystemToolsTest, WriteParentDirCreation) {
     std::string path = m_tmp + "/deep/nested/dir/file.txt";
-    auto result = tools.execute("write", {{"filePath", path}, {"content", "nested content"}});
+    auto result = a0::xWrite({{"filePath", path}, {"content", "nested content"}});
     EXPECT_TRUE(result.output.find("Wrote file successfully") != std::string::npos);
     EXPECT_TRUE(fs::exists(path));
 }
@@ -273,12 +234,12 @@ TEST_F(SystemToolsTest, WriteParentDirCreation) {
 // ---------------------------------------------------------------------------
 
 TEST_F(SystemToolsTest, GlobMissingPattern) {
-    auto result = tools.execute("glob", {});
+    auto result = a0::xGlob({});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, GlobDirectoryNotFound) {
-    auto result = tools.execute("glob", {
+    auto result = a0::xGlob({
         {"pattern", "*.txt"},
         {"path", m_tmp + "/no_such_dir"}
     });
@@ -288,7 +249,7 @@ TEST_F(SystemToolsTest, GlobDirectoryNotFound) {
 TEST_F(SystemToolsTest, GlobStarStar) {
     writeFile(m_tmp + "/a/b/c/foo.txt", "hello");
     writeFile(m_tmp + "/a/d/bar.txt", "world");
-    auto result = tools.execute("glob", {
+    auto result = a0::xGlob({
         {"pattern", "**/*.txt"},
         {"path", m_tmp}
     });
@@ -300,7 +261,7 @@ TEST_F(SystemToolsTest, GlobQuestionMark) {
     writeFile(m_tmp + "/ab.txt", "first");
     writeFile(m_tmp + "/cd.txt", "second");
     writeFile(m_tmp + "/xyz.txt", "third");
-    auto result = tools.execute("glob", {
+    auto result = a0::xGlob({
         {"pattern", "??.txt"},
         {"path", m_tmp}
     });
@@ -311,7 +272,7 @@ TEST_F(SystemToolsTest, GlobQuestionMark) {
 
 TEST_F(SystemToolsTest, GlobDirOnlyPattern) {
     writeFile(m_tmp + "/somedir/a.txt", "a");
-    auto result = tools.execute("glob", {
+    auto result = a0::xGlob({
         {"pattern", "*/"},
         {"path", m_tmp}
     });
@@ -323,17 +284,17 @@ TEST_F(SystemToolsTest, GlobDirOnlyPattern) {
 // ---------------------------------------------------------------------------
 
 TEST_F(SystemToolsTest, GrepMissingPattern) {
-    auto result = tools.execute("grep", {});
+    auto result = a0::xGrep({});
     EXPECT_TRUE(result.output.find("ERROR: missing required") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, GrepInvalidRegex) {
-    auto result = tools.execute("grep", {{"pattern", "[invalid"}});
+    auto result = a0::xGrep({{"pattern", "[invalid"}});
     EXPECT_TRUE(result.output.find("ERROR: invalid regex") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, GrepDirectoryNotFound) {
-    auto result = tools.execute("grep", {
+    auto result = a0::xGrep({
         {"pattern", "test"},
         {"path", m_tmp + "/no_such_dir"}
     });
@@ -342,13 +303,13 @@ TEST_F(SystemToolsTest, GrepDirectoryNotFound) {
 
 TEST_F(SystemToolsTest, GrepNoMatches) {
     writeFile(m_tmp + "/greptest.txt", "hello world");
-    auto result = tools.execute("grep", {{"pattern", "zzzzz"}, {"path", m_tmp}});
+    auto result = a0::xGrep({{"pattern", "zzzzz"}, {"path", m_tmp}});
     EXPECT_TRUE(result.output.find("No matches found") != std::string::npos);
 }
 
 TEST_F(SystemToolsTest, GrepWithMatches) {
     writeFile(m_tmp + "/searchable.txt", "find this line\nanother line\nand find this too");
-    auto result = tools.execute("grep", {{"pattern", "find"}, {"path", m_tmp}});
+    auto result = a0::xGrep({{"pattern", "find"}, {"path", m_tmp}});
     EXPECT_TRUE(result.output.find("searchable.txt") != std::string::npos);
     EXPECT_TRUE(result.output.find("find this") != std::string::npos);
 }
@@ -356,7 +317,7 @@ TEST_F(SystemToolsTest, GrepWithMatches) {
 TEST_F(SystemToolsTest, GrepWithIncludeFilter) {
     writeFile(m_tmp + "/match_me.cpp", "int x = 42;");
     writeFile(m_tmp + "/ignore_me.h", "int x = 42;");
-    auto result = tools.execute("grep", {
+    auto result = a0::xGrep({
         {"pattern", "42"},
         {"path", m_tmp},
         {"include", "*.cpp"}

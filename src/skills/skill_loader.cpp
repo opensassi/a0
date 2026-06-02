@@ -114,6 +114,7 @@ int SkillLoader::writeManifest(const std::string& component, const SkillManifest
         jt["command"] = t.command;
         jt["inputMode"] = t.inputMode;
         if (t.systemTool) jt["systemTool"] = true;
+        if (t.default_) jt["default"] = true;
         if (t.timeoutSecs != 30) jt["timeoutSecs"] = t.timeoutSecs;
         if (!t.dockerImage.empty()) jt["dockerImage"] = t.dockerImage;
         switch (t.trustLevel) {
@@ -122,6 +123,8 @@ int SkillLoader::writeManifest(const std::string& component, const SkillManifest
             default:               jt["trustLevel"] = "MEDIUM"; break;
         }
         if (!t.aptDependencies.empty()) jt["aptDependencies"] = t.aptDependencies;
+        if (!t.parameters.is_null() && !t.parameters.empty())
+            jt["parameters"] = t.parameters;
         j["tools"].push_back(jt);
     }
     for (const auto& p : manifest.prompts) {
@@ -173,7 +176,10 @@ int SkillLoader::readManifest(const std::string& path, SkillManifest& manifest) 
             tool.command = jt.value("command", "");
             tool.inputMode = jt.value("inputMode", "stdin");
             tool.systemTool = jt.value("systemTool", false);
+            tool.default_ = jt.value("default", false);
             tool.timeoutSecs = jt.value("timeoutSecs", 30);
+            if (jt.contains("parameters"))
+                tool.parameters = jt["parameters"];
             if (jt.contains("dockerImage"))
                 tool.dockerImage = jt["dockerImage"].get<std::string>();
             if (jt.contains("trustLevel")) {
