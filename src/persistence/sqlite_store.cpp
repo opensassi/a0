@@ -115,6 +115,19 @@ public:
                          nullptr, nullptr, &err);
             sqlite3_free(err);
         }
+        // Session context table
+        exec(
+            "CREATE TABLE IF NOT EXISTS session_context ("
+            "  session_id INTEGER PRIMARY KEY REFERENCES session(id),"
+            "  session_uuid TEXT DEFAULT '',"
+            "  original_cwd TEXT DEFAULT '',"
+            "  worktree_path TEXT DEFAULT '',"
+            "  git_repo_root TEXT DEFAULT '',"
+            "  git_branch TEXT DEFAULT '',"
+            "  git_commit TEXT DEFAULT ''"
+            ")"
+        );
+
         // Migration: add sub_session_id + seq for existing databases
         {
             char* err = nullptr;
@@ -603,6 +616,59 @@ std::vector<Stream> SqliteStore::listSessionStreams(int64_t sessionId)
     }
     sqlite3_finalize(stmt);
     return streams;
+}
+
+int SqliteStore::saveSessionContext(const SessionContextRow& row)
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "INSERT OR REPLACE INTO session_context"
+        " (session_id, session_uuid, original_cwd, worktree_path, git_repo_root, git_branch, git_commit)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, row.sessionId);
+    sqlite3_bind_text(stmt, 2, row.sessionUuid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, row.originalCwd.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, row.worktreePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, row.gitRepoRoot.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, row.gitBranch.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, row.gitCommit.c_str(), -1, SQLITE_TRANSIENT);
+
+    int rc = sqlite3_step(stmt) == SQLITE_DONE ? 0 : -1;
+    sqlite3_finalize(stmt);
+    return rc;
+}
+
+SessionContextRow SqliteStore::loadSessionContext(int64_t sessionId) const
+{
+    SessionContextRow row = {};
+    row.sessionId = sessionId;
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT session_uuid, original_cwd, worktree_path,"
+        " git_repo_root, git_branch, git_commit"
+        " FROM session_context WHERE session_id = ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return row;
+    }
+    sqlite3_bind_int64(stmt, 1, sessionId);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)))
+            row.sessionUuid = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)))
+            row.originalCwd = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)))
+            row.worktreePath = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)))
+            row.gitRepoRoot = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)))
+            row.gitBranch = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)))
+            row.gitCommit = s;
+    }
+    sqlite3_finalize(stmt);
+    return row;
 }
 
 void* SqliteStore::handle() const {

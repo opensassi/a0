@@ -182,12 +182,12 @@ TEST_F(AgentIntegrationTest, RunSkillMissingDependency) {
     p.name = "needs_tool";
     p.description = "Needs a tool";
     p.prompt = "do something";
-    p.dependencies = {"local:dep_comp:ghost_tool"};
+    p.dependencies = {"local-dep_comp-ghost_tool"};
     m.prompts.push_back(p);
     addComponent("dep_comp", m);
     loadSkills();
 
-    json result = m_core->runSkill("local:dep_comp:needs_tool", json::object());
+    json result = m_core->runSkill("local-dep_comp-needs_tool", json::object());
     ASSERT_TRUE(result.is_string());
     std::string s = result.get<std::string>();
     EXPECT_TRUE(s.find("Missing dependencies") != std::string::npos);
@@ -205,7 +205,7 @@ TEST_F(AgentIntegrationTest, RunSkillSuccess) {
     addComponent("simple_comp", m);
     loadSkills();
 
-    json result = m_core->runSkill("local:simple_comp:simple_prompt", json::object());
+    json result = m_core->runSkill("local-simple_comp-simple_prompt", json::object());
     EXPECT_FALSE(result.is_null());
 }
 
@@ -223,12 +223,12 @@ TEST_F(AgentIntegrationTest, ProcessGoalWithToolCall) {
     p.name = "tool_prompt";
     p.description = "Uses a tool";
     p.prompt = "{{tool:echo_tool input=\"hello\"}}";
-    p.dependencies = {"local:tool_comp:echo_tool"};
+    p.dependencies = {"local-tool_comp-echo_tool"};
     m.prompts.push_back(p);
     addComponent("tool_comp", m);
     loadSkills();
 
-    json result = m_core->runSkill("local:tool_comp:tool_prompt", json::object());
+    json result = m_core->runSkill("local-tool_comp-tool_prompt", json::object());
     EXPECT_FALSE(result.is_null());
 }
 
@@ -247,15 +247,15 @@ TEST_F(AgentIntegrationTest, ProcessGoalWithValidator) {
     p.name = "val_prompt";
     p.description = "Has a validator";
     p.prompt = "validate me";
-    p.dependencies = {"local:val_comp:validator_tool"};
+    p.dependencies = {"local-val_comp-validator_tool"};
     ValidatorBinding vb;
-    vb.toolName = "local:val_comp:validator_tool";
+    vb.toolName = "local-val_comp-validator_tool";
     p.validators.push_back(vb);
     m.prompts.push_back(p);
     addComponent("val_comp", m);
     loadSkills();
 
-    json result = m_core->runSkill("local:val_comp:val_prompt", json::object());
+    json result = m_core->runSkill("local-val_comp-val_prompt", json::object());
     EXPECT_FALSE(result.is_null());
 }
 

@@ -56,7 +56,7 @@ TEST_F(DependencyResolverTest, QualifiedToolDepFound) {
     p.name = "test_skill";
     p.description = "desc";
     p.prompt = "prompt";
-    p.dependencies = {"local:test:base_tool", "local:test:base_skill"};
+    p.dependencies = {"local-test-base_tool", "local-test-base_skill"};
     EXPECT_TRUE(m_resolver->checkPromptDependencies(p));
 }
 
@@ -74,7 +74,7 @@ TEST_F(DependencyResolverTest, MissingDepsList) {
     p.name = "check";
     p.description = "desc";
     p.prompt = "prompt";
-    p.dependencies = {"local:test:base_tool", "missing_a", "missing_b"};
+    p.dependencies = {"local-test-base_tool", "missing_a", "missing_b"};
     auto missing = m_resolver->missingDependencies(p);
     EXPECT_EQ(missing.size(), 2u);
 }

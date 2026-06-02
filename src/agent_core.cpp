@@ -101,7 +101,9 @@ bool DefaultAgentCore::init(const std::string& skillsDir) {
         }
     }
 
-    m_sessionId = generateHexSessionId();
+    if (m_sessionId.empty()) {
+        m_sessionId = generateHexSessionId();
+    }
 
     // Build base prompt once at init
     m_basePrompt = a0::buildBasePrompt(m_skillMgr);
@@ -132,6 +134,22 @@ bool DefaultAgentCore::init(const std::string& skillsDir) {
     return true;
 }
 
+void DefaultAgentCore::setSession(const std::string& sessionId,
+                                   int64_t sessionDbId,
+                                   a0::SessionContext* sessionCtx) {
+    m_sessionId = sessionId;
+    m_sessionDbId = sessionDbId;
+    m_sessionCtx = sessionCtx;
+
+    m_skillRunner->setGlobalVar("SESSION_ID", m_sessionId);
+    if (m_sessionCtx) {
+        char buf[4096];
+        if (::getcwd(buf, sizeof(buf))) {
+            m_skillRunner->setGlobalVar("PROJECT_DIR", buf);
+        }
+    }
+}
+
 void DefaultAgentCore::xPushToContext(const std::string& goal, const json& result) {
     (void)goal;
     m_context->push({"assistant", result.is_string() ? result.get<std::string>() : result.dump()});
@@ -159,27 +177,6 @@ void DefaultAgentCore::xBuildDispatchTable() {
 // ---------------------------------------------------------------------------
 // processGoal
 // ---------------------------------------------------------------------------
-
-static int xNsToType(const std::string& ns) {
-    if (ns == "system") return 0;
-    if (ns == "local") return 1;
-    return 2; // github_*
-}
-
-static void xParseQualified(const std::string& qn,
-                             std::string& ns, std::string& comp, std::string& name) {
-    auto first = qn.find(':');
-    if (first == std::string::npos) { ns = qn; comp = qn; name = qn; return; }
-    ns = qn.substr(0, first);
-    auto second = qn.find(':', first + 1);
-    if (second == std::string::npos) {
-        comp = qn.substr(first + 1);
-        name = comp;
-    } else {
-        comp = qn.substr(first + 1, second - first - 1);
-        name = qn.substr(second + 1);
-    }
-}
 
 std::string DefaultAgentCore::xRunForkedLoop(
     const std::string& userInput,
@@ -287,7 +284,7 @@ std::string DefaultAgentCore::xRunForkedLoop(
             asstMsg.toolCalls = response.toolCalls;
             messages.push_back(asstMsg);
 
-            // Persist assistant turn in fork branch
+            // Persist assistant turn in fork branch (LLM intent, not tool execution)
             if (m_persistence && m_sessionDbId > 0) {
                 m_persistence->appendMessage(m_sessionDbId, subSessionId, subSeq++,
                     "assistant", "", tcsJsonStr, "", "", "");
@@ -303,7 +300,9 @@ std::string DefaultAgentCore::xRunForkedLoop(
                 if (dit != m_dispatch.end()) {
                     const std::string& qualifiedName = dit->second;
                     if (m_skillMgr) {
-                        auto handlerResult = m_skillMgr->executeToolWithMeta(qualifiedName, tc.arguments);
+                        // executeToolWithMeta auto-records tool result + invocation to persistence
+                        auto handlerResult = m_skillMgr->executeToolWithMeta(
+                            qualifiedName, tc.arguments, &subSeq, tc.id, subSessionId);
                         result = handlerResult.output;
                     } else {
                         result = "ERROR: no SkillManager available";
@@ -313,24 +312,6 @@ std::string DefaultAgentCore::xRunForkedLoop(
                 }
 
                 std::string safeOutput = sanitizeUtf8(truncateForLLM(result));
-
-                // Persist tool result in fork branch
-                int64_t msgId = 0;
-                if (m_persistence && m_sessionDbId > 0) {
-                    msgId = m_persistence->appendMessage(m_sessionDbId,
-                        subSessionId, subSeq++, "tool", safeOutput, "", tc.id, tc.name, "");
-
-                    // Write invocation record for ValidationEngine
-                    auto dit = m_dispatch.find(tc.name);
-                    if (dit != m_dispatch.end()) {
-                        std::string ns, comp, tName;
-                        xParseQualified(dit->second, ns, comp, tName);
-                        int sType = xNsToType(ns);
-                        int skillId = m_persistence->ensureSkill(sType, comp);
-                        m_persistence->appendInvocation(msgId, skillId,
-                            tc.name, tc.arguments.dump(), result);
-                    }
-                }
 
                 messages.push_back({"tool", safeOutput, tc.id});
 
@@ -377,7 +358,9 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
     m_context->push({"user", goal});
 
     if (m_persistence && m_agentDbId > 0) {
-        m_sessionDbId = m_persistence->createSession(m_sessionId, 0, 0, m_agentDbId);
+        if (m_sessionDbId <= 0) {
+            m_sessionDbId = m_persistence->createSession(m_sessionId, 0, 0, m_agentDbId);
+        }
         m_persistence->appendMessage(m_sessionDbId, std::nullopt, 0,
             "user", goal, "", "", "", "");
     }

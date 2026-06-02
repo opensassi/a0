@@ -8,10 +8,12 @@ namespace a0 {
 /// Creates it (and parent dirs) if missing.
 /// On first creation, if the CWD is a git repository, appends ".a0/" to .gitignore.
 ///
-/// \param a0Path  Path to the .a0/ directory (e.g. "./.a0").
+/// \param a0Path         Path to the .a0/ directory (e.g. "./.a0").
+/// \param requireWorktree  If true, verify worktrees/ subdir exists (for resume).
+///                         If false, create worktrees/ subdir if missing.
 /// \retval 0  Directory was newly created (gitignore may have been updated).
 /// \retval 1  Directory already existed.
-/// \retval -1 Failed to create directory.
-int ensureA0Dir(const std::string& a0Path);
+/// \retval -1 Failed to create directory or required subdir missing.
+int ensureA0Dir(const std::string& a0Path, bool requireWorktree = false);
 
 } // namespace a0

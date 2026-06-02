@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include "agent_interfaces.h"
 #include "skills/skills.h"
+#include "session_context.h"
 
 namespace a0::persistence { class PersistenceStore; }
 
@@ -28,6 +29,15 @@ public:
     void run() override;
     a0::StreamHandle processGoalStreaming(const std::string& goal,
                                            a0::StreamCallback onChunk) override;
+
+    int agentDbId() const { return m_agentDbId; }
+    int64_t sessionDbId() const { return m_sessionDbId; }
+
+    /// Set pre-created session info (called after init when session is created early).
+    /// sessionDbId must already be a valid DB session row.
+    /// sessionCtx is owned by the caller and must outlive this AgentCore.
+    void setSession(const std::string& sessionId, int64_t sessionDbId,
+                    a0::SessionContext* sessionCtx = nullptr);
 
 private:
     void xPushToContext(const std::string& goal, const json& result);
@@ -55,6 +65,7 @@ private:
     SchemaInferenceEngine* m_inferenceEngine;
     std::string m_sessionId;
     bool m_initialized;
+    a0::SessionContext* m_sessionCtx = nullptr;
 
     std::unordered_map<std::string, std::string> m_dispatch;
     std::unordered_set<std::string> m_accumulatedTools;

@@ -6,7 +6,7 @@
     {
       "name": "needs_ghost",
       "description": "Prompt with a missing dependency",
-      "dependencies": ["ghost_tool", "system:nonexistent"],
+      "dependencies": ["ghost_tool", "system-nonexistent"],
       "prompt": "NEEDS_GHOST_TOOL"
     },
     {

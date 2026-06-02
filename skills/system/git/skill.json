@@ -264,7 +264,7 @@
       }
     },
     {
-      "name": "cat-file",
+      "name": "cat_file",
       "description": "Provide contents or details of repository objects",
       "systemTool": true,
       "parameters": {
@@ -279,10 +279,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "cat-file"
     },
     {
-      "name": "check-attr",
+      "name": "check_attr",
       "description": "Display gitattributes information",
       "systemTool": true,
       "parameters": {
@@ -297,10 +298,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "check-attr"
     },
     {
-      "name": "check-ignore",
+      "name": "check_ignore",
       "description": "Debug gitignore / exclude files",
       "systemTool": true,
       "parameters": {
@@ -315,10 +317,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "check-ignore"
     },
     {
-      "name": "check-mailmap",
+      "name": "check_mailmap",
       "description": "Show canonical names and email addresses of contacts",
       "systemTool": true,
       "parameters": {
@@ -333,10 +336,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "check-mailmap"
     },
     {
-      "name": "check-ref-format",
+      "name": "check_ref_format",
       "description": "Ensures that a reference name is well formed",
       "systemTool": true,
       "parameters": {
@@ -351,7 +355,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "check-ref-format"
     },
     {
       "name": "checkout",
@@ -388,7 +393,7 @@
       }
     },
     {
-      "name": "checkout--worker",
+      "name": "checkout__worker",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -403,10 +408,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "checkout--worker"
     },
     {
-      "name": "checkout-index",
+      "name": "checkout_index",
       "description": "Copy files from the index to the working tree",
       "systemTool": true,
       "parameters": {
@@ -421,7 +427,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "checkout-index"
     },
     {
       "name": "cherry",
@@ -442,7 +449,7 @@
       }
     },
     {
-      "name": "cherry-pick",
+      "name": "cherry_pick",
       "description": "Apply the changes introduced by some existing commits",
       "systemTool": true,
       "parameters": {
@@ -473,7 +480,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "cherry-pick"
     },
     {
       "name": "clean",
@@ -604,7 +612,7 @@
       }
     },
     {
-      "name": "commit-graph",
+      "name": "commit_graph",
       "description": "Write and verify Git commit-graph files",
       "systemTool": true,
       "parameters": {
@@ -619,10 +627,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "commit-graph"
     },
     {
-      "name": "commit-tree",
+      "name": "commit_tree",
       "description": "Create a new commit object",
       "systemTool": true,
       "parameters": {
@@ -637,7 +646,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "commit-tree"
     },
     {
       "name": "config",
@@ -678,7 +688,7 @@
       }
     },
     {
-      "name": "count-objects",
+      "name": "count_objects",
       "description": "Count unpacked number of objects and their disk consumption",
       "systemTool": true,
       "parameters": {
@@ -693,7 +703,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "count-objects"
     },
     {
       "name": "credential",
@@ -714,7 +725,7 @@
       }
     },
     {
-      "name": "credential-cache",
+      "name": "credential_cache",
       "description": "Helper to temporarily store passwords in memory",
       "systemTool": true,
       "parameters": {
@@ -729,10 +740,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "credential-cache"
     },
     {
-      "name": "credential-cache--daemon",
+      "name": "credential_cache__daemon",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -747,10 +759,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "credential-cache--daemon"
     },
     {
-      "name": "credential-store",
+      "name": "credential_store",
       "description": "Helper to store credentials on disk",
       "systemTool": true,
       "parameters": {
@@ -765,7 +778,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "credential-store"
     },
     {
       "name": "daemon",
@@ -864,7 +878,7 @@
       }
     },
     {
-      "name": "diff-files",
+      "name": "diff_files",
       "description": "Compares files in the working tree and the index",
       "systemTool": true,
       "parameters": {
@@ -879,10 +893,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "diff-files"
     },
     {
-      "name": "diff-index",
+      "name": "diff_index",
       "description": "Compare a tree to the working tree or index",
       "systemTool": true,
       "parameters": {
@@ -897,10 +912,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "diff-index"
     },
     {
-      "name": "diff-tree",
+      "name": "diff_tree",
       "description": "Compares the content and mode of blobs found via two tree objects",
       "systemTool": true,
       "parameters": {
@@ -915,7 +931,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "diff-tree"
     },
     {
       "name": "difftool",
@@ -936,7 +953,7 @@
       }
     },
     {
-      "name": "difftool--helper",
+      "name": "difftool__helper",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -951,10 +968,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "difftool--helper"
     },
     {
-      "name": "fast-export",
+      "name": "fast_export",
       "description": "Git data exporter",
       "systemTool": true,
       "parameters": {
@@ -969,10 +987,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "fast-export"
     },
     {
-      "name": "fast-import",
+      "name": "fast_import",
       "description": "Backend for fast Git data importers",
       "systemTool": true,
       "parameters": {
@@ -987,7 +1006,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "fast-import"
     },
     {
       "name": "fetch",
@@ -1028,7 +1048,7 @@
       }
     },
     {
-      "name": "fetch-pack",
+      "name": "fetch_pack",
       "description": "Receive missing objects from another repository",
       "systemTool": true,
       "parameters": {
@@ -1043,10 +1063,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "fetch-pack"
     },
     {
-      "name": "filter-branch",
+      "name": "filter_branch",
       "description": "Rewrite branches",
       "systemTool": true,
       "parameters": {
@@ -1061,10 +1082,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "filter-branch"
     },
     {
-      "name": "fmt-merge-msg",
+      "name": "fmt_merge_msg",
       "description": "Produce a merge commit message",
       "systemTool": true,
       "parameters": {
@@ -1079,10 +1101,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "fmt-merge-msg"
     },
     {
-      "name": "for-each-ref",
+      "name": "for_each_ref",
       "description": "Output information on each ref",
       "systemTool": true,
       "parameters": {
@@ -1097,10 +1120,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "for-each-ref"
     },
     {
-      "name": "for-each-repo",
+      "name": "for_each_repo",
       "description": "Run a Git command on a list of repositories",
       "systemTool": true,
       "parameters": {
@@ -1115,10 +1139,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "for-each-repo"
     },
     {
-      "name": "format-patch",
+      "name": "format_patch",
       "description": "Prepare patches for e-mail submission",
       "systemTool": true,
       "parameters": {
@@ -1133,7 +1158,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "format-patch"
     },
     {
       "name": "fsck",
@@ -1154,7 +1180,7 @@
       }
     },
     {
-      "name": "fsck-objects",
+      "name": "fsck_objects",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1169,10 +1195,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "fsck-objects"
     },
     {
-      "name": "fsmonitor--daemon",
+      "name": "fsmonitor__daemon",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1187,7 +1214,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "fsmonitor--daemon"
     },
     {
       "name": "gc",
@@ -1216,7 +1244,7 @@
       }
     },
     {
-      "name": "get-tar-commit-id",
+      "name": "get_tar_commit_id",
       "description": "Extract commit ID from an archive created using git-archive",
       "systemTool": true,
       "parameters": {
@@ -1231,7 +1259,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "get-tar-commit-id"
     },
     {
       "name": "grep",
@@ -1252,7 +1281,7 @@
       }
     },
     {
-      "name": "hash-object",
+      "name": "hash_object",
       "description": "Compute object ID and optionally create an object from a file",
       "systemTool": true,
       "parameters": {
@@ -1267,7 +1296,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "hash-object"
     },
     {
       "name": "help",
@@ -1318,7 +1348,7 @@
       }
     },
     {
-      "name": "http-backend",
+      "name": "http_backend",
       "description": "Server side implementation of Git over HTTP",
       "systemTool": true,
       "parameters": {
@@ -1333,10 +1363,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "http-backend"
     },
     {
-      "name": "http-fetch",
+      "name": "http_fetch",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1351,10 +1382,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "http-fetch"
     },
     {
-      "name": "http-push",
+      "name": "http_push",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1369,10 +1401,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "http-push"
     },
     {
-      "name": "imap-send",
+      "name": "imap_send",
       "description": "Send a collection of patches from stdin to an IMAP folder",
       "systemTool": true,
       "parameters": {
@@ -1387,10 +1420,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "imap-send"
     },
     {
-      "name": "index-pack",
+      "name": "index_pack",
       "description": "Build pack index file for an existing packed archive",
       "systemTool": true,
       "parameters": {
@@ -1405,7 +1439,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "index-pack"
     },
     {
       "name": "init",
@@ -1438,7 +1473,7 @@
       }
     },
     {
-      "name": "init-db",
+      "name": "init_db",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1453,7 +1488,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "init-db"
     },
     {
       "name": "instaweb",
@@ -1474,7 +1510,7 @@
       }
     },
     {
-      "name": "interpret-trailers",
+      "name": "interpret_trailers",
       "description": "Add or parse structured information in commit messages",
       "systemTool": true,
       "parameters": {
@@ -1489,7 +1525,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "interpret-trailers"
     },
     {
       "name": "log",
@@ -1538,7 +1575,7 @@
       }
     },
     {
-      "name": "ls-files",
+      "name": "ls_files",
       "description": "Show information about files in the index and the working tree",
       "systemTool": true,
       "parameters": {
@@ -1553,10 +1590,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "ls-files"
     },
     {
-      "name": "ls-remote",
+      "name": "ls_remote",
       "description": "List references in a remote repository",
       "systemTool": true,
       "parameters": {
@@ -1571,10 +1609,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "ls-remote"
     },
     {
-      "name": "ls-tree",
+      "name": "ls_tree",
       "description": "List the contents of a tree object",
       "systemTool": true,
       "parameters": {
@@ -1589,7 +1628,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "ls-tree"
     },
     {
       "name": "mailinfo",
@@ -1684,7 +1724,7 @@
       }
     },
     {
-      "name": "merge-base",
+      "name": "merge_base",
       "description": "Find as good common ancestors as possible for a merge",
       "systemTool": true,
       "parameters": {
@@ -1699,10 +1739,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-base"
     },
     {
-      "name": "merge-file",
+      "name": "merge_file",
       "description": "Run a three-way file merge",
       "systemTool": true,
       "parameters": {
@@ -1717,10 +1758,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-file"
     },
     {
-      "name": "merge-index",
+      "name": "merge_index",
       "description": "Run a merge for files needing merging",
       "systemTool": true,
       "parameters": {
@@ -1735,10 +1777,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-index"
     },
     {
-      "name": "merge-octopus",
+      "name": "merge_octopus",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1753,10 +1796,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-octopus"
     },
     {
-      "name": "merge-one-file",
+      "name": "merge_one_file",
       "description": "The standard helper program to use with git-merge-index",
       "systemTool": true,
       "parameters": {
@@ -1771,10 +1815,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-one-file"
     },
     {
-      "name": "merge-ours",
+      "name": "merge_ours",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1789,10 +1834,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-ours"
     },
     {
-      "name": "merge-recursive",
+      "name": "merge_recursive",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1807,10 +1853,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-recursive"
     },
     {
-      "name": "merge-recursive-ours",
+      "name": "merge_recursive_ours",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1825,10 +1872,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-recursive-ours"
     },
     {
-      "name": "merge-recursive-theirs",
+      "name": "merge_recursive_theirs",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1843,10 +1891,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-recursive-theirs"
     },
     {
-      "name": "merge-resolve",
+      "name": "merge_resolve",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1861,10 +1910,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-resolve"
     },
     {
-      "name": "merge-subtree",
+      "name": "merge_subtree",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -1879,10 +1929,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-subtree"
     },
     {
-      "name": "merge-tree",
+      "name": "merge_tree",
       "description": "Perform merge without touching index or working tree",
       "systemTool": true,
       "parameters": {
@@ -1897,7 +1948,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "merge-tree"
     },
     {
       "name": "mergetool",
@@ -1954,7 +2006,7 @@
       }
     },
     {
-      "name": "multi-pack-index",
+      "name": "multi_pack_index",
       "description": "Write and verify multi-pack-indexes",
       "systemTool": true,
       "parameters": {
@@ -1969,7 +2021,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "multi-pack-index"
     },
     {
       "name": "mv",
@@ -1990,7 +2043,7 @@
       }
     },
     {
-      "name": "name-rev",
+      "name": "name_rev",
       "description": "Find symbolic names for given revs",
       "systemTool": true,
       "parameters": {
@@ -2005,7 +2058,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "name-rev"
     },
     {
       "name": "notes",
@@ -2026,7 +2080,7 @@
       }
     },
     {
-      "name": "pack-objects",
+      "name": "pack_objects",
       "description": "Create a packed archive of objects",
       "systemTool": true,
       "parameters": {
@@ -2041,10 +2095,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "pack-objects"
     },
     {
-      "name": "pack-redundant",
+      "name": "pack_redundant",
       "description": "Find redundant pack files",
       "systemTool": true,
       "parameters": {
@@ -2059,10 +2114,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "pack-redundant"
     },
     {
-      "name": "pack-refs",
+      "name": "pack_refs",
       "description": "Pack heads and tags for efficient repository access",
       "systemTool": true,
       "parameters": {
@@ -2077,10 +2133,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "pack-refs"
     },
     {
-      "name": "patch-id",
+      "name": "patch_id",
       "description": "Compute unique ID for a patch",
       "systemTool": true,
       "parameters": {
@@ -2095,7 +2152,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "patch-id"
     },
     {
       "name": "pickaxe",
@@ -2134,7 +2192,7 @@
       }
     },
     {
-      "name": "prune-packed",
+      "name": "prune_packed",
       "description": "Remove extra objects that are already in pack files",
       "systemTool": true,
       "parameters": {
@@ -2149,7 +2207,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "prune-packed"
     },
     {
       "name": "pull",
@@ -2250,7 +2309,7 @@
       }
     },
     {
-      "name": "range-diff",
+      "name": "range_diff",
       "description": "Compare two commit ranges (e.g. two versions of a branch)",
       "systemTool": true,
       "parameters": {
@@ -2265,10 +2324,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "range-diff"
     },
     {
-      "name": "read-tree",
+      "name": "read_tree",
       "description": "Reads tree information into the index",
       "systemTool": true,
       "parameters": {
@@ -2283,7 +2343,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "read-tree"
     },
     {
       "name": "rebase",
@@ -2332,7 +2393,7 @@
       }
     },
     {
-      "name": "receive-pack",
+      "name": "receive_pack",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -2347,7 +2408,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "receive-pack"
     },
     {
       "name": "reflog",
@@ -2406,7 +2468,7 @@
       }
     },
     {
-      "name": "remote-ext",
+      "name": "remote_ext",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -2421,10 +2483,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "remote-ext"
     },
     {
-      "name": "remote-fd",
+      "name": "remote_fd",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -2439,10 +2502,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "remote-fd"
     },
     {
-      "name": "remote-ftp",
+      "name": "remote_ftp",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -2457,10 +2521,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "remote-ftp"
     },
     {
-      "name": "remote-ftps",
+      "name": "remote_ftps",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -2475,10 +2540,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "remote-ftps"
     },
     {
-      "name": "remote-http",
+      "name": "remote_http",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -2493,10 +2559,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "remote-http"
     },
     {
-      "name": "remote-https",
+      "name": "remote_https",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -2511,7 +2578,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "remote-https"
     },
     {
       "name": "repack",
@@ -2550,7 +2618,7 @@
       }
     },
     {
-      "name": "request-pull",
+      "name": "request_pull",
       "description": "Generates a summary of pending changes",
       "systemTool": true,
       "parameters": {
@@ -2565,7 +2633,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "request-pull"
     },
     {
       "name": "rerere",
@@ -2658,7 +2727,7 @@
       }
     },
     {
-      "name": "rev-list",
+      "name": "rev_list",
       "description": "Lists commit objects in reverse chronological order",
       "systemTool": true,
       "parameters": {
@@ -2673,10 +2742,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "rev-list"
     },
     {
-      "name": "rev-parse",
+      "name": "rev_parse",
       "description": "Pick out and massage parameters",
       "systemTool": true,
       "parameters": {
@@ -2691,7 +2761,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "rev-parse"
     },
     {
       "name": "revert",
@@ -2742,7 +2813,7 @@
       }
     },
     {
-      "name": "send-pack",
+      "name": "send_pack",
       "description": "Push objects over Git protocol to another repository",
       "systemTool": true,
       "parameters": {
@@ -2757,10 +2828,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "send-pack"
     },
     {
-      "name": "sh-i18n--envsubst",
+      "name": "sh_i18n__envsubst",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -2775,7 +2847,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "sh-i18n--envsubst"
     },
     {
       "name": "shell",
@@ -2856,7 +2929,7 @@
       }
     },
     {
-      "name": "show-branch",
+      "name": "show_branch",
       "description": "Show branches and their commits",
       "systemTool": true,
       "parameters": {
@@ -2871,10 +2944,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "show-branch"
     },
     {
-      "name": "show-index",
+      "name": "show_index",
       "description": "Show packed archive index",
       "systemTool": true,
       "parameters": {
@@ -2889,10 +2963,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "show-index"
     },
     {
-      "name": "show-ref",
+      "name": "show_ref",
       "description": "List references in a local repository",
       "systemTool": true,
       "parameters": {
@@ -2907,10 +2982,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "show-ref"
     },
     {
-      "name": "sparse-checkout",
+      "name": "sparse_checkout",
       "description": "Reduce your working tree to a subset of tracked files",
       "systemTool": true,
       "parameters": {
@@ -2925,7 +3001,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "sparse-checkout"
     },
     {
       "name": "stage",
@@ -3078,7 +3155,7 @@
       }
     },
     {
-      "name": "submodule--helper",
+      "name": "submodule__helper",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -3093,7 +3170,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "submodule--helper"
     },
     {
       "name": "subtree",
@@ -3148,7 +3226,7 @@
       }
     },
     {
-      "name": "symbolic-ref",
+      "name": "symbolic_ref",
       "description": "Read, modify and delete symbolic refs",
       "systemTool": true,
       "parameters": {
@@ -3163,7 +3241,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "symbolic-ref"
     },
     {
       "name": "tag",
@@ -3216,7 +3295,7 @@
       }
     },
     {
-      "name": "unpack-file",
+      "name": "unpack_file",
       "description": "Creates a temporary file with a blob's contents",
       "systemTool": true,
       "parameters": {
@@ -3231,10 +3310,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "unpack-file"
     },
     {
-      "name": "unpack-objects",
+      "name": "unpack_objects",
       "description": "Unpack objects from a packed archive",
       "systemTool": true,
       "parameters": {
@@ -3249,10 +3329,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "unpack-objects"
     },
     {
-      "name": "update-index",
+      "name": "update_index",
       "description": "Register file contents in the working tree to the index",
       "systemTool": true,
       "parameters": {
@@ -3267,10 +3348,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "update-index"
     },
     {
-      "name": "update-ref",
+      "name": "update_ref",
       "description": "Update the object name stored in a ref safely",
       "systemTool": true,
       "parameters": {
@@ -3285,10 +3367,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "update-ref"
     },
     {
-      "name": "update-server-info",
+      "name": "update_server_info",
       "description": "Update auxiliary info file to help dumb servers",
       "systemTool": true,
       "parameters": {
@@ -3303,10 +3386,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "update-server-info"
     },
     {
-      "name": "upload-archive",
+      "name": "upload_archive",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -3321,10 +3405,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "upload-archive"
     },
     {
-      "name": "upload-archive--writer",
+      "name": "upload_archive__writer",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -3339,10 +3424,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "upload-archive--writer"
     },
     {
-      "name": "upload-pack",
+      "name": "upload_pack",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -3357,7 +3443,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "upload-pack"
     },
     {
       "name": "var",
@@ -3378,7 +3465,7 @@
       }
     },
     {
-      "name": "verify-commit",
+      "name": "verify_commit",
       "description": "Check the GPG signature of commits",
       "systemTool": true,
       "parameters": {
@@ -3393,10 +3480,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "verify-commit"
     },
     {
-      "name": "verify-pack",
+      "name": "verify_pack",
       "description": "Validate packed Git archive files",
       "systemTool": true,
       "parameters": {
@@ -3411,10 +3499,11 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "verify-pack"
     },
     {
-      "name": "verify-tag",
+      "name": "verify_tag",
       "description": "Check the GPG signature of tags",
       "systemTool": true,
       "parameters": {
@@ -3429,7 +3518,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "verify-tag"
     },
     {
       "name": "version",
@@ -3450,7 +3540,7 @@
       }
     },
     {
-      "name": "web--browse",
+      "name": "web__browse",
       "description": "",
       "systemTool": true,
       "parameters": {
@@ -3465,7 +3555,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "web--browse"
     },
     {
       "name": "whatchanged",
@@ -3520,7 +3611,7 @@
       }
     },
     {
-      "name": "write-tree",
+      "name": "write_tree",
       "description": "Create a tree object from the current index",
       "systemTool": true,
       "parameters": {
@@ -3535,7 +3626,8 @@
           }
         },
         "required": []
-      }
+      },
+      "subCommand": "write-tree"
     }
   ],
   "prompts": [

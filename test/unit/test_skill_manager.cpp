@@ -50,7 +50,7 @@ protected:
 
 TEST(SkillManagerHelperTest, ParseQualifiedName_Full) {
     std::string ns, component, name;
-    EXPECT_TRUE(parseQualifiedName("github_alice:utils:list_files", ns, component, name));
+    EXPECT_TRUE(parseQualifiedName("github_alice-utils-list_files", ns, component, name));
     EXPECT_EQ(ns, "github_alice");
     EXPECT_EQ(component, "utils");
     EXPECT_EQ(name, "list_files");
@@ -58,7 +58,7 @@ TEST(SkillManagerHelperTest, ParseQualifiedName_Full) {
 
 TEST(SkillManagerHelperTest, ParseQualifiedName_NoName) {
     std::string ns, component, name;
-    EXPECT_TRUE(parseQualifiedName("local:my_comp", ns, component, name));
+    EXPECT_TRUE(parseQualifiedName("local-my_comp", ns, component, name));
     EXPECT_EQ(ns, "local");
     EXPECT_EQ(component, "my_comp");
     EXPECT_EQ(name, "my_comp");
@@ -70,11 +70,11 @@ TEST(SkillManagerHelperTest, ParseQualifiedName_Invalid) {
 }
 
 TEST(SkillManagerHelperTest, BuildQualifiedName_NameEqualsComponent) {
-    EXPECT_EQ(buildQualifiedName("local", "my_comp", "my_comp"), "local:my_comp");
+    EXPECT_EQ(buildQualifiedName("local", "my_comp", "my_comp"), "local-my_comp");
 }
 
 TEST(SkillManagerHelperTest, BuildQualifiedName_NameDifferent) {
-    EXPECT_EQ(buildQualifiedName("local", "my_comp", "my_tool"), "local:my_comp:my_tool");
+    EXPECT_EQ(buildQualifiedName("local", "my_comp", "my_tool"), "local-my_comp-my_tool");
 }
 
 // ===========================================================================
@@ -93,7 +93,7 @@ TEST_F(SkillManagerTest, GetPromptResolved_NotFound) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    EXPECT_EQ(m_mgr->getPromptResolved("local:test_comp:nonexistent", out), -2);
+    EXPECT_EQ(m_mgr->getPromptResolved("local-test_comp-nonexistent", out), -2);
 }
 
 TEST_F(SkillManagerTest, GetPromptResolved_SimpleChain) {
@@ -107,7 +107,7 @@ TEST_F(SkillManagerTest, GetPromptResolved_SimpleChain) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local:test_comp:child", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local-test_comp-child", out), 0);
     EXPECT_EQ(out.prompt, "BASE_TEXT\n\nCHILD_TEXT");
 }
 
@@ -123,7 +123,7 @@ TEST_F(SkillManagerTest, GetPromptResolved_DeepChain) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local:test_comp:level3", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local-test_comp-level3", out), 0);
     EXPECT_EQ(out.prompt, "LVL1\n\nLVL2\n\nLVL3");
 }
 
@@ -139,12 +139,12 @@ TEST_F(SkillManagerTest, GetPromptResolved_CrossComponentChain) {
         {"name", "comp_b"},
         {"version", "1.0.0"},
         {"prompts", json::array({
-            json{{"name", "polite"}, {"description", ""}, {"chain", json::array({"local:comp_a:greeting"})}, {"prompt", "World"}}
+            json{{"name", "polite"}, {"description", ""}, {"chain", json::array({"local-comp_a-greeting"})}, {"prompt", "World"}}
         })}
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local:comp_b:polite", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local-comp_b-polite", out), 0);
     EXPECT_EQ(out.prompt, "Hello\n\nWorld");
 }
 
@@ -158,7 +158,7 @@ TEST_F(SkillManagerTest, GetPromptResolved_MissingChainEntry) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local:test_comp:child", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local-test_comp-child", out), 0);
     EXPECT_EQ(out.prompt, "TEXT");
 }
 
@@ -173,7 +173,7 @@ TEST_F(SkillManagerTest, GetPromptResolved_PreservesMetadata) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local:test_comp:child", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local-test_comp-child", out), 0);
     EXPECT_EQ(out.name, "child");
     EXPECT_EQ(out.description, "child desc");
     ASSERT_EQ(out.dependencies.size(), 1);
@@ -188,8 +188,8 @@ TEST_F(SkillManagerTest, GetPromptResolved_PreservesMetadata) {
 
 TEST_F(SkillManagerTest, ResolveName_AlreadyQualified) {
     std::string out;
-    EXPECT_EQ(m_mgr->resolveName("local", "comp", "system:read", out), 0);
-    EXPECT_EQ(out, "system:read");
+    EXPECT_EQ(m_mgr->resolveName("local", "comp", "system-read", out), 0);
+    EXPECT_EQ(out, "system-read");
 }
 
 TEST_F(SkillManagerTest, ResolveName_WithinComponent_Found) {
@@ -203,7 +203,7 @@ TEST_F(SkillManagerTest, ResolveName_WithinComponent_Found) {
     ASSERT_EQ(m_mgr->loadAll(), 0);
     std::string out;
     EXPECT_EQ(m_mgr->resolveName("local", "test_comp", "my_tool", out), 0);
-    EXPECT_EQ(out, "local:test_comp:my_tool");
+    EXPECT_EQ(out, "local-test_comp-my_tool");
 }
 
 TEST_F(SkillManagerTest, ResolveName_WithinComponent_FoundPrompt) {
@@ -217,7 +217,7 @@ TEST_F(SkillManagerTest, ResolveName_WithinComponent_FoundPrompt) {
     ASSERT_EQ(m_mgr->loadAll(), 0);
     std::string out;
     EXPECT_EQ(m_mgr->resolveName("local", "test_comp", "my_prompt", out), 0);
-    EXPECT_EQ(out, "local:test_comp:my_prompt");
+    EXPECT_EQ(out, "local-test_comp-my_prompt");
 }
 
 TEST_F(SkillManagerTest, ResolveName_WithinComponent_NotFound) {
@@ -239,7 +239,7 @@ TEST_F(SkillManagerTest, AddAndGetTool) {
     EXPECT_EQ(m_mgr->addTool("test_comp", t), 0);
 
     SkillTool got;
-    EXPECT_EQ(m_mgr->getTool("local:test_comp:my_tool", got), 0);
+    EXPECT_EQ(m_mgr->getTool("local-test_comp-my_tool", got), 0);
     EXPECT_EQ(got.name, "my_tool");
     EXPECT_EQ(got.command, "echo hello");
 }
@@ -252,7 +252,7 @@ TEST_F(SkillManagerTest, AddAndGetPrompt) {
     EXPECT_EQ(m_mgr->addPrompt("test_comp", p), 0);
 
     Prompt got;
-    EXPECT_EQ(m_mgr->getPrompt("local:test_comp:my_prompt", got), 0);
+    EXPECT_EQ(m_mgr->getPrompt("local-test_comp-my_prompt", got), 0);
     EXPECT_EQ(got.name, "my_prompt");
     EXPECT_EQ(got.prompt, "Hello world");
 }
@@ -268,7 +268,7 @@ TEST_F(SkillManagerTest, AddTool_PersistsThroughLoadAll) {
     ASSERT_EQ(m_mgr->loadAll(), 0);
 
     SkillTool got;
-    EXPECT_EQ(m_mgr->getTool("local:persist_comp:persist_tool", got), 0);
+    EXPECT_EQ(m_mgr->getTool("local-persist_comp-persist_tool", got), 0);
     EXPECT_EQ(got.name, "persist_tool");
 }
 
@@ -286,9 +286,9 @@ TEST_F(SkillManagerTest, AddPrompt_Twice) {
     ASSERT_EQ(m_mgr->addPrompt("multi_comp", p2), 0);
 
     Prompt got;
-    EXPECT_EQ(m_mgr->getPrompt("local:multi_comp:p1", got), 0);
+    EXPECT_EQ(m_mgr->getPrompt("local-multi_comp-p1", got), 0);
     EXPECT_EQ(got.prompt, "first");
-    EXPECT_EQ(m_mgr->getPrompt("local:multi_comp:p2", got), 0);
+    EXPECT_EQ(m_mgr->getPrompt("local-multi_comp-p2", got), 0);
     EXPECT_EQ(got.prompt, "second");
 }
 
@@ -303,7 +303,7 @@ TEST_F(SkillManagerTest, GetTool_InvalidName) {
 
 TEST_F(SkillManagerTest, GetTool_NonexistentComponent) {
     SkillTool t;
-    EXPECT_EQ(m_mgr->getTool("local:nope:tool", t), -1);
+    EXPECT_EQ(m_mgr->getTool("local-nope-tool", t), -1);
 }
 
 TEST_F(SkillManagerTest, GetTool_NonexistentToolName) {
@@ -316,7 +316,7 @@ TEST_F(SkillManagerTest, GetTool_NonexistentToolName) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     SkillTool t;
-    EXPECT_EQ(m_mgr->getTool("local:test_comp:missing", t), -2);
+    EXPECT_EQ(m_mgr->getTool("local-test_comp-missing", t), -2);
 }
 
 // ===========================================================================
@@ -339,7 +339,7 @@ TEST_F(SkillManagerTest, UpdateTool) {
     EXPECT_EQ(m_mgr->updateTool("test_comp", "my_tool", upd), 0);
 
     SkillTool got;
-    ASSERT_EQ(m_mgr->getTool("local:test_comp:my_tool", got), 0);
+    ASSERT_EQ(m_mgr->getTool("local-test_comp-my_tool", got), 0);
     EXPECT_EQ(got.description, "updated");
     EXPECT_EQ(got.command, "echo updated");
 }
@@ -384,10 +384,10 @@ TEST_F(SkillManagerTest, Remove_LocalComponent) {
     ASSERT_EQ(m_mgr->loadAll(), 0);
     EXPECT_TRUE(fs::exists(m_skillsRoot + "/local/test_comp"));
 
-    EXPECT_EQ(m_mgr->remove("local:test_comp"), 0);
+    EXPECT_EQ(m_mgr->remove("local-test_comp"), 0);
 
     SkillTool t;
-    EXPECT_EQ(m_mgr->getTool("local:test_comp:my_tool", t), -1);
+    EXPECT_EQ(m_mgr->getTool("local-test_comp-my_tool", t), -1);
 }
 
 TEST_F(SkillManagerTest, Remove_SystemComponent_Error) {
@@ -396,7 +396,7 @@ TEST_F(SkillManagerTest, Remove_SystemComponent_Error) {
         {"version", "1.0.0"}
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
-    EXPECT_EQ(m_mgr->remove("system:bash"), -1);
+    EXPECT_EQ(m_mgr->remove("system-bash"), -1);
 }
 
 TEST_F(SkillManagerTest, Remove_InvalidName) {
@@ -431,7 +431,7 @@ TEST_F(SkillManagerTest, Validate_InvalidName) {
 
 TEST_F(SkillManagerTest, Validate_UnknownNamespace) {
     std::string report;
-    EXPECT_EQ(m_mgr->validate("unknown:comp", "", report), -1);
+    EXPECT_EQ(m_mgr->validate("unknown-comp", "", report), -1);
     EXPECT_EQ(report, "unknown namespace: unknown");
 }
 
@@ -445,7 +445,7 @@ TEST_F(SkillManagerTest, Validate_ValidComponent_NoLogs) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     std::string report;
-    int rc = m_mgr->validate("local:test_comp:my_tool", "abc123", report);
+    int rc = m_mgr->validate("local-test_comp-my_tool", "abc123", report);
     EXPECT_EQ(rc, 0);
     EXPECT_EQ(report, "no historical logs — validation skipped");
 }
@@ -473,8 +473,8 @@ TEST_F(SkillManagerTest, BuildDispatchTable_NoCollisions) {
     ASSERT_EQ(m_mgr->loadAll(), 0);
     auto table = m_mgr->buildDispatchTable();
     EXPECT_EQ(table.size(), 2);
-    EXPECT_EQ(table["parser"], "local:test_comp:parser");
-    EXPECT_EQ(table["greet"], "local:test_comp:greet");
+    EXPECT_EQ(table["parser"], "local-test_comp-parser");
+    EXPECT_EQ(table["greet"], "local-test_comp-greet");
 }
 
 TEST_F(SkillManagerTest, BuildDispatchTable_WithCollisions) {
@@ -497,17 +497,17 @@ TEST_F(SkillManagerTest, BuildDispatchTable_WithCollisions) {
     EXPECT_EQ(table.size(), 2);
     // Both qualified names must be present; iteration order of the loader's
     // internal unordered_map determines which component gets the bare short name.
-    bool aOk = (table["parser"] == "local:comp_a:parser" || table["comp_a_parser"] == "local:comp_a:parser");
-    bool bOk = (table["parser"] == "local:comp_b:parser" || table["comp_b_parser"] == "local:comp_b:parser");
+    bool aOk = (table["parser"] == "local-comp_a-parser" || table["comp_a_parser"] == "local-comp_a-parser");
+    bool bOk = (table["parser"] == "local-comp_b-parser" || table["comp_b_parser"] == "local-comp_b-parser");
     EXPECT_TRUE(aOk) << "comp_a:parser not found in dispatch table";
     EXPECT_TRUE(bOk) << "comp_b:parser not found in dispatch table";
     // The bare short name must map to exactly one of them
     EXPECT_TRUE(table.find("parser") != table.end());
     auto val = table["parser"];
-    EXPECT_TRUE(val == "local:comp_a:parser" || val == "local:comp_b:parser");
+    EXPECT_TRUE(val == "local-comp_a-parser" || val == "local-comp_b-parser");
     // The disambiguated name must map to the other one
-    std::string other = (val == "local:comp_a:parser") ? "local:comp_b:parser" : "local:comp_a:parser";
-    std::string disambiguated = (other == "local:comp_a:parser") ? "comp_a_parser" : "comp_b_parser";
+    std::string other = (val == "local-comp_a-parser") ? "local-comp_b-parser" : "local-comp_a-parser";
+    std::string disambiguated = (other == "local-comp_a-parser") ? "comp_a_parser" : "comp_b_parser";
     EXPECT_EQ(table[disambiguated], other);
 }
 
@@ -530,8 +530,8 @@ TEST_F(SkillManagerTest, BuildDispatchTable_NamespaceCollision) {
     auto table = m_mgr->buildDispatchTable();
     EXPECT_EQ(table.size(), 2);
     // SYSTEM is iterated first, so "util" maps to the system one
-    EXPECT_EQ(table["util"], "system:shared:util");
-    EXPECT_EQ(table["shared_util"], "local:shared:util");
+    EXPECT_EQ(table["util"], "system-shared-util");
+    EXPECT_EQ(table["shared_util"], "local-shared-util");
 }
 
 // ===========================================================================

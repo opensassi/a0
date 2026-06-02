@@ -30,6 +30,10 @@ public:
     void pruneIdleContainers() override;
 
 private:
+public:
+    void setSessionPrefix(const std::string& prefix) { m_sessionPrefix = prefix; }
+
+private:
     std::string poolKeyForTool(const Tool& tool) const;
     std::string createContainer(const std::string& poolKey,
                                  const Tool& tool);
@@ -40,6 +44,7 @@ private:
     int m_idleTimeout;
     int m_maxIdle;
     std::string m_defaultImage;
+    std::string m_sessionPrefix;
     std::unordered_map<std::string, ContainerPoolEntry> m_pool;
 };
 

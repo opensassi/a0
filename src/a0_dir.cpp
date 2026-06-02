@@ -66,7 +66,7 @@ static int appendGitignoreEntry(const std::string& gitignorePath) {
     return 0;
 }
 
-int ensureA0Dir(const std::string& a0Path) {
+int ensureA0Dir(const std::string& a0Path, bool requireWorktree) {
     if (a0Path.empty()) return -1;
 
     bool existed = dirExists(a0Path);
@@ -75,6 +75,19 @@ int ensureA0Dir(const std::string& a0Path) {
         std::cerr << "a0: failed to create directory " << a0Path
                   << ": " << std::strerror(errno) << std::endl;
         return -1;
+    }
+
+    std::string worktreesPath = a0Path + "/worktrees";
+    if (requireWorktree) {
+        // Resume session — worktrees/ must already exist
+        if (!dirExists(worktreesPath)) {
+            std::cerr << "a0: fatal: " << worktreesPath
+                      << " does not exist. Cannot resume session." << std::endl;
+            return -1;
+        }
+    } else {
+        // New session — ensure worktrees/ exists
+        mkdirParents(worktreesPath);
     }
 
     if (existed) return 1;

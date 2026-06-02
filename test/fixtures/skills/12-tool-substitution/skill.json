@@ -15,13 +15,13 @@
       "name": "uses_tool_template",
       "description": "Prompt containing {{tool:...}} template with qualified name",
       "dependencies": ["my_tool"],
-      "prompt": "Before {{tool:local:12-tool-substitution:my_tool arg=\"x\"}} After"
+      "prompt": "Before {{tool:local-12-tool-substitution-my_tool arg=\"x\"}} After"
     },
     {
       "name": "uses_tool_qualified",
-      "description": "Prompt with qualified tool reference to system:bash",
-      "dependencies": ["system:bash"],
-      "prompt": "Run {{tool:system:bash command=\"echo hi\"}} done"
+      "description": "Prompt with qualified tool reference to system-bash",
+      "dependencies": ["system-bash"],
+      "prompt": "Run {{tool:system-bash command=\"echo hi\"}} done"
     }
   ]
 }

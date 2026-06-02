@@ -50,7 +50,10 @@ public:
                               const std::string& paramsJson,
                               const std::string& outputJson) override;
     std::vector<InvocationRow> loadInvocations(int type,
-                                                const std::string& name) const override;
+                                                 const std::string& name) const override;
+
+    int saveSessionContext(const SessionContextRow& row) override;
+    SessionContextRow loadSessionContext(int64_t sessionId) const override;
 
     /// Expose the raw sqlite3 handle for ad-hoc queries.
     void* handle() const;

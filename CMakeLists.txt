@@ -11,6 +11,7 @@ find_package(SQLite3 REQUIRED)
 
 set(LIB_SOURCES
     src/a0_dir.cpp
+    src/session_context.cpp
     src/agent_core.cpp
     src/base_prompt.cpp
     src/tool_runner.cpp
@@ -87,6 +88,7 @@ add_agent_test(test_skill_resolver test/unit/test_skill_resolver.cpp)
 # Disabled: replaced by synthetic test framework
 # add_agent_test(test_skill_runner test/unit/test_skill_runner.cpp)
 add_agent_test(test_dependency_resolver test/unit/test_dependency_resolver.cpp)
+add_agent_test(test_session_context test/unit/test_session_context.cpp)
 # Disabled: replaced by synthetic test framework
 # add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
 # add_agent_test(test_interfaces test/unit/test_interfaces.cpp)

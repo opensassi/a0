@@ -61,12 +61,12 @@ protected:
         m_toolRunner = new SubprocessToolRunner();
         m_mgr->setToolRunner(m_toolRunner);
         // Register core system tool handlers for prompt expansion tests
-        m_mgr->registerHandler("system:fs:read", [](const json& p) { return a0::xRead(p); });
-        m_mgr->registerHandler("system:fs:glob", [](const json& p) { return a0::xGlob(p); });
-        m_mgr->registerHandler("system:fs:grep", [](const json& p) { return a0::xGrep(p); });
-        m_mgr->registerHandler("system:fs:edit", [](const json& p) { return a0::xEdit(p); });
-        m_mgr->registerHandler("system:fs:write", [](const json& p) { return a0::xWrite(p); });
-        m_mgr->registerHandler("system:bash:bash", [](const json& p) { return a0::xBash(p); });
+        m_mgr->registerHandler("system-fs-read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
+        m_mgr->registerHandler("system-fs-glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
+        m_mgr->registerHandler("system-fs-grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
+        m_mgr->registerHandler("system-fs-edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
+        m_mgr->registerHandler("system-fs-write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
+        m_mgr->registerHandler("system-bash-bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
         m_depResolver = new DefaultDependencyResolver(m_mgr);
         m_skillRunner = new DefaultSkillRunner(m_toolRunner, nullptr, m_mgr,
                                                 m_depResolver,
@@ -380,7 +380,7 @@ TEST_P(SkillResolverTest, RunTestCase) {
             for (const auto& [shortName, qn] : m_lastDispatch) {
                 EXPECT_TRUE(seenQualified.insert(qn).second)
                     << "duplicate qualified name in dispatch: " << qn;
-                std::string base = qn.substr(qn.rfind(':') + 1);
+                std::string base = qn.substr(qn.rfind('-') + 1);
                 // If there's only one entry for this base name, the short name should equal the base
                 // (no unnecessary prefixing)
             }

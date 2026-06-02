@@ -15,7 +15,7 @@
       "name": "uses_tool_expand",
       "description": "Prompt with command-tool {{tool:...}}",
       "dependencies": ["sub_tool"],
-      "prompt": "Before {{tool:local:06-command-tool:sub_tool arg=\"x\"}} After"
+      "prompt": "Before {{tool:local-06-command-tool-sub_tool arg=\"x\"}} After"
     },
     {
       "name": "uses_toolcall",

@@ -181,11 +181,11 @@ TEST_F(AgentToolCallTest, RunToolThroughExecutor) {
     p.name = "run_greet";
     p.description = "Runs greeter";
     p.prompt = "{{tool:greeter input=\"world\"}}";
-    p.dependencies = {"local:exe_comp:greeter"};
+    p.dependencies = {"local-exe_comp-greeter"};
     m.prompts.push_back(p);
     addComponent("exe_comp", m);
     loadSkills();
 
-    json result = m_core->runSkill("local:exe_comp:run_greet", json::object());
+    json result = m_core->runSkill("local-exe_comp-run_greet", json::object());
     EXPECT_FALSE(result.is_null());
 }

@@ -1,0 +1,6 @@
+{
+  "name": "opensassi",
+  "version": "1.0.0",
+  "description": "OpenSASSI skill bundle",
+  "subModules": ["session_evaluation", "system_design"]
+}

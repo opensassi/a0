@@ -17,14 +17,15 @@ DockerContainerManager::DockerContainerManager(int idleTimeout,
     , m_defaultImage(defaultImage) {}
 
 std::string DockerContainerManager::poolKeyForTool(const Tool& tool) const {
+    std::string pfx = m_sessionPrefix.empty() ? "" : ("a0-" + m_sessionPrefix + "-");
     switch (tool.trustLevel) {
         case TrustLevel::HIGH:
-            return "high_pool";
+            return pfx + "high_pool";
         case TrustLevel::MEDIUM:
-            return "medium_pool";
+            return pfx + "medium_pool";
         case TrustLevel::LOW:
         default:
-            return "low_" + tool.name + "_" +
+            return pfx + "low_" + tool.name + "_" +
                    (tool.dockerImage.empty() ? m_defaultImage : tool.dockerImage);
     }
 }

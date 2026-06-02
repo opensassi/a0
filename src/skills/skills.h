@@ -20,10 +20,20 @@ class DockerToolRunner;
 namespace a0::skills {
 
 // ---------------------------------------------------------------------------
+// HandlerContext — contextual info passed to every system tool handler
+// ---------------------------------------------------------------------------
+
+struct HandlerContext {
+    std::string subcommand;   // wildcard suffix or tool name
+};
+
+// ---------------------------------------------------------------------------
 // Tool handler — C++ function that implements a system tool
 // ---------------------------------------------------------------------------
 
-using ToolHandler = std::function<::a0::HandlerResult(const nlohmann::json& params)>;
+using ToolHandler = std::function<::a0::HandlerResult(
+    const nlohmann::json& params,
+    const HandlerContext& ctx)>;
 
 // ---------------------------------------------------------------------------
 
@@ -56,6 +66,7 @@ struct SkillTool {
     bool default_ = false;
     int timeoutSecs = 30;
     nlohmann::json parameters;   // JSON Schema for LLM function calling
+    std::string subCommand;      // override CLI subcommand (e.g. "rev-parse" for tool "rev_parse")
 };
 
 struct CompatBridge {
@@ -76,6 +87,7 @@ struct SkillManifest {
     std::vector<Prompt> prompts;
     std::vector<CompatBridge> compat;
     std::unordered_map<std::string, std::string> dependencies;
+    std::vector<std::string> subModules;   // sub-component directories to auto-load
 };
 
 struct StoredVersion {
@@ -96,15 +108,16 @@ struct InvocationRecord {
 // Qualified name helpers
 // ---------------------------------------------------------------------------
 
-/// Parse "github_alice:utils:list_files" → ns="github_alice", component="utils", tool="list_files"
-/// Parse "system:bash" → ns="system", component="bash", tool="bash"
-/// Parse "local:my_comp" → ns="local", component="my_comp", tool=""
+/// Parse "github_alice-utils-list_files" → ns="github_alice", component="utils", name="list_files"
+/// Parse "system-bash" → ns="system", component="bash", name="bash"
+/// First segment is ns, last segment is name, everything between is component.
+/// For 2 segments (ns-name), component = name.
 bool parseQualifiedName(const std::string& qualified,
                         std::string& ns,
                         std::string& component,
                         std::string& name);
 
-/// Build "local:file_utils:list_files" from parts.
+/// Build "local-file_utils-list_files" from parts.
 std::string buildQualifiedName(const std::string& ns,
                                 const std::string& component,
                                 const std::string& name);
@@ -140,8 +153,8 @@ public:
     int getPromptResolved(const std::string& qualifiedName, Prompt& out) const;
 
     // Resolve a short name within a component:
-    //   If shortName contains ':', do qualified lookup directly
-    //   Otherwise, try <componentNs:componentName:shortName>, then qualified lookup
+    //   If shortName contains '-', do qualified lookup directly
+    //   Otherwise, try <componentNs-componentName-shortName>
     int resolveName(const std::string& componentNs,
                     const std::string& componentName,
                     const std::string& shortName,
@@ -169,19 +182,28 @@ public:
     // --- Handler registry (C++ system tool dispatch) ---
 
     /// Register a C++ handler function for a system tool.
-    /// For wildcard handlers (e.g. "system:git:*"), the function receives
-    /// params["_subcommand"] set to the tool name after the last colon.
+    /// For wildcard handlers (e.g. "system-git-*"), the function receives
+    /// ctx.subcommand set to the tool name after the last dash.
     void registerHandler(const std::string& qualifiedName, ToolHandler handler);
 
     /// Execute a tool by qualified name. Resolution order:
     ///   1. Exact match in registered C++ handlers
-    ///   2. Wildcard match (ns:component:*) with _subcommand param
+    ///   2. Wildcard match (ns-component-*) with ctx.subcommand set
     ///   3. If tool has command field, run via SubprocessToolRunner/DockerToolRunner
     ///   4. Error if tool not found or unhandled
     json executeTool(const std::string& qualifiedName, const json& params);
 
+    /// Enable auto-recording of tool execution results to persistence.
+    /// When active, every executeToolWithMeta call records appendMessage + appendInvocation.
+    void setRecordingSession(int64_t sessionDbId);
+
     /// Full result with recommendedTools (for tools_for_prompt).
-    ::a0::HandlerResult executeToolWithMeta(const std::string& qualifiedName, const json& params);
+    /// When recording is active and seq is non-null, auto-records tool result to persistence.
+    /// \param seq         Sequence counter (incremented on record). Pass nullptr to skip recording.
+    /// \param toolCallId  LLM tool call id (empty for non-LLM calls).
+    /// \param subSessionId Fork sub-session id (0 for main session).
+    ::a0::HandlerResult executeToolWithMeta(const std::string& qualifiedName, const json& params,
+        int* seq = nullptr, const std::string& toolCallId = "", int64_t subSessionId = 0);
 
     /// Build LLM tool schemas from loaded manifests.
     /// When defaultOnly = true, only includes tools with default_ = true.
@@ -206,6 +228,8 @@ private:
     ::ToolRunner* m_toolRunner = nullptr;
     ::DockerToolRunner* m_dockerRunner = nullptr;
     ::a0::DockerSecurityFilter* m_dockerSecurityFilter = nullptr;
+    ::a0::persistence::PersistenceStore* m_persistence = nullptr;
+    int64_t m_sessionDbId = 0;
 
     SkillManager(const SkillManager&) = delete;
     SkillManager& operator=(const SkillManager&) = delete;

@@ -10,7 +10,7 @@ VersionManager::VersionManager(const std::string& storeRoot,
                                const std::string& skillsRoot)
     : m_storeRoot(storeRoot)
     , m_skillsRoot(skillsRoot)
-    , m_lockPath(storeRoot + "/../lock.json")
+    , m_lockPath(storeRoot + "/lock.json")
 {
     xLoadLock();
 }
@@ -29,7 +29,8 @@ int VersionManager::archive(SkillNamespace ns,
 
     std::string dst = xStorePath(ns, commit, component);
     std::string src = xActivePath(ns, component);
-    mkdir(dst.c_str(), 0755);
+    std::string mkdirCmd = "mkdir -p " + dst;
+    system(mkdirCmd.c_str());
     if (xCopyDir(src, dst) != 0) {
         return -1;
     }
@@ -56,7 +57,8 @@ int VersionManager::restore(SkillNamespace ns,
     std::string dst = xActivePath(ns, component);
     std::string rmCmd = "rm -rf " + dst;
     system(rmCmd.c_str());
-    mkdir(dst.c_str(), 0755);
+    std::string mkdirCmd = "mkdir -p " + dst;
+    system(mkdirCmd.c_str());
     return xCopyDir(src, dst);
 }
 

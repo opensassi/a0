@@ -3,6 +3,7 @@
 #include "version_manager.h"
 #include "validation_engine.h"
 #include "tool_runner.h"
+#include "persistence/persistence_store.h"
 #include <algorithm>
 #include <sstream>
 #include <cassert>
@@ -32,18 +33,22 @@ bool parseQualifiedName(const std::string& qualified,
                         std::string& component,
                         std::string& name)
 {
-    auto first = qualified.find(':');
+    auto first = qualified.find('-');
     if (first == std::string::npos) {
         return false;
     }
     ns = qualified.substr(0, first);
-    auto second = qualified.find(':', first + 1);
-    if (second == std::string::npos) {
-        component = qualified.substr(first + 1);
-        name = component;
+    // Everything after the first segment
+    auto rest = qualified.substr(first + 1);
+    auto last = rest.rfind('-');
+    if (last == std::string::npos) {
+        // 2 segments: ns-name → component = name
+        component = rest;
+        name = rest;
     } else {
-        component = qualified.substr(first + 1, second - first - 1);
-        name = qualified.substr(second + 1);
+        // 3+ segments: ns-middle-name
+        component = rest.substr(0, last);
+        name = rest.substr(last + 1);
     }
     return true;
 }
@@ -53,9 +58,9 @@ std::string buildQualifiedName(const std::string& ns,
                                 const std::string& name)
 {
     if (name.empty() || name == component) {
-        return ns + ":" + component;
+        return ns + "-" + component;
     }
-    return ns + ":" + component + ":" + name;
+    return ns + "-" + component + "-" + name;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +75,7 @@ SkillManager::SkillManager(const std::string& skillsRoot,
     , m_loader(new SkillLoader(skillsRoot))
     , m_versionMgr(new VersionManager(storeRoot, skillsRoot))
     , m_validator(new ValidationEngine(persistence))
+    , m_persistence(persistence)
 {
 }
 
@@ -104,8 +110,8 @@ int SkillManager::getPrompt(const std::string& qualifiedName, Prompt& prompt) co
 }
 
 /// Recursively collect prompts from a chain list and append their resolved texts to `parts`.
-/// chain entries are within the same component by default; qualified names (containing ':')
-/// are resolved cross-component.
+/// chain entries are within the same component by default; qualified names containing '-'
+/// are resolved cross-component (tool names never contain '-').
 static void xCollectChain(const SkillLoader* loader,
                            const std::string& ns,
                            const std::string& component,
@@ -114,7 +120,7 @@ static void xCollectChain(const SkillLoader* loader,
     for (const auto& chainName : chain) {
         Prompt cp;
         bool found = false;
-        if (chainName.find(':') == std::string::npos) {
+        if (chainName.find('-') == std::string::npos) {
             // Short name: resolve within the same component
             if (loader->getPrompt(ns, component, chainName, cp) == 0) {
                 found = true;
@@ -179,8 +185,8 @@ int SkillManager::resolveName(const std::string& componentNs,
                                const std::string& shortName,
                                std::string& qualifiedOut) const
 {
-    // If already qualified (contains ':'), use directly
-    if (shortName.find(':') != std::string::npos) {
+    // If already qualified (contains '-'), use directly
+    if (shortName.find('-') != std::string::npos) {
         qualifiedOut = shortName;
         return 0;
     }
@@ -342,12 +348,12 @@ std::unordered_map<std::string, std::string> SkillManager::buildDispatchTable() 
 
     // Assign short names with collision resolution
     for (const auto& entry : entries) {
-        std::string shortName = entry.qn.substr(entry.qn.rfind(':') + 1);
+        std::string shortName = entry.qn.substr(entry.qn.rfind('-') + 1);
         std::string candidate = shortName;
         int attempt = 0;
 
         while (table.find(candidate) != table.end()) {
-            auto parts = xSplit(entry.qn, ':');
+            auto parts = xSplit(entry.qn, '-');
             int n = (int)parts.size();
             // Build from rightmost segments: +2 because attempt 0 already tried the last segment
             int segments = std::min(attempt + 2, n);
@@ -393,6 +399,18 @@ int SkillManager::xInstallFromGit(const std::string& url,
     return 0;
 }
 
+void SkillManager::setRecordingSession(int64_t sessionDbId)
+{
+    m_sessionDbId = sessionDbId;
+}
+
+/// Convert namespace string to type int for ensureSkill.
+static int xNsToType(const std::string& ns) {
+    if (ns == "system") return 0;
+    if (ns == "local") return 1;
+    return 2;
+}
+
 // ---------------------------------------------------------------------------
 // Handler registry
 // ---------------------------------------------------------------------------
@@ -419,69 +437,108 @@ void SkillManager::setDockerSecurityFilter(::a0::DockerSecurityFilter* filter)
 
 json SkillManager::executeTool(const std::string& qualifiedName, const json& params)
 {
-    return executeToolWithMeta(qualifiedName, params).output;
+    return executeToolWithMeta(qualifiedName, params, nullptr, "", 0).output;
 }
 
-::a0::HandlerResult SkillManager::executeToolWithMeta(const std::string& qualifiedName, const json& params)
+::a0::HandlerResult SkillManager::executeToolWithMeta(
+    const std::string& qualifiedName, const json& params,
+    int* seq, const std::string& toolCallId, int64_t subSessionId)
 {
+    std::string output;
+    std::vector<std::string> recommendedTools;
+
     // 1. Exact match in registered C++ handlers
     {
         auto it = m_handlers.find(qualifiedName);
         if (it != m_handlers.end()) {
-            return it->second(params);
+            auto hr = it->second(params, HandlerContext{});
+            output = hr.output;
+            recommendedTools = hr.recommendedTools;
+            goto record;
         }
     }
 
-    // 1b. 2-part name alias: "system:bash" → try "system:bash:bash"
+    // 1b. 2-part name alias: "system-bash" → try "system-bash-bash"
     {
         std::string ns, comp, name;
         if (parseQualifiedName(qualifiedName, ns, comp, name) && !name.empty()) {
-            // Always build 3-part form for handler lookup
-            std::string qn3 = ns + ":" + comp + ":" + name;
+            std::string qn3 = ns + "-" + comp + "-" + name;
             if (qn3 != qualifiedName) {
                 auto it = m_handlers.find(qn3);
-                if (it != m_handlers.end()) return it->second(params);
+                if (it != m_handlers.end()) {
+                    auto hr = it->second(params, HandlerContext{});
+                    output = hr.output;
+                    recommendedTools = hr.recommendedTools;
+                    goto record;
+                }
             }
         }
     }
 
-    // 2. Wildcard match (ns:component:*)
+    // 2. Wildcard match (ns-component-*)
     {
-        auto lastColon = qualifiedName.rfind(':');
-        if (lastColon != std::string::npos) {
-            std::string wildcard = qualifiedName.substr(0, lastColon) + ":*";
+        auto lastDash = qualifiedName.rfind('-');
+        if (lastDash != std::string::npos) {
+            std::string wildcard = qualifiedName.substr(0, lastDash) + "-*";
             auto wit = m_handlers.find(wildcard);
             if (wit != m_handlers.end()) {
-                json p = params;
-                p["_subcommand"] = qualifiedName.substr(lastColon + 1);
-                return wit->second(p);
+                std::string sub = qualifiedName.substr(lastDash + 1);
+                // Check for subCommand override in tool definition
+                SkillTool tool;
+                if (getTool(qualifiedName, tool) == 0 && !tool.subCommand.empty()) {
+                    sub = tool.subCommand;
+                }
+                auto hr = wit->second(params, HandlerContext{sub});
+                output = hr.output;
+                recommendedTools = hr.recommendedTools;
+                goto record;
             }
         }
     }
 
     // 3. Look up the tool definition
-    SkillTool tool;
-    if (getTool(qualifiedName, tool) != 0) {
-        return {"ERROR: tool not found: " + qualifiedName};
+    {
+        SkillTool tool;
+        if (getTool(qualifiedName, tool) != 0) {
+            output = "ERROR: tool not found: " + qualifiedName;
+            goto record;
+        }
+
+        // 4. System tool with no handler registered
+        if (tool.systemTool) {
+            output = "ERROR: no C++ handler registered for system tool: " + qualifiedName;
+            goto record;
+        }
+
+        // 5. Non-system tool: run via ToolRunner
+        if (m_toolRunner) {
+            ::ToolRunner* runner = (!tool.dockerImage.empty() && m_dockerRunner)
+                ? m_dockerRunner : m_toolRunner;
+            auto r = runner->run(skillToolToTool(tool), params);
+            if (r.is_string()) output = r;
+            else output = r.dump();
+            goto record;
+        }
+
+        output = "ERROR: no ToolRunner available for command tool: " + qualifiedName;
     }
 
-    // 4. System tool with no handler registered
-    if (tool.systemTool) {
-        return {"ERROR: no C++ handler registered for system tool: " + qualifiedName};
+record:
+    if (m_sessionDbId > 0 && m_persistence && seq) {
+        int currentSeq = (*seq)++;
+        int64_t msgId = m_persistence->appendMessage(m_sessionDbId,
+            subSessionId > 0 ? std::optional<int64_t>(subSessionId) : std::nullopt,
+            currentSeq, "tool", output, "", toolCallId, qualifiedName, "");
+
+        std::string ns, comp, tName;
+        if (parseQualifiedName(qualifiedName, ns, comp, tName)) {
+            int sType = xNsToType(ns);
+            int skillId = m_persistence->ensureSkill(sType, comp);
+            m_persistence->appendInvocation(msgId, skillId, tName, params.dump(), output);
+        }
     }
 
-    // 5. Non-system tool: run via ToolRunner
-    if (m_toolRunner) {
-        ::ToolRunner* runner = (!tool.dockerImage.empty() && m_dockerRunner)
-            ? m_dockerRunner : m_toolRunner;
-        auto r = runner->run(skillToolToTool(tool), params);
-        std::string result;
-        if (r.is_string()) result = r;
-        else result = r.dump();
-        return {result};
-    }
-
-    return {"ERROR: no ToolRunner available for command tool: " + qualifiedName};
+    return {output, recommendedTools};
 }
 
 std::vector<std::string> SkillManager::missingHandlers() const
@@ -496,11 +553,10 @@ std::vector<std::string> SkillManager::missingHandlers() const
                               : (ns == SkillNamespace::LOCAL) ? "local" : "github";
             for (const auto& tool : manifest.tools) {
                 if (!tool.systemTool) continue;
-                std::string qn3 = nsStr + ":" + comp + ":" + tool.name;
-                // Check exact, wildcard (ns:comp:*), and 2-part (ns:name if name==comp)
+                std::string qn3 = nsStr + "-" + comp + "-" + tool.name;
                 if (m_handlers.find(qn3) != m_handlers.end()) continue;
-                if (m_handlers.find(nsStr + ":" + comp + ":*") != m_handlers.end()) continue;
-                if (tool.name == comp && m_handlers.find(nsStr + ":" + comp) != m_handlers.end()) continue;
+                if (m_handlers.find(nsStr + "-" + comp + "-*") != m_handlers.end()) continue;
+                if (tool.name == comp && m_handlers.find(nsStr + "-" + comp) != m_handlers.end()) continue;
                 missing.push_back(qn3);
             }
         }

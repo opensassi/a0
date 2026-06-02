@@ -125,6 +125,7 @@ int SkillLoader::writeManifest(const std::string& component, const SkillManifest
         if (!t.aptDependencies.empty()) jt["aptDependencies"] = t.aptDependencies;
         if (!t.parameters.is_null() && !t.parameters.empty())
             jt["parameters"] = t.parameters;
+        if (!t.subCommand.empty()) jt["subCommand"] = t.subCommand;
         j["tools"].push_back(jt);
     }
     for (const auto& p : manifest.prompts) {
@@ -143,6 +144,8 @@ int SkillLoader::writeManifest(const std::string& component, const SkillManifest
         }
         j["prompts"].push_back(jp);
     }
+
+    if (!manifest.subModules.empty()) j["subModules"] = manifest.subModules;
 
     mkdir(dir.c_str(), 0755);
     std::ofstream ofs(path);
@@ -190,6 +193,7 @@ int SkillLoader::readManifest(const std::string& path, SkillManifest& manifest) 
             }
             if (jt.contains("aptDependencies"))
                 tool.aptDependencies = jt["aptDependencies"].get<std::vector<std::string>>();
+            tool.subCommand = jt.value("subCommand", "");
             manifest.tools.push_back(tool);
         }
     }
@@ -233,6 +237,9 @@ int SkillLoader::readManifest(const std::string& path, SkillManifest& manifest) 
             }
             manifest.prompts.push_back(prompt);
         }
+    }
+    if (j.contains("subModules")) {
+        manifest.subModules = j["subModules"].get<std::vector<std::string>>();
     }
     return 0;
 }
@@ -352,6 +359,21 @@ int SkillLoader::xLoadNamespace(const std::string& dirPath, SkillNamespace ns)
         std::string key = xIndexKey(ns, name);
         m_components[key] = manifest;
         m_nsMap[compDir] = ns;
+
+        // Load sub-modules declared in manifest.subModules
+        for (const auto& sub : manifest.subModules) {
+            std::string subDir = compDir + "/" + sub;
+            std::string subManifestPath = subDir + "/skill.json";
+            SkillManifest subManifest;
+            if (xParseManifestFile(subManifestPath, subManifest) != 0) {
+                continue;
+            }
+            subManifest.ns = ns;
+            subManifest.name = sub;
+            std::string subKey = key + "-" + sub;   // "local-opensassi-session_evaluation"
+            m_components[subKey] = subManifest;
+            m_nsMap[subDir] = ns;
+        }
     }
     closedir(dir);
     return 0;
@@ -387,9 +409,9 @@ std::string SkillLoader::xIndexKey(SkillNamespace ns, const std::string& compone
 {
     std::string prefix;
     switch (ns) {
-        case SkillNamespace::SYSTEM: prefix = "system:"; break;
-        case SkillNamespace::LOCAL:  prefix = "local:"; break;
-        case SkillNamespace::GITHUB: prefix = "github:"; break;
+        case SkillNamespace::SYSTEM: prefix = "system-"; break;
+        case SkillNamespace::LOCAL:  prefix = "local-"; break;
+        case SkillNamespace::GITHUB: prefix = "github-"; break;
     }
     return prefix + component;
 }

@@ -111,7 +111,7 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
     }
 
     // Pass 2: replace {{tool:qualified_name key="value" ...}} eager tool calls
-    std::regex toolRe(R"(\{\{tool:([\w:-]+)\s+([^}]+)\}\})");
+    std::regex toolRe(R"(\{\{tool:([\w_-]+)\s+([^}]+)\}\})");
     std::smatch match;
     while (std::regex_search(result, match, toolRe)) {
         std::string toolName = match[1];
@@ -143,7 +143,7 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
             found = true;
         }
 
-        if (!found && toolName.find(':') == std::string::npos &&
+        if (!found && toolName.find('-') == std::string::npos &&
             !prompt.ns.empty() && !prompt.component.empty()) {
             resolveName = a0::skills::buildQualifiedName(prompt.ns, prompt.component, toolName);
             if (m_skillMgr && m_skillMgr->getTool(resolveName, skillTool) == 0) {

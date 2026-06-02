@@ -18,6 +18,7 @@
 #include "ipc_protocol.h"
 #include "stream_registry.h"
 #include "hex_session_id.h"
+#include "session_context.h"
 #include <cstdlib>
 #include <cstdio>
 #include <fstream>
@@ -326,36 +327,36 @@ static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
                                      a0::DockerSecurityFilter* dockerFilter,
                                      InferenceProvider* provider) {
     // Core handlers
-    mgr.registerHandler("system:bash:bash", [](const json& p) { return a0::xBash(p); });
-    mgr.registerHandler("system:fs:read", [](const json& p) { return a0::xRead(p); });
-    mgr.registerHandler("system:fs:glob", [](const json& p) { return a0::xGlob(p); });
-    mgr.registerHandler("system:fs:grep", [](const json& p) { return a0::xGrep(p); });
-    mgr.registerHandler("system:fs:edit", [](const json& p) { return a0::xEdit(p); });
-    mgr.registerHandler("system:fs:write", [](const json& p) { return a0::xWrite(p); });
+    mgr.registerHandler("system-bash-bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
+    mgr.registerHandler("system-fs-read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
+    mgr.registerHandler("system-fs-glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
+    mgr.registerHandler("system-fs-grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
+    mgr.registerHandler("system-fs-edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
+    mgr.registerHandler("system-fs-write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
 
-    // Git wildcard: any "system:git:<subcmd>" routes through xGitCommand
-    mgr.registerHandler("system:git:*", [](const json& p) {
-        return a0::xGitCommand(p.value("_subcommand", ""), p);
+    // Git wildcard: ctx.subcommand provides the resolved CLI subcommand
+    mgr.registerHandler("system-git-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
+        return a0::xGitCommand(ctx.subcommand, p);
     });
 
     // Docker wildcard
-    mgr.registerHandler("system:docker:*", [dockerFilter](const json& p) {
-        return a0::xDockerCommand(p.value("_subcommand", ""), p, dockerFilter);
+    mgr.registerHandler("system-docker-*", [dockerFilter](const json& p, const a0::skills::HandlerContext& ctx) {
+        return a0::xDockerCommand(ctx.subcommand, p, dockerFilter);
     });
 
     // Docker compose wildcard
-    mgr.registerHandler("system:docker_compose:*", [](const json& p) {
-        return a0::xDockerComposeCommand(p.value("_subcommand", ""), p);
+    mgr.registerHandler("system-docker_compose-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
+        return a0::xDockerComposeCommand(ctx.subcommand, p);
     });
 
     // Meta handlers (need SkillManager + InferenceProvider)
-    mgr.registerHandler("system:meta:show_skills", [&mgr](const json& p) {
+    mgr.registerHandler("system-meta-show_skills", [&mgr](const json& p, const a0::skills::HandlerContext&) {
         return a0::xShowSkills(p, &mgr);
     });
-    mgr.registerHandler("system:meta:show_skill_tools", [&mgr](const json& p) {
+    mgr.registerHandler("system-meta-show_skill_tools", [&mgr](const json& p, const a0::skills::HandlerContext&) {
         return a0::xShowSkillTools(p, &mgr);
     });
-    mgr.registerHandler("system:meta:tools_for_prompt", [&mgr, provider](const json& p) {
+    mgr.registerHandler("system-meta-tools_for_prompt", [&mgr, provider](const json& p, const a0::skills::HandlerContext&) {
         return a0::xToolsForPrompt(p, &mgr, provider);
     });
 }
@@ -461,6 +462,28 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
         return 1;
     }
 
+    // Create session early (for persistence of init-phase operations)
+    std::unique_ptr<a0::SessionContext> sessionCtx;
+    if (resumeSessionId.empty()) {
+        std::string sessionUuid = generateHexSessionId();
+        int64_t sessionDbId = stack.persistence.createSession(
+            sessionUuid, 0, 0, stack.core->agentDbId());
+        stack.skillMgr.setRecordingSession(sessionDbId);
+        char cwdBuf[4096];
+        std::string initialCwd = ::getcwd(cwdBuf, sizeof(cwdBuf)) ? cwdBuf : ".";
+        sessionCtx = std::make_unique<a0::SessionContext>(
+            initialCwd, a0Dir, sessionUuid, sessionDbId, &stack.persistence);
+        sessionCtx->init(&stack.skillMgr);
+        stack.core->setSession(sessionUuid, sessionDbId, sessionCtx.get());
+    } else {
+        stack.skillMgr.setRecordingSession(stack.core->sessionDbId());
+        sessionCtx = a0::SessionContext::loadFromDb(
+            stack.core->sessionDbId(), a0Dir, &stack.persistence);
+        if (sessionCtx) {
+            sessionCtx->restore(&stack.skillMgr);
+        }
+    }
+
     json params;
     try { params = json::parse(runParamsStr); } catch (...) { params = json::object(); }
 
@@ -503,12 +526,46 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
         return 1;
     }
 
+    // Capture original CWD before session init may chdir into worktree
+    char cwdBuf[4096];
+    std::string initialCwd = ::getcwd(cwdBuf, sizeof(cwdBuf)) ? cwdBuf : ".";
+
+    // Create session early (for persistence of init-phase operations)
+    std::unique_ptr<a0::SessionContext> sessionCtx;
+    if (resumeSessionId.empty()) {
+        std::string sessionUuid = generateHexSessionId();
+        int64_t sessionDbId = stack.persistence.createSession(
+            sessionUuid, 0, 0, stack.core->agentDbId());
+        stack.skillMgr.setRecordingSession(sessionDbId);
+        sessionCtx = std::make_unique<a0::SessionContext>(
+            initialCwd, a0Dir, sessionUuid, sessionDbId, &stack.persistence);
+        sessionCtx->init(&stack.skillMgr);
+
+        // Pass session prefix to Docker container manager for naming
+        if (stack.containerMgr) {
+            stack.containerMgr->setSessionPrefix(sessionUuid.substr(0, 8));
+        }
+
+        stack.core->setSession(sessionUuid, sessionDbId, sessionCtx.get());
+    } else {
+        stack.skillMgr.setRecordingSession(stack.core->sessionDbId());
+        sessionCtx = a0::SessionContext::loadFromDb(
+            stack.core->sessionDbId(), a0Dir, &stack.persistence);
+        if (sessionCtx) {
+            sessionCtx->restore(&stack.skillMgr);
+            // Restore Docker prefix from stored session UUID
+            if (stack.containerMgr && !sessionCtx->gitInfo().currentBranch.empty()) {
+                stack.containerMgr->setSessionPrefix(
+                    stack.core->currentSessionId().substr(0, 8));
+            }
+        }
+    }
+
     bool needsB1 = !noB1;
     int b1Fd = -1;
     if (needsB1) {
         std::string b1SockPath = a0Dir + "/b1.sock";
         std::string b1PidPath = a0Dir + "/b1.pid";
-        std::string cwd = ".";
 
         int existingPid = -1;
         std::ifstream pf(b1PidPath);
@@ -521,7 +578,7 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
             pid_t pid = fork();
             if (pid == 0) {
                 setsid();
-                execlp(b1Path.c_str(), "b1", "--workdir", cwd.c_str(),
+                execlp(b1Path.c_str(), "b1", "--workdir", initialCwd.c_str(),
                        "--a0-dir", a0Dir.c_str(), nullptr);
                 _exit(127);
             }
@@ -766,10 +823,19 @@ int main(int argc, char* argv[]) {
 
     // Ensure .a0 directory (needed by all except kill-all)
     if (!app.got_subcommand(killCmd)) {
-        int r = a0::ensureA0Dir(a0Dir);
+        int r = a0::ensureA0Dir(a0Dir, !resumeSessionId.empty());
         if (r < 0) {
             std::cerr << "a0: fatal: could not create " << a0Dir << std::endl;
             return 1;
+        }
+        // Resolve a0Dir to absolute path so it works after potential chdir
+        if (a0Dir[0] != '/') {
+            char absBuf[4096];
+            if (::getcwd(absBuf, sizeof(absBuf))) {
+                if (a0Dir.size() >= 2 && a0Dir[0] == '.' && a0Dir[1] == '/')
+                    a0Dir.erase(0, 2);
+                a0Dir = std::string(absBuf) + "/" + a0Dir;
+            }
         }
     }
 

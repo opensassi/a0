@@ -21,7 +21,7 @@
       "name": "uses_tool_expand",
       "description": "Prompt with {{tool:...}} using qualified name",
       "dependencies": ["my_tool"],
-      "prompt": "Before {{tool:local:03-same-package-deps:my_tool arg=\"x\"}} After"
+      "prompt": "Before {{tool:local-03-same-package-deps-my_tool arg=\"x\"}} After"
     },
     {
       "name": "uses_toolcall",

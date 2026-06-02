@@ -12,12 +12,12 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:01-chain-simple:child",
+        "name": "local-01-chain-simple-child",
         "expect": 0
       },
       {
         "action": "assert_prompt_contains",
-        "name": "local:01-chain-simple:child",
+        "name": "local-01-chain-simple-child",
         "strings": [
           "BASE_TEXT",
           "CHILD_TEXT"
@@ -25,7 +25,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:01-chain-simple:uses_toolcall",
+        "name": "local-01-chain-simple-uses_toolcall",
         "expect": 0
       },
       {
@@ -55,12 +55,12 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:02-chain-deep:level_a",
+        "name": "local-02-chain-deep-level_a",
         "expect": 0
       },
       {
         "action": "assert_prompt_contains",
-        "name": "local:02-chain-deep:level_a",
+        "name": "local-02-chain-deep-level_a",
         "strings": [
           "LEVEL_C",
           "LEVEL_B",
@@ -69,7 +69,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:02-chain-deep:uses_toolcall",
+        "name": "local-02-chain-deep-uses_toolcall",
         "expect": 0
       },
       {
@@ -99,24 +99,24 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:03-same-package-deps:uses_tool",
+        "name": "local-03-same-package-deps-uses_tool",
         "expect": 0
       },
       {
         "action": "assert_deps_resolved",
-        "name": "local:03-same-package-deps:uses_tool",
+        "name": "local-03-same-package-deps-uses_tool",
         "exact": [
           "my_tool"
         ]
       },
       {
         "action": "resolve_tool",
-        "name": "local:03-same-package-deps:my_tool",
+        "name": "local-03-same-package-deps-my_tool",
         "expect": 0
       },
       {
         "action": "expand_prompt",
-        "name": "local:03-same-package-deps:uses_tool_expand",
+        "name": "local-03-same-package-deps-uses_tool_expand",
         "expect": 0
       },
       {
@@ -133,7 +133,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:03-same-package-deps:uses_toolcall",
+        "name": "local-03-same-package-deps-uses_toolcall",
         "expect": 0
       },
       {
@@ -152,7 +152,7 @@
   },
   {
     "id": "04-cross-package-deps",
-    "description": "Prompt depends on system:read \u2014 qualified name resolves, cross-pkg tool/tool_call expand",
+    "description": "Prompt depends on system-read \u2014 qualified name resolves, cross-pkg tool/tool_call expand",
     "fixtures": [
       "test/fixtures/skills/04-cross-package-deps/",
       "skills/system/fs/"
@@ -168,24 +168,24 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:04-cross-package-deps:uses_read",
+        "name": "local-04-cross-package-deps-uses_read",
         "expect": 0
       },
       {
         "action": "assert_deps_resolved",
-        "name": "local:04-cross-package-deps:uses_read",
+        "name": "local-04-cross-package-deps-uses_read",
         "contains": [
-          "system:fs:read"
+          "system-fs-read"
         ]
       },
       {
         "action": "resolve_tool",
-        "name": "system:fs:read",
+        "name": "system-fs-read",
         "expect": 0
       },
       {
         "action": "expand_prompt",
-        "name": "local:04-cross-package-deps:uses_read_expand",
+        "name": "local-04-cross-package-deps-uses_read_expand",
         "expect": 0
       },
       {
@@ -202,7 +202,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:04-cross-package-deps:uses_read_toolcall",
+        "name": "local-04-cross-package-deps-uses_read_toolcall",
         "expect": 0
       },
       {
@@ -232,17 +232,17 @@
       },
       {
         "action": "resolve_tool",
-        "name": "local:05-system-tool-flag:cpp_tool",
+        "name": "local-05-system-tool-flag-cpp_tool",
         "expect": 0
       },
       {
         "action": "assert_tool_is_system",
-        "name": "local:05-system-tool-flag:cpp_tool",
+        "name": "local-05-system-tool-flag-cpp_tool",
         "expected": true
       },
       {
         "action": "expand_prompt",
-        "name": "local:05-system-tool-flag:uses_toolcall",
+        "name": "local-05-system-tool-flag-uses_toolcall",
         "expect": 0
       },
       {
@@ -272,22 +272,22 @@
       },
       {
         "action": "resolve_tool",
-        "name": "local:06-command-tool:sub_tool",
+        "name": "local-06-command-tool-sub_tool",
         "expect": 0
       },
       {
         "action": "assert_tool_is_system",
-        "name": "local:06-command-tool:sub_tool",
+        "name": "local-06-command-tool-sub_tool",
         "expected": false
       },
       {
         "action": "assert_tool_command",
-        "name": "local:06-command-tool:sub_tool",
+        "name": "local-06-command-tool-sub_tool",
         "equals": "echo hello"
       },
       {
         "action": "expand_prompt",
-        "name": "local:06-command-tool:uses_tool_expand",
+        "name": "local-06-command-tool-uses_tool_expand",
         "expect": 0
       },
       {
@@ -304,7 +304,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:06-command-tool:uses_toolcall",
+        "name": "local-06-command-tool-uses_toolcall",
         "expect": 0
       },
       {
@@ -344,21 +344,21 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:07-mixed-deps:master",
+        "name": "local-07-mixed-deps-master",
         "expect": 0
       },
       {
         "action": "assert_deps_resolved",
-        "name": "local:07-mixed-deps:master",
+        "name": "local-07-mixed-deps-master",
         "contains": [
-          "system:fs:read",
-          "system:fs:write",
+          "system-fs-read",
+          "system-fs-write",
           "helper_tool"
         ]
       },
       {
         "action": "assert_prompt_contains",
-        "name": "local:07-mixed-deps:master",
+        "name": "local-07-mixed-deps-master",
         "strings": [
           "BASE_TXT",
           "MASTER_TXT"
@@ -366,7 +366,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:07-mixed-deps:uses_toolcall",
+        "name": "local-07-mixed-deps-uses_toolcall",
         "expect": 0
       },
       {
@@ -402,19 +402,19 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:08-circular-deps:prompt_a",
+        "name": "local-08-circular-deps-prompt_a",
         "expect": 0
       },
       {
         "action": "assert_prompt_contains",
-        "name": "local:08-circular-deps:prompt_a",
+        "name": "local-08-circular-deps-prompt_a",
         "strings": [
           "PROMPT_A"
         ]
       },
       {
         "action": "expand_prompt",
-        "name": "local:08-circular-deps:uses_toolcall",
+        "name": "local-08-circular-deps-uses_toolcall",
         "expect": 0
       },
       {
@@ -444,19 +444,19 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:09-missing-dep:needs_ghost",
+        "name": "local-09-missing-dep-needs_ghost",
         "expect": 0
       },
       {
         "action": "assert_missing_contains",
-        "name": "local:09-missing-dep:needs_ghost",
+        "name": "local-09-missing-dep-needs_ghost",
         "strings": [
           "ghost_tool"
         ]
       },
       {
         "action": "expand_prompt",
-        "name": "local:09-missing-dep:uses_toolcall_ghost",
+        "name": "local-09-missing-dep-uses_toolcall_ghost",
         "expect": 0
       },
       {
@@ -503,17 +503,17 @@
       },
       {
         "action": "resolve_tool",
-        "name": "local:pkg_a:parser",
+        "name": "local-pkg_a-parser",
         "expect": 0
       },
       {
         "action": "resolve_tool",
-        "name": "local:pkg_b:parser",
+        "name": "local-pkg_b-parser",
         "expect": 0
       },
       {
         "action": "expand_prompt",
-        "name": "local:pkg_a:uses_parser",
+        "name": "local-pkg_a-uses_parser",
         "expect": 0
       },
       {
@@ -536,7 +536,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:pkg_b:uses_parser",
+        "name": "local-pkg_b-uses_parser",
         "expect": 0
       },
       {
@@ -566,19 +566,19 @@
       },
       {
         "action": "assert_dispatch_contains",
-        "qualified": "local:pkg_a:parser"
+        "qualified": "local-pkg_a-parser"
       },
       {
         "action": "assert_dispatch_contains",
-        "qualified": "local:pkg_b:parser"
+        "qualified": "local-pkg_b-parser"
       },
       {
         "action": "assert_dispatch_contains",
-        "qualified": "local:pkg_a:uses_parser"
+        "qualified": "local-pkg_a-uses_parser"
       },
       {
         "action": "assert_dispatch_contains",
-        "qualified": "local:pkg_b:uses_parser"
+        "qualified": "local-pkg_b-uses_parser"
       },
       {
         "action": "assert_dispatch_names_unique"
@@ -612,7 +612,7 @@
   },
   {
     "id": "12-tool-simple",
-    "description": "{{tool:local:12-tool-substitution:my_tool}} resolves and executes subprocess",
+    "description": "{{tool:local-12-tool-substitution-my_tool}} resolves and executes subprocess",
     "fixtures": [
       "test/fixtures/skills/12-tool-substitution/"
     ],
@@ -623,12 +623,12 @@
       },
       {
         "action": "resolve_tool",
-        "name": "local:12-tool-substitution:my_tool",
+        "name": "local-12-tool-substitution-my_tool",
         "expect": 0
       },
       {
         "action": "expand_prompt",
-        "name": "local:12-tool-substitution:uses_tool_template",
+        "name": "local-12-tool-substitution-uses_tool_template",
         "expect": 0
       },
       {
@@ -647,7 +647,7 @@
   },
   {
     "id": "13-tool-qualified",
-    "description": "{{tool:system:fs:read ...}} expands with qualified name containing colon",
+    "description": "{{tool:system-fs-read ...}} expands with qualified name containing hyphens",
     "fixtures": [
       "test/fixtures/skills/04-cross-package-deps/",
       "skills/system/fs/"
@@ -663,14 +663,14 @@
       },
       {
         "action": "resolve_tool",
-        "name": "system:fs:read",
+        "name": "system-fs-read",
         "expect": 0
       },
       {
         "action": "expand_prompt_text",
-        "prompt": "Open {{tool:system:fs:read filePath=\"/etc/hostname\"}} closed",
+        "prompt": "Open {{tool:system-fs-read filePath=\"/etc/hostname\"}} closed",
         "dependencies": [
-          "system:fs:read"
+          "system-fs-read"
         ],
         "expect": 0
       },
@@ -726,7 +726,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:13-toolcall-substitution:uses_toolcall_simple",
+        "name": "local-13-toolcall-substitution-uses_toolcall_simple",
         "expect": 0
       },
       {
@@ -745,7 +745,7 @@
   },
   {
     "id": "16-toolcall-qualified",
-    "description": "{{tool_call:local:12-tool-substitution:my_tool}} strips to last segment (my_tool)",
+    "description": "{{tool_call:local-12-tool-substitution-my_tool}} strips to last segment (my_tool)",
     "fixtures": [
       "test/fixtures/skills/13-toolcall-substitution/"
     ],
@@ -756,7 +756,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:13-toolcall-substitution:uses_toolcall_qualified",
+        "name": "local-13-toolcall-substitution-uses_toolcall_qualified",
         "expect": 0
       },
       {
@@ -786,7 +786,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:13-toolcall-substitution:uses_toolcall_missing",
+        "name": "local-13-toolcall-substitution-uses_toolcall_missing",
         "expect": 0
       },
       {
@@ -821,12 +821,12 @@
       },
       {
         "action": "resolve_tool",
-        "name": "system:fs:read",
+        "name": "system-fs-read",
         "expect": 0
       },
       {
         "action": "expand_prompt",
-        "name": "local:13-toolcall-substitution:uses_mixed",
+        "name": "local-13-toolcall-substitution-uses_mixed",
         "expect": 0
       },
       {
@@ -868,12 +868,12 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:session_evaluation:generate",
+        "name": "local-session_evaluation-generate",
         "expect": 0
       },
       {
         "action": "assert_prompt_contains",
-        "name": "local:session_evaluation:generate",
+        "name": "local-session_evaluation-generate",
         "strings": [
           "Session Evaluation Summary",
           "Aggregation Tags"
@@ -881,12 +881,12 @@
       },
       {
         "action": "resolve_prompt",
-        "name": "local:session_evaluation:export",
+        "name": "local-session_evaluation-export",
         "expect": 0
       },
       {
         "action": "assert_prompt_contains",
-        "name": "local:session_evaluation:export",
+        "name": "local-session_evaluation-export",
         "strings": [
           "SESSION_ID",
           "export_session"
@@ -894,7 +894,7 @@
       },
       {
         "action": "expand_prompt",
-        "name": "local:session_evaluation:export",
+        "name": "local-session_evaluation-export",
         "expect": 0
       },
       {

@@ -51,6 +51,16 @@ struct StreamChunk {
     int64_t timestamp;
 };
 
+struct SessionContextRow {
+    int64_t sessionId;
+    std::string sessionUuid;
+    std::string originalCwd;
+    std::string worktreePath;
+    std::string gitRepoRoot;
+    std::string gitBranch;
+    std::string gitCommit;
+};
+
 struct InvocationRow {
     int64_t id;
     int64_t messageId;
@@ -124,7 +134,13 @@ public:
                                       const std::string& outputJson) = 0;
 
     virtual std::vector<InvocationRow> loadInvocations(int type,
-                                                        const std::string& name) const = 0;
+                                                         const std::string& name) const = 0;
+
+    // --- Session context ---
+
+    virtual int saveSessionContext(const SessionContextRow& row) = 0;
+
+    virtual SessionContextRow loadSessionContext(int64_t sessionId) const = 0;
 };
 
 class NullStore : public PersistenceStore {
@@ -170,6 +186,9 @@ public:
     std::vector<InvocationRow> loadInvocations(int, const std::string&) const override {
         return {};
     }
+
+    int saveSessionContext(const SessionContextRow&) override { return 0; }
+    SessionContextRow loadSessionContext(int64_t) const override { return {}; }
 
 private:
     int64_t m_nextRoot = 0;
