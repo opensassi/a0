@@ -28,7 +28,7 @@
       "name": "export",
       "description": "Save evaluation summary as markdown sidecar and create compressed JSON session archive",
       "chain": ["session_evaluation_base"],
-      "dependencies": ["export_session", "system:write", "system:bash"],
+      "dependencies": ["export_session", "system-fs-write", "system-bash-bash"],
       "promptFile": "prompts/export.md"
     }
   ]

@@ -139,30 +139,6 @@ HandlerResult xBash(const json& params) {
     }
     std::string command = cmdIt->get<std::string>();
 
-    // Reject git commands
-    std::string c = xTrim(command);
-    auto hasTool = [&](const std::string& tool) -> bool {
-        if (c == tool) return true;
-        if (c.rfind(tool + " ", 0) == 0) return true;
-        if (c.rfind(tool + "\t", 0) == 0) return true;
-        size_t pos = c.find(" " + tool + " ");
-        if (pos != std::string::npos) return true;
-        if (c.size() >= tool.size() + 2 && c.rfind(" " + tool, c.size() - tool.size() - 1) != std::string::npos) return true;
-        return false;
-    };
-
-    if (hasTool("git")) {
-        return {"ERROR: git commands must use the git_* system tools. "
-                "Browse skills: show_skills('/system/git'). "
-                "Use git_start_session for the standard workflow."};
-    }
-
-    if (hasTool("docker") || hasTool("docker-compose")) {
-        return {"ERROR: docker and docker-compose commands must use the docker skill prompts. "
-                "Browse skills: show_skills('/system/docker'). "
-                "Use show_skill_tools('/docker') to list available docker commands."};
-    }
-
     int timeoutSecs = 30;
     auto timeoutIt = params.find("timeout");
     if (timeoutIt != params.end() && timeoutIt->is_number()) {
@@ -619,16 +595,6 @@ static HandlerResult xRunCliCommand(const std::string& cmd, const json& params, 
     return {output};
 }
 
-bool isDockerCommand(const std::string& command) {
-    std::string c = command;
-    size_t start = 0;
-    while (start < c.size() && (c[start] == ' ' || c[start] == '\t')) ++start;
-    c = c.substr(start);
-    if (c == "docker" || c.rfind("docker ", 0) == 0 || c.rfind("docker\t", 0) == 0) return true;
-    if (c == "docker-compose" || c.rfind("docker-compose ", 0) == 0) return true;
-    return false;
-}
-
 // ---------------------------------------------------------------------------
 // Git command dispatch
 // ---------------------------------------------------------------------------
@@ -636,49 +602,6 @@ bool isDockerCommand(const std::string& command) {
 HandlerResult xGitCommand(const std::string& subcommand, const json& params) {
     std::string cmd = xBuildCommand("git " + subcommand, params);
     return xRunCliCommand(cmd, params);
-}
-
-// ---------------------------------------------------------------------------
-// Docker command dispatch
-// ---------------------------------------------------------------------------
-
-HandlerResult xDockerCommand(const std::string& subcommand, const json& params,
-                             DockerSecurityFilter* filter) {
-    static const std::vector<std::string> destructive = {
-        "rm", "kill", "stop", "pause", "unpause", "rename", "update", "wait"
-    };
-    bool isDestructive = false;
-    for (const auto& d : destructive) {
-        if (subcommand == d) { isDestructive = true; break; }
-    }
-
-    if (isDestructive && filter) {
-        auto containerIt = params.find("container");
-        if (containerIt != params.end() && containerIt->is_string()) {
-            if (!filter->canAccess(containerIt->get<std::string>())) {
-                return {"ERROR: container '" + containerIt->get<std::string>()
-                        + "' is a system-managed sandbox container and cannot be modified."};
-            }
-        }
-        auto argsIt = params.find("args");
-        if (argsIt != params.end() && argsIt->is_array() && !argsIt->empty()) {
-            std::vector<std::string> args;
-            for (const auto& a : *argsIt) {
-                if (a.is_string()) args.push_back(a.get<std::string>());
-            }
-            if (!args.empty() && filter && !filter->canAccessAll(args)) {
-                return {"ERROR: one or more specified containers are system-managed sandbox containers."};
-            }
-        }
-    }
-
-    std::string cmd = xBuildCommand("docker " + subcommand, params);
-    return xRunCliCommand(cmd, params, 120);
-}
-
-HandlerResult xDockerComposeCommand(const std::string& subcommand, const json& params) {
-    std::string cmd = xBuildCommand("docker compose " + subcommand, params);
-    return xRunCliCommand(cmd, params, 120);
 }
 
 // ---------------------------------------------------------------------------
@@ -770,7 +693,7 @@ HandlerResult xShowSkillTools(const json& params, a0::skills::SkillManager* skil
     if (path == "/" || path.empty()) {
         out << "System tool categories:\n";
         out << "  /system/ — core tools (bash, read, glob, grep, edit, write, etc.)\n";
-        out << "  /git/ — git version control tools (120+ commands)\n";
+        out << "  /git/ — git workflow skills\n";
         out << "\nUse show_skill_tools('/system') or show_skill_tools('/git') to browse.";
         return {out.str()};
     }
@@ -840,10 +763,7 @@ HandlerResult xShowSkillTools(const json& params, a0::skills::SkillManager* skil
         }
     }
 
-    if (firstPart == "git") {
-        out << "Git tools: 120+ commands available via {{tool:commit ...}} in skill templates.\n";
-        out << "Use git_start_session for the standard workflow.\n";
-    } else if (firstPart == "system") {
+    if (firstPart == "system") {
         out << "Core system tools: bash, read, glob, grep, edit, write, show_skills, show_skill_tools, tools_for_prompt\n";
     }
 
@@ -917,25 +837,7 @@ HandlerResult xToolsForPrompt(const json& params,
         "User request: \"" + promptText + "\"\n\n"
         + toolInv.str() + "\n"
         + schemaBlock.str() + "\n"
-        "Output JSON with this structure:\n"
-        "```json\n"
-        "{\n"
-        "  \"intent\": \"<one-line summary>\",\n"
-        "  \"plan\": \"<step-by-step execution plan>\",\n"
-        "  \"tools\": [\n"
-        "    {\n"
-        "      \"name\": \"<tool_name>\",\n"
-        "      \"schema\": {\n"
-        "        \"type\": \"object\",\n"
-        "        \"properties\": {\n"
-        "          \"<param_name>\": { \"type\": \"<string|boolean|number>\", \"description\": \"<purpose>\" }\n"
-        "        },\n"
-        "        \"required\": [\"<param_name>\", ...]\n"
-        "      }\n"
-        "    }\n"
-        "  ]\n"
-        "}\n"
-        "```\n\n"
+        "Output JSON: {\"intent\":\"<one-line summary>\",\"plan\":\"<step-by-step plan>\",\"tools\":[{\"name\":\"<tool_name>\",\"schema\":{\"type\":\"object\",\"properties\":{\"<param_name>\":{\"type\":\"<string|boolean|number>\",\"description\":\"<purpose>\"}},\"required\":[\"<param_name>\"]}}]}\n"
         "Tool names must come from the available skills/tools listed above.";
 
     if (!provider) {

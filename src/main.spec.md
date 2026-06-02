@@ -80,7 +80,7 @@ struct AgentStack {
     DeepSeekProvider provider;
     DefaultContextManager context;
     DefaultDependencyResolver depResolver;
-    DefaultSchemaInferenceEngine inferenceEngine;
+
     a0::docker::DockerContainerManager* containerMgr;
     a0::docker::DockerComposeManager* composeMgr;
     a0::docker::DockerToolRunnerImpl* dockerRunner;
@@ -114,7 +114,7 @@ graph TB
         CM[DefaultContextManager]
         PS[SqliteStore]
         DR[DefaultDependencyResolver]
-        IE[DefaultSchemaInferenceEngine]
+
         SR[DefaultSkillRunner]
         CORE[DefaultAgentCore]
     end
@@ -137,7 +137,7 @@ graph TB
     M --> CM
     M --> PS
     M --> DR
-    M --> IE
+
     M --> SR
     M --> CORE
     M -->|--kill-all?| KA
@@ -213,7 +213,7 @@ sequenceDiagram
             User->>CORE: input
         end
         CORE-->>M: return
-    else --run mode
+    else run mode
         M->>CORE: runSkill(skillName, params)
         CORE-->>User: JSON result
     end
@@ -242,5 +242,5 @@ sequenceDiagram
 | `xRegisterSystemHandlers` | Wildcard handlers | `system:git:*`, `system:docker:*`, `system:docker_compose:*` registered |
 | `main` (integration) | No flags, all flags, `--no-docker`, `--resume`, missing API key, init failure |
 | `main` (--kill-all) | `a0 --kill-all` → cmdKillAll called, b1/c2 cleaned up |
-| `main` (--run mode) | `a0 --run system:test --params '{}'` → skill executed, JSON printed |
+| `main` (run mode) | `a0 run system:test --params '{}'` → skill executed, JSON printed |
 | `main` (init with missing handler) | System tool without registerHandler → error printed, exit 1 |

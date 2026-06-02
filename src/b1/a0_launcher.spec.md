@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Invokes a0 as a child process for the self-improvement loop. Wraps `CommandRunner::run()` with a0-specific argument construction (`--no-b1 --run <skill> --params <json>`) and result parsing.
+Invokes a0 as a child process for the self-improvement loop. Wraps `CommandRunner::run()` with a0-specific argument construction (`--no-b1 run <skill> --params <json>`) and result parsing.
 
 **Dependencies:** `CommandRunner`, nlohmann/json
 
@@ -42,7 +42,7 @@ graph TB
     end
 
     subgraph Child
-        A0[a0 --no-b1 --run ...]
+        A0[a0 --no-b1 run ...]
     end
 
     RS -->|fork/exec| A0
@@ -59,7 +59,7 @@ sequenceDiagram
     participant A0 as a0 child
 
     B1->>AL: runSkill("system:rebuild", "{}", result)
-    AL->>AL: build command: "a0 --no-b1 --run system:rebuild --params '{}'"
+    AL->>AL: build command: "a0 --no-b1 run system:rebuild --params '{}'"
     AL->>CR: run(command, timeoutSecs)
     CR->>A0: fork + exec
     Note over A0: executes skill, prints JSON result

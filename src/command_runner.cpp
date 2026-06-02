@@ -313,10 +313,11 @@ CommandResult CommandRunner::xRunSingle(const std::string& cmd,
     }
 
     if (pid == 0) {
-        // Child
+        // Child: merge stderr into stdout so both are read from one pipe
         close(stdoutPipe[0]);
         close(stdinPipe[1]);
         dup2(stdoutPipe[1], STDOUT_FILENO);
+        dup2(stdoutPipe[1], STDERR_FILENO);
         dup2(stdinPipe[0], STDIN_FILENO);
         close(stdoutPipe[1]);
         close(stdinPipe[0]);
@@ -352,13 +353,14 @@ CommandResult CommandRunner::xRunSingle(const std::string& cmd,
         alarm(static_cast<unsigned int>(timeoutSecs));
     }
 
-    // Read stdout
+    // Read combined stdout+stderr
     char buf[4096];
     ssize_t n;
     while ((n = read(stdoutPipe[0], buf, sizeof(buf))) > 0) {
         result.stdout.append(buf, static_cast<size_t>(n));
     }
     close(stdoutPipe[0]);
+    result.stderr = "";
 
     // Cancel alarm
     alarm(0);

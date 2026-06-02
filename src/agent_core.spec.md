@@ -6,7 +6,7 @@ DefaultAgentCore is the central orchestrator of the agent system. It owns pointe
 
 All tool dispatch (both system C++ handlers and command-based subprocess tools) goes through `SkillManager` exclusively.
 
-**Dependencies:** `SkillManager`, `ToolRunner`, `SkillRunner`, `InferenceProvider`, `ContextManager`, `PersistenceStore`, `DependencyResolver`, `SchemaInferenceEngine`, optionally `DockerToolRunner` + `ComposeManager`
+**Dependencies:** `SkillManager`, `ToolRunner`, `SkillRunner`, `InferenceProvider`, `ContextManager`, `PersistenceStore`, `DependencyResolver`, optionally `DockerToolRunner` + `ComposeManager`
 
 ## 2. Component Specifications
 
@@ -18,7 +18,7 @@ public:
                      InferenceProvider* provider,
                      ContextManager* context,
                      DependencyResolver* depResolver,
-                     SchemaInferenceEngine* inferenceEngine,
+
                      a0::skills::SkillManager* skillMgr,
                      a0::persistence::PersistenceStore* persistence = nullptr,
                      DockerToolRunner* dockerRunner = nullptr,
@@ -43,7 +43,7 @@ private:
     InferenceProvider* m_provider;
     ContextManager* m_context;
     DependencyResolver* m_depResolver;
-    SchemaInferenceEngine* m_inferenceEngine;
+
     a0::persistence::PersistenceStore* m_persistence;
     std::string m_sessionId;
     bool m_initialized;
@@ -75,7 +75,7 @@ graph TB
     AC --> IP[InferenceProvider]
     AC --> CM[ContextManager]
     AC --> DR[DependencyResolver]
-    AC --> SIE[SchemaInferenceEngine]
+
     AC --> PS[PersistenceStore]
     AC --> CPM[ComposeManager]
 
@@ -139,9 +139,7 @@ sequenceDiagram
    — xBuildDispatchTable()
    — SkillManager::schemas(true) → anchor schemas (9 default tools)
    — xRunForkedLoop(goal, schemas, 25)
-5. Phase 3: SchemaInferenceEngine fallback
-   — inferPrompt → SkillRunner::execute
-6. persistence->endSession
+5. persistence->endSession
 ```
 
 ## 7. xRunForkedLoop() Flow
@@ -168,7 +166,7 @@ sequenceDiagram
 | `init()` with missing handler | Prints all missing handlers, returns `false` |
 | `processGoal()` called before `init()` | Throws `std::logic_error` |
 | Empty goal string | Returns JSON string `"no goal provided"` |
-| No exact prompt match and `inferPrompt` throws | Returns `"failed to infer prompt: <what>"` |
+
 | Missing dependencies after skill resolution | Returns `"Missing dependencies: dep1, dep2"` |
 | `resumeSession()` with non-existent session | Returns `false`, context remains empty |
 | Forked loop exceeds max turns | Returns `"ERROR: max tool call turns exceeded"` |

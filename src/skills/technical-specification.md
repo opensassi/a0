@@ -22,7 +22,7 @@ The Skills sub-module manages the lifecycle of agent skills — bundles of tools
 - `ToolRunner` / `DockerToolRunner` — executes tools at runtime
 - `InferenceProvider` — executes skill prompts at runtime
 - `PersistenceStore` (SQLite) — provides historical invocation records for upgrade validation
-- `SchemaInferenceEngine` — creates new skills via LLM inference (writes to `local/`)
+
 - `DependencyResolver` — validates transitive skill/tool dependencies
 
 **Lifecycle stages:**
@@ -504,7 +504,7 @@ private:
 graph TB
     subgraph "Agent Core"
         Core[AgentCore]
-        SIE[SchemaInferenceEngine]
+
         DR[DependencyResolver]
         SR[SkillRunner]
     end
@@ -541,7 +541,6 @@ graph TB
 
     Core --> SM
     Core --> SR
-    SIE --> SM
     SR --> SM
     SR --> TR
     SR --> DTR
@@ -610,28 +609,7 @@ sequenceDiagram
     end
 ```
 
-### 4.2 Agent Creating a Skill
 
-```mermaid
-sequenceDiagram
-    participant Agent as AgentCore
-    participant SIE as SchemaInferenceEngine
-    participant SM as SkillManager
-    participant SL as SkillLoader
-
-    Agent->>SIE: inferPrompt("list files recursively")
-    SIE-->>Agent: SkillTool{name:"list_files", ...}
-    Agent->>Agent: pick component name: "file_utils"
-    Agent->>SM: addTool("file_utils", list_files_tool)
-    SM->>SL: component exists in local?
-    alt exists
-        SL->>SL: append to skill.json
-    else new
-        SL->>SL: create skill.json
-    end
-    SL-->>SM: done
-    SM-->>Agent: added
-```
 
 ### 4.3 Lookup and Resolution
 
@@ -778,7 +756,7 @@ Wire-up in `main.cpp`:
 6. `AgentCore` receives a `SkillManager*` for all tool dispatch — no separate `SystemToolRegistry`
 7. `SkillRunner` resolves tool/prompt lookups through `SkillManager`
 8. `DependencyResolver` uses `SkillManager` for dependency checking
-9. `SchemaInferenceEngine` writes inferred skills via `SkillManager::addTool`/`addPrompt`
+
 10. CLI parser routes `a0 skill ...` commands to `SkillManager` methods
 
 ---

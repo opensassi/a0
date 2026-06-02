@@ -5,7 +5,6 @@
 #include "context_manager.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
-#include "schema_inference_engine.h"
 #include "skill_runner.h"
 #include "tool_runner.h"
 #include <chrono>
@@ -36,10 +35,6 @@ TEST(InterfaceTest, DeleteThroughBasePointer) {
     delete dr2;
     delete r2;
 
-    InferenceProvider* ip2 = new DeepSeekProvider("k2");
-    SchemaInferenceEngine* sie = new DefaultSchemaInferenceEngine(ip2);
-    delete sie;
-    delete ip2;
 }
 
 TEST(InterfaceTest, VirtualDestructors) {
@@ -49,7 +44,6 @@ TEST(InterfaceTest, VirtualDestructors) {
     DefaultContextManager cm;
     FileSystemSkillRegistry reg2;
     DefaultDependencyResolver dr(&reg2);
-    DefaultSchemaInferenceEngine sie(&ip);
     DefaultSkillRunner sr(&tr, &ip, &reg2, &dr);
 }
 

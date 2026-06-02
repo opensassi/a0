@@ -6,7 +6,6 @@
 using json = nlohmann::json;
 
 class InferenceProvider;
-class DockerSecurityFilter;
 
 namespace a0::skills { class SkillManager; }
 
@@ -20,12 +19,8 @@ HandlerResult xGrep(const json& params);
 HandlerResult xEdit(const json& params);
 HandlerResult xWrite(const json& params);
 
-// Git + Docker handlers
+// Git handler
 HandlerResult xGitCommand(const std::string& subcommand, const json& params);
-HandlerResult xDockerCommand(const std::string& subcommand, const json& params,
-                             DockerSecurityFilter* filter = nullptr);
-HandlerResult xDockerComposeCommand(const std::string& subcommand, const json& params);
-bool isDockerCommand(const std::string& command);
 
 // Meta handlers (need SkillManager / InferenceProvider)
 HandlerResult xShowSkills(const json& params, a0::skills::SkillManager* skillMgr);

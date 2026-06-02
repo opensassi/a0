@@ -253,19 +253,6 @@ public:
 };
 ```
 
-### `SchemaInferenceEngine` (abstract)
-```cpp
-class SchemaInferenceEngine {
-public:
-    virtual ~SchemaInferenceEngine() = default;
-    /** @param naturalLanguageDescription Human description of the tool
-     *  @return Inferred Tool struct */
-    virtual Tool inferTool(const std::string& naturalLanguageDescription) = 0;
-    /** @param naturalLanguageDescription Human description of the skill
-     *  @return Inferred Skill struct */
-    virtual Prompt inferPrompt(const std::string& naturalLanguageDescription) = 0;
-};
-```
 
 ### `AgentCore` (abstract)
 ```cpp
@@ -366,7 +353,7 @@ graph TB
     subgraph Execution_Interfaces
         SR[SkillRunner]
         DR[DependencyResolver]
-        SIE[SchemaInferenceEngine]
+
         AC[AgentCore]
     end
 
@@ -388,7 +375,7 @@ graph TB
     AC -->|composes| CM
     AC -->|composes| IL
     AC -->|composes| DR
-    AC -->|composes| SIE
+
     AC -->|uses| DTR
     AC -->|uses| CoM
 ```
@@ -405,15 +392,14 @@ sequenceDiagram
     participant SM as SkillManager
     participant CM as ContextManager
     participant DR as DependencyResolver
-    participant SIE as SchemaInferenceEngine
+
     participant SM as SkillManager
     participant CM as ContextManager
 
     User->>AC: processGoal(goal)
     AC->>SM: getPrompt(qualifiedName)
     SM-->>AC: Prompt
-    AC->>SIE: inferPrompt(goal)
-    SIE-->>AC: Prompt
+
     AC->>DR: checkPromptDependencies(prompt)
     DR-->>AC: ok
     AC->>SR: execute(prompt, params)
@@ -496,11 +482,7 @@ sequenceDiagram
 | `runValidators` | Passing validation, failing validation, no validators |
 | `execute` | Successful run, tool failure, dependency failure |
 
-### `SchemaInferenceEngine`
-| Method | Test Case |
-|---|---|
-| `inferTool` | Clear description, ambiguous description, empty string |
-| `inferPrompt` | Same as inferTool |
+
 
 ### `AgentCore`
 | Method | Test Case |

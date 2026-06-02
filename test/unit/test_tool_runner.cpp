@@ -38,7 +38,7 @@ TEST_F(ToolRunnerTest, CommandNotFound) {
     json result = runner.run(tool, json::object());
     ASSERT_TRUE(result.is_string());
     std::string output = result.get<std::string>();
-    EXPECT_TRUE(output.find("ERROR:") == 0 || output.find("error") != std::string::npos)
+    EXPECT_TRUE(output.find("not found") != std::string::npos)
         << "Got: " << output;
 }
 

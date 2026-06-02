@@ -20,8 +20,8 @@ int A0Launcher::runSkill(const std::string& skill,
 
     std::ostringstream cmd;
     cmd << binary
-        << " --no-b1"
-        << " --run " << CommandRunner::shellEscape(skill)
+        << " --no-b1 run "
+        << CommandRunner::shellEscape(skill)
         << " --params " << escapedParams;
 
     auto cmdResult = CommandRunner::run(cmd.str(), "", timeoutSeconds);

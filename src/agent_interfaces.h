@@ -164,13 +164,6 @@ public:
                                                a0::StreamCallback onChunk) = 0;
 };
 
-class SchemaInferenceEngine {
-public:
-    virtual ~SchemaInferenceEngine() = default;
-    virtual Tool inferTool(const std::string& naturalLanguageDescription) = 0;
-    virtual Prompt inferPrompt(const std::string& naturalLanguageDescription) = 0;
-};
-
 class AgentCore {
 public:
     virtual ~AgentCore() = default;

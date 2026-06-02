@@ -5,7 +5,6 @@
 #include "dependency_resolver.h"
 #include "system_handlers.h"
 #include "context_manager.h"
-#include "schema_inference_engine.h"
 #include "base_prompt.h"
 #include "persistence/persistence_store.h"
 #include <gtest/gtest.h>
@@ -29,7 +28,6 @@ protected:
     DefaultSkillRunner* m_skillRunner = nullptr;
     DefaultContextManager* m_context = nullptr;
     a0::persistence::NullStore* m_persistence = nullptr;
-    DefaultSchemaInferenceEngine* m_inference = nullptr;
     DefaultAgentCore* m_core = nullptr;
 
     void SetUp() override {
@@ -47,7 +45,6 @@ protected:
         m_depResolver = new DefaultDependencyResolver(m_mgr);
         m_context = new DefaultContextManager();
         m_persistence = new a0::persistence::NullStore();
-        m_inference = new DefaultSchemaInferenceEngine(m_provider);
 
         m_mgr->setToolRunner(m_toolRunner);
 
@@ -59,14 +56,13 @@ protected:
 
         m_core = new DefaultAgentCore(
             m_toolRunner, m_skillRunner, m_provider, m_context,
-            m_depResolver, m_inference, m_mgr,
+            m_depResolver, m_mgr,
             m_persistence, nullptr, nullptr);
     }
 
     void TearDown() override {
         delete m_core;
         delete m_skillRunner;
-        delete m_inference;
         delete m_context;
         delete m_depResolver;
         delete m_provider;

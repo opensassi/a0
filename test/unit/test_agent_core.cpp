@@ -4,7 +4,6 @@
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
 #include "invocation_logger.h"
-#include "schema_inference_engine.h"
 #include "skill_runner.h"
 #include "tool_runner.h"
 #include <gtest/gtest.h>
@@ -19,7 +18,6 @@ protected:
     DefaultContextManager context;
     JsonLinesLogger* logger;
     DefaultDependencyResolver* depResolver;
-    DefaultSchemaInferenceEngine* inferenceEngine;
     DefaultSkillRunner* skillRunner;
     DefaultAgentCore* core;
 
@@ -39,17 +37,15 @@ protected:
         provider->setMockUrl("http://localhost:18081/v1/chat/completions");
         logger = new JsonLinesLogger(m_testLogs);
         depResolver = new DefaultDependencyResolver(&registry);
-        inferenceEngine = new DefaultSchemaInferenceEngine(provider);
         skillRunner = new DefaultSkillRunner(&toolRunner, provider, &registry, depResolver);
         core = new DefaultAgentCore(&registry, &toolRunner, skillRunner,
                                      provider, &context, logger,
-                                     depResolver, inferenceEngine);
+                                     depResolver, nullptr);
     }
 
     void TearDown() override {
         delete core;
         delete skillRunner;
-        delete inferenceEngine;
         delete depResolver;
         delete logger;
         delete provider;

@@ -1,9 +1,9 @@
 #include "session_context.h"
 #include "skills/skills.h"
 #include "persistence/persistence_store.h"
+#include "trace.h"
 #include <unistd.h>
 #include <sys/stat.h>
-#include <iostream>
 #include <cstring>
 
 namespace a0 {
@@ -37,7 +37,7 @@ int SessionContext::init(a0::skills::SkillManager* skillMgr) {
 
     rc = xCreateWorktree(skillMgr, seq);
     if (rc != 0) {
-        std::cerr << "a0: session: worktree creation failed, continuing in CWD" << std::endl;
+        TRACE_LOG("worktree creation failed, continuing in CWD");
         m_effectiveCwd = m_cwd;
         return 0;
     }
@@ -46,8 +46,7 @@ int SessionContext::init(a0::skills::SkillManager* skillMgr) {
     m_effectiveCwd = m_worktreePath;
 
     if (::chdir(m_worktreePath.c_str()) != 0) {
-        std::cerr << "a0: session: chdir to worktree failed: "
-                  << strerror(errno) << std::endl;
+        TRACE_LOG("chdir to worktree failed: " << strerror(errno));
         m_effectiveCwd = m_cwd;
         return -1;
     }
@@ -55,7 +54,7 @@ int SessionContext::init(a0::skills::SkillManager* skillMgr) {
     // Persist session context to DB
     xSaveToDb();
 
-    std::cerr << "a0: session: worktree active at " << m_worktreePath << std::endl;
+    TRACE_LOG("worktree active at " << m_worktreePath);
     return 0;
 }
 
@@ -88,13 +87,12 @@ int SessionContext::restore(a0::skills::SkillManager* skillMgr) {
     // Check if worktree still exists
     struct stat st;
     if (::stat(m_worktreePath.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
-        std::cerr << "a0: session: worktree missing at " << m_worktreePath << std::endl;
+        TRACE_LOG("worktree missing at " << m_worktreePath);
         return -1;
     }
 
     if (::chdir(m_worktreePath.c_str()) != 0) {
-        std::cerr << "a0: session: chdir to worktree failed: "
-                  << strerror(errno) << std::endl;
+        TRACE_LOG("chdir to worktree failed: " << strerror(errno));
         return -1;
     }
 
@@ -105,7 +103,7 @@ int SessionContext::restore(a0::skills::SkillManager* skillMgr) {
     int seq = 0;
     xDetectGit(skillMgr, seq);
 
-    std::cerr << "a0: session: restored worktree at " << m_worktreePath << std::endl;
+    TRACE_LOG("restored worktree at " << m_worktreePath);
     return 0;
 }
 
@@ -114,7 +112,7 @@ std::string SessionContext::containerName(const std::string& base) const {
 }
 
 int SessionContext::xDetectGit(a0::skills::SkillManager* skillMgr, int& seq) {
-    auto r1 = skillMgr->executeToolWithMeta("system:git:rev-parse",
+    auto r1 = skillMgr->executeToolWithMeta("system-git-rev_parse",
         {{"args", {"--is-inside-work-tree"}}}, &seq, "", 0);
     if (r1.output.find("true") == std::string::npos) {
         return -1;
@@ -122,21 +120,21 @@ int SessionContext::xDetectGit(a0::skills::SkillManager* skillMgr, int& seq) {
 
     m_git.isRepo = true;
 
-    auto r2 = skillMgr->executeToolWithMeta("system:git:rev-parse",
+    auto r2 = skillMgr->executeToolWithMeta("system-git-rev_parse",
         {{"args", {"--show-toplevel"}}}, &seq, "", 0);
     m_git.repoRoot = r2.output;
     while (!m_git.repoRoot.empty() &&
            (m_git.repoRoot.back() == '\n' || m_git.repoRoot.back() == ' '))
         m_git.repoRoot.pop_back();
 
-    auto r3 = skillMgr->executeToolWithMeta("system:git:rev-parse",
+    auto r3 = skillMgr->executeToolWithMeta("system-git-rev_parse",
         {{"args", {"--abbrev-ref", "HEAD"}}}, &seq, "", 0);
     m_git.currentBranch = r3.output;
     while (!m_git.currentBranch.empty() &&
            (m_git.currentBranch.back() == '\n' || m_git.currentBranch.back() == ' '))
         m_git.currentBranch.pop_back();
 
-    auto r4 = skillMgr->executeToolWithMeta("system:git:rev-parse",
+    auto r4 = skillMgr->executeToolWithMeta("system-git-rev_parse",
         {{"args", {"HEAD"}}}, &seq, "", 0);
     m_git.commitHash = r4.output;
     while (!m_git.commitHash.empty() &&
@@ -150,7 +148,7 @@ int SessionContext::xCreateWorktree(a0::skills::SkillManager* skillMgr, int& seq
     std::string sessionBranch = "a0/session-" + m_sessionPrefix;
     m_worktreePath = m_a0Dir + "/worktrees/a0-session-" + m_sessionPrefix;
 
-    auto r = skillMgr->executeToolWithMeta("system:git:worktree",
+    auto r = skillMgr->executeToolWithMeta("system-git-worktree",
         {{"args", {"add", "-b", sessionBranch, m_worktreePath, "HEAD"}}},
         &seq, "", 0);
 

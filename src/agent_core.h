@@ -14,7 +14,6 @@ public:
                      InferenceProvider* provider,
                      ContextManager* context,
                      DependencyResolver* depResolver,
-                     SchemaInferenceEngine* inferenceEngine,
                      a0::skills::SkillManager* skillMgr,
                      a0::persistence::PersistenceStore* persistence = nullptr,
                      DockerToolRunner* dockerRunner = nullptr,
@@ -62,7 +61,6 @@ private:
     InferenceProvider* m_provider;
     ContextManager* m_context;
     DependencyResolver* m_depResolver;
-    SchemaInferenceEngine* m_inferenceEngine;
     std::string m_sessionId;
     bool m_initialized;
     a0::SessionContext* m_sessionCtx = nullptr;

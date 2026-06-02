@@ -63,7 +63,6 @@ DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
                                     InferenceProvider* provider,
                                     ContextManager* context,
                                     DependencyResolver* depResolver,
-                                    SchemaInferenceEngine* inferenceEngine,
                                     a0::skills::SkillManager* skillMgr,
                                     a0::persistence::PersistenceStore* persistence,
                                     DockerToolRunner* dockerRunner,
@@ -77,7 +76,6 @@ DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
     , m_provider(provider)
     , m_context(context)
     , m_depResolver(depResolver)
-    , m_inferenceEngine(inferenceEngine)
     , m_initialized(false) {}
 
 bool DefaultAgentCore::init(const std::string& skillsDir) {
@@ -196,7 +194,7 @@ std::string DefaultAgentCore::xRunForkedLoop(
     m_accumulatedTools.clear();
     if (m_skillMgr) {
         auto analysis = m_skillMgr->executeToolWithMeta(
-            "system:meta:tools_for_prompt", {{"prompt", userInput}});
+            "system-meta-tools_for_prompt", {{"prompt", userInput}});
         if (!analysis.output.empty()) {
             messages.push_back({"assistant", analysis.output});
             for (const auto& t : analysis.recommendedTools)
@@ -434,17 +432,8 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
         return finalResult;
     }
 
-    // Fallback: use SchemaInferenceEngine
-    json result;
-    try {
-        auto prompt = m_inferenceEngine->inferPrompt(goal);
-        if (m_skillMgr) {
-            m_skillMgr->addPrompt("inferred", prompt);
-        }
-        result = m_skillRunner->execute(prompt, {{"goal", goal}});
-    } catch (const std::exception& e) {
-        result = json("failed to infer prompt: " + std::string(e.what()));
-    }
+    // Fallback: no tools available to process the goal
+    json result = json("No tools available to process goal: " + goal);
     xPushToContext(goal, result);
     if (m_persistence && m_sessionDbId > 0) {
         m_persistence->appendMessage(m_sessionDbId, std::nullopt, mainSeq++,

@@ -7,7 +7,7 @@
 #include "context_manager.h"
 #include "deepseek_provider.h"
 #include "dependency_resolver.h"
-#include "schema_inference_engine.h"
+
 #include "skill_runner.h"
 #include "tool_runner.h"
 #include "docker/container_manager.h"
@@ -324,7 +324,6 @@ static int cmdSessionList(const std::string& a0Dir,
 // ---------------------------------------------------------------------------
 
 static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
-                                     a0::DockerSecurityFilter* dockerFilter,
                                      InferenceProvider* provider) {
     // Core handlers
     mgr.registerHandler("system-bash-bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
@@ -337,16 +336,6 @@ static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
     // Git wildcard: ctx.subcommand provides the resolved CLI subcommand
     mgr.registerHandler("system-git-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
         return a0::xGitCommand(ctx.subcommand, p);
-    });
-
-    // Docker wildcard
-    mgr.registerHandler("system-docker-*", [dockerFilter](const json& p, const a0::skills::HandlerContext& ctx) {
-        return a0::xDockerCommand(ctx.subcommand, p, dockerFilter);
-    });
-
-    // Docker compose wildcard
-    mgr.registerHandler("system-docker_compose-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
-        return a0::xDockerComposeCommand(ctx.subcommand, p);
     });
 
     // Meta handlers (need SkillManager + InferenceProvider)
@@ -368,7 +357,7 @@ struct AgentStack {
     DeepSeekProvider provider;
     DefaultContextManager context;
     DefaultDependencyResolver depResolver;
-    DefaultSchemaInferenceEngine inferenceEngine;
+
     a0::docker::DockerContainerManager* containerMgr = nullptr;
     a0::docker::DockerComposeManager* composeMgr = nullptr;
     a0::docker::DockerToolRunnerImpl* dockerRunner = nullptr;
@@ -385,8 +374,8 @@ struct AgentStack {
         , skillMgr(skillsDir, a0Dir + "/store", &persistence)
         , provider(apiKey)
         , depResolver(&skillMgr)
-        , inferenceEngine(&provider)
     {
+    (void)provider;
         if (!mockUrl.empty())
             provider.setMockUrl(mockUrl);
 
@@ -415,17 +404,15 @@ struct AgentStack {
         // Wire ToolRunner/DockerRunner into SkillManager for command tools
         skillMgr.setToolRunner(&toolRunner);
         if (dockerRunner) skillMgr.setDockerRunner(dockerRunner);
-        skillMgr.setDockerSecurityFilter(&dockerFilter);
-
         // Register all system tool C++ handlers
-        xRegisterSystemHandlers(skillMgr, &dockerFilter, &provider);
+        xRegisterSystemHandlers(skillMgr, &provider);
 
         skillRunner = new DefaultSkillRunner(&toolRunner, &provider, &skillMgr,
             &depResolver, dockerRunner, composeMgr);
         skillRunner->setSkillsDir(skillsDir);
 
         core = new DefaultAgentCore(&toolRunner, skillRunner, &provider, &context,
-            &depResolver, &inferenceEngine, &skillMgr,
+            &depResolver, &skillMgr,
             &persistence, dockerRunner, composeMgr);
     }
 

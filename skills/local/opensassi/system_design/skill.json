@@ -51,14 +51,14 @@
       "name": "load_spec",
       "description": "Load the project's spec tree into context",
       "chain": ["system_design_base"],
-      "dependencies": ["system:glob", "system:read"],
+      "dependencies": ["system-fs-glob", "system-fs-read"],
       "promptFile": "prompts/load_spec.md"
     },
     {
       "name": "generate_sequence_diagram",
       "description": "Generate a Mermaid sequence diagram for the system data flow",
       "chain": ["system_design_base"],
-      "dependencies": ["validate_all", "system:read", "system:write"],
+      "dependencies": ["validate_all", "system-fs-read", "system-fs-write"],
       "validators": [{"toolName": "validate_all"}],
       "promptFile": "prompts/generate_sequence_diagram.md"
     },
@@ -66,7 +66,7 @@
       "name": "generate_architecture_diagram",
       "description": "Generate a Mermaid C4 container/component diagram",
       "chain": ["system_design_base"],
-      "dependencies": ["validate_all", "system:read", "system:write"],
+      "dependencies": ["validate_all", "system-fs-read", "system-fs-write"],
       "validators": [{"toolName": "validate_all"}],
       "promptFile": "prompts/generate_architecture_diagram.md"
     },
@@ -74,21 +74,21 @@
       "name": "generate_class_specification",
       "description": "Produce complete C++ class declarations for every component",
       "chain": ["system_design_base"],
-      "dependencies": ["system:read", "system:write"],
+      "dependencies": ["system-fs-read", "system-fs-write"],
       "promptFile": "prompts/generate_class_specification.md"
     },
     {
       "name": "generate_manim_animation",
       "description": "Generate a self-contained Python Manim animation script",
       "chain": ["system_design_base"],
-      "dependencies": ["system:write"],
+      "dependencies": ["system-fs-write"],
       "promptFile": "prompts/generate_manim_animation.md"
     },
     {
       "name": "generate_d3_animation",
       "description": "Generate a self-contained D3.js HTML animation as an executable consistency check",
       "chain": ["system_design_base"],
-      "dependencies": ["extract_artifacts", "test_artifacts", "verify_artifact", "system:read", "system:write"],
+      "dependencies": ["extract_artifacts", "test_artifacts", "verify_artifact", "system-fs-read", "system-fs-write"],
       "validators": [{"toolName": "test_artifacts"}, {"toolName": "verify_artifact"}],
       "promptFile": "prompts/generate_d3_animation.md"
     },
@@ -96,21 +96,21 @@
       "name": "generate_testing_plan",
       "description": "Produce a structured testing plan covering unit, integration, and E2E tests",
       "chain": ["system_design_base"],
-      "dependencies": ["system:read", "system:write"],
+      "dependencies": ["system-fs-read", "system-fs-write"],
       "promptFile": "prompts/generate_testing_plan.md"
     },
     {
       "name": "generate_from_source",
       "description": "Multi-phase bottom-up spec tree generation from source files",
       "chain": ["system_design_base"],
-      "dependencies": ["extract_artifacts", "test_artifacts", "system:glob", "system:read", "system:write", "system:grep"],
+      "dependencies": ["extract_artifacts", "test_artifacts", "system-fs-glob", "system-fs-read", "system-fs-write", "system-fs-grep"],
       "promptFile": "prompts/generate_from_source.md"
     },
     {
       "name": "generate_technical_specification",
       "description": "Produce the complete top-level technical-specification.md",
       "chain": ["system_design_base"],
-      "dependencies": ["validate_all", "system:read", "system:write"],
+      "dependencies": ["validate_all", "system-fs-read", "system-fs-write"],
       "validators": [{"toolName": "validate_all"}],
       "promptFile": "prompts/generate_technical_specification.md"
     },
@@ -118,21 +118,21 @@
       "name": "revise_technical_specification",
       "description": "Propose structured revisions to the technical specification",
       "chain": ["system_design_base"],
-      "dependencies": ["system:read", "system:write"],
+      "dependencies": ["system-fs-read", "system-fs-write"],
       "promptFile": "prompts/revise_technical_specification.md"
     },
     {
       "name": "split_sub_modules",
       "description": "Break a monolithic spec into sub-modules",
       "chain": ["system_design_base"],
-      "dependencies": ["validate_all", "system:read", "system:write"],
+      "dependencies": ["validate_all", "system-fs-read", "system-fs-write"],
       "promptFile": "prompts/split_sub_modules.md"
     },
     {
       "name": "combine_sub_modules",
       "description": "Flatten sub-module specs back to a monolithic document",
       "chain": ["system_design_base"],
-      "dependencies": ["system:read", "system:write"],
+      "dependencies": ["system-fs-read", "system-fs-write"],
       "promptFile": "prompts/combine_sub_modules.md"
     },
     {
@@ -146,28 +146,28 @@
       "name": "load_sub_module_spec",
       "description": "Load a sub-module spec into the active specification's knowledge",
       "chain": ["system_design_base"],
-      "dependencies": ["system:read"],
+      "dependencies": ["system-fs-read"],
       "promptFile": "prompts/load_sub_module_spec.md"
     },
     {
       "name": "generate_sub_module_spec",
       "description": "Generate a .spec.md file for a named sub-module",
       "chain": ["system_design_base"],
-      "dependencies": ["extract_artifacts", "test_artifacts", "system:read", "system:write"],
+      "dependencies": ["extract_artifacts", "test_artifacts", "system-fs-read", "system-fs-write"],
       "promptFile": "prompts/generate_sub_module_spec.md"
     },
     {
       "name": "list_external",
       "description": "List external integration pairs in external/",
       "chain": ["system_design_base"],
-      "dependencies": ["system:glob", "system:read"],
+      "dependencies": ["system-fs-glob", "system-fs-read"],
       "promptFile": "prompts/list_external.md"
     },
     {
       "name": "load_external",
       "description": "Load an external project's spec tree into context",
       "chain": ["system_design_base"],
-      "dependencies": ["system:glob", "system:read"],
+      "dependencies": ["system-fs-glob", "system-fs-read"],
       "promptFile": "prompts/load_external.md"
     },
     {

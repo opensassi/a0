@@ -16,7 +16,7 @@ This document specifies a **b1 agent supervisor sub-module** for the existing a0
 - **a0 auto-discovery** — when an a0 starts in a working directory, it checks for b1 and starts one if missing
 - **Crash detection** — b1 tracks connected a0 PIDs via `waitpid(WNOHANG)`; disconnect from the Unix socket is an immediate crash signal
 - **c2 registration** — b1 connects to the machine-level c2 daemon on startup
-- **Self-improvement** — b1 invokes `a0 --run` as a child process to execute build/modification skills, then signals running a0 instances to restart
+- **Self-improvement** — b1 invokes `a0 run` as a child process to execute build/modification skills, then signals running a0 instances to restart
 - **Bidirectional IPC** — b1 monitors the c2 socket for incoming messages (prompt_reply from user responses) and forwards them to the correct a0 agent, enabling user prompt routing through the c2 web UI
 - **Binary path resolution** — b1 resolves its own path via `readlink("/proc/self/exe")` to find `c2` in the same directory; no PATH dependency. Uses `setsid()` in fork to detach c2 from the terminal process group
 - **`--no-c2` flag** — disables automatic c2 launch; run c2 independently if desired
@@ -211,7 +211,7 @@ graph TB
     A0Instances -->|unix socket register| B1Sock
     B1 --> B1Sock
     B1 -->|waitpid WNOHANG| A0Instances
-    B1 -->|fork/exec --run| A0Instances
+    B1 -->|fork/exec run| A0Instances
     B1 -->|register + push snapshot| C2
     A0Instances -->|log to| DB
     B1 -->|read| DB
@@ -344,19 +344,19 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant B1 as b1 Supervisor
-    participant A0 as a0 child (--run)
+    participant A0 as a0 child (run)
     participant FS as Filesystem
 
     Note over B1: (trigger: crash pattern, schedule, or external signal)
 
     B1->>B1: identify fix → skill name + params
-    B1->>A0: fork/exec a0 --no-b1 --run system:fix_pattern --params '{...}'
+    B1->>A0: fork/exec a0 --no-b1 run system:fix_pattern --params '{...}'
     A0->>FS: modify source files
     A0-->>B1: stdout JSON result
     B1->>B1: parse result
 
     alt success
-        B1->>A0: fork/exec a0 --no-b1 --run system:rebuild --params '{}'
+        B1->>A0: fork/exec a0 --no-b1 run system:rebuild --params '{}'
         A0->>FS: cmake --build build/
         A0-->>B1: build result JSON
         B1->>B1: signal running a0 instances to restart
@@ -409,8 +409,8 @@ b1 --workdir <path> [--no-c2] [--c2-socket <path>]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--a0-dir <path>` | `./.a0` | Root directory for non-committed agent artifacts. b1 socket/pid and SQLite DB resolve under this path. Auto-created on startup |
-| `--run <skill>` | — | Non-interactive mode: execute qualified skill, print JSON result, exit |
-| `--params <json>` | `{}` | JSON params for `--run` |
+| `run <skill>` | — | Non-interactive mode: execute qualified skill, print JSON result, exit |
+| `--params <json>` | `{}` | JSON params for `run` subcommand |
 | `--no-b1` | `false` | Skip b1 launch check and socket registration |
 | `--kill-all` | `false` | On exit (or standalone): send SIGTERM to b1 and c2, unlink sockets |
 
@@ -437,7 +437,7 @@ b1 --workdir <path> [--no-c2] [--c2-socket <path>]
 | `Supervisor` | agent disconnect detection | Close peer socket → Supervisor detects POLLHUP, state = CRASHED |
 | `Supervisor` | waitpid crash detection | Fork child, kill it → Supervisor detects exit via waitpid |
 | `Supervisor` | duplicate PID rejection | Register same PID twice → second is ignored or updates |
-| `A0Launcher` | runSkill success | `a0 --no-b1 --run <skill>` exits 0, result captured |
+| `A0Launcher` | runSkill success | `a0 --no-b1 run <skill>` exits 0, result captured |
 | `A0Launcher` | runSkill timeout | Child exceeds timeout → -2 returned, child killed |
 | `A0Launcher` | runSkill non-zero exit | Child exits 1 → -1 returned |
 
@@ -451,7 +451,7 @@ b1 --workdir <path> [--no-c2] [--c2-socket <path>]
 | INT‑B1‑04 | --no-b1 disables launch | Run `a0 --no-b1` | No b1 process started, no socket |
 | INT‑B1‑05 | --kill-all cleans up | Run `a0 --kill-all` | b1 process dead, socket unlinked |
 | INT‑B1‑06 | b1 registers with c2 | Start `b1`, verify c2 registration | c2 receives register message |
-| INT‑B1‑07 | Self-improvement loop | b1 invokes `a0 --run system:rebuild` | Build succeeds, existing a0 instances notified |
+| INT‑B1‑07 | Self-improvement loop | b1 invokes `a0 run system:rebuild` | Build succeeds, existing a0 instances notified |
 
 ### 6.3 Mocking
 
@@ -463,15 +463,15 @@ All socket tests use a loopback Unix socket pair (socketpair(AF_UNIX)). No real 
 
 ### 7.1 a0 Changes (`src/main.cpp`)
 
-1. **Parsing**: Add `--a0-dir`, `--run`, `--params`, `--no-b1`, `--kill-all` to existing argument parser.
+1. **Parsing**: Add `--a0-dir`, `run` subcommand, `--params`, `--no-b1`, `--kill-all` to existing argument parser.
 2. **`.a0/` initialization**: Call `ensureA0Dir(a0Dir)` after flag parsing. Creates the directory if missing; on first creation, appends `.a0/` to `.gitignore` if CWD is a git repo. All b1 paths resolve under `a0Dir`.
-3. **Early exit** (`--kill-all` without `--run`): Read `a0Dir/b1.pid`, send SIGTERM (2s grace), then SIGKILL. Unlink `a0Dir/b1.sock`. Read c2 PID, same sequence. Exit 0.
+3. **Early exit** (`--kill-all` without `run` subcommand): Read `a0Dir/b1.pid`, send SIGTERM (2s grace), then SIGKILL. Unlink `a0Dir/b1.sock`. Read c2 PID, same sequence. Exit 0.
 4. **Component init** (unchanged): All existing components initialize as before.
-5. **Post-init** (if not `--no-b1` and not `--run`): 
+5. **Post-init** (if not `--no-b1` and not `run` subcommand): 
    - Read `a0Dir/b1.pid`. If process alive → connect. If stale → remove socket, fork/exec `b1 --workdir <cwd>`, poll for socket readiness (exponential backoff, max 5s), then connect.
    - Send `{"type":"register","pid":<getpid()>,"session":"<sessionUuid>"}`.
    - Registration is fire-and-forget — disconnect detection handles crash monitoring.
-6. **`--run` mode**: Skip b1 init entirely. Resolve skill, execute via `DefaultAgentCore::processGoal()` (or new `runSkill()` method), print JSON result to stdout. Exit. If `--kill-all` also set, clean up b1/c2 before exit.
+6. **`run` subcommand**: Skip b1 init entirely. Resolve skill, execute via `DefaultAgentCore::processGoal()` (or new `runSkill()` method), print JSON result to stdout. Exit. If `--kill-all` also set, clean up b1/c2 before exit.
 7. **REPL loop**: Existing behavior. On loop exit, if `--kill-all`, run cleanup.
 
 ### 7.2 Build System
@@ -523,10 +523,10 @@ Both b1 and c2 depend on this library.
 
 ### Phase 3: a0 Integration
 
-- Add `--run`, `--params`, `--no-b1`, `--kill-all` to `main.cpp` argument parser
+- Add `run` subcommand, `--params`, `--no-b1`, `--kill-all` to `main.cpp` argument parser
 - Implement b1 startup check + registration in post-init
 - Implement `--kill-all` cleanup logic
-- Add non-interactive execution path for `--run` in `DefaultAgentCore`
+- Add non-interactive execution path for `run` subcommand in `DefaultAgentCore`
 - Integration tests with mock b1 binary
 
 ### Phase 4: A0Launcher

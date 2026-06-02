@@ -40,6 +40,7 @@ std::string DeepSeekProvider::complete(const std::string& systemPrompt,
     payload["max_tokens"] = 4096;
 
     std::string body = payload.dump();
+    TRACE_LOG("request body: " << body);
 
     curl_easy_setopt(curl, CURLOPT_URL, m_baseUrl.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -64,6 +65,8 @@ std::string DeepSeekProvider::complete(const std::string& systemPrompt,
 
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
+
+    TRACE_LOG("response: " << response);
 
     try {
         json jsonResp = json::parse(response);

@@ -18,7 +18,6 @@ set(LIB_SOURCES
     src/skill_runner.cpp
     src/deepseek_provider.cpp
     src/context_manager.cpp
-    src/schema_inference_engine.cpp
     src/dependency_resolver.cpp
     src/docker_security_filter.cpp
     src/stream_registry.cpp
@@ -92,7 +91,6 @@ add_agent_test(test_session_context test/unit/test_session_context.cpp)
 # Disabled: replaced by synthetic test framework
 # add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
 # add_agent_test(test_interfaces test/unit/test_interfaces.cpp)
-add_agent_test(test_schema_inference test/unit/test_schema_inference_engine.cpp)
 add_agent_test(test_skill_manager test/unit/test_skill_manager.cpp)
 add_agent_test(test_context_manager test/unit/test_context_manager.cpp)
 add_agent_test(test_deepseek_provider test/unit/test_deepseek_provider.cpp)

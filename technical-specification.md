@@ -185,20 +185,14 @@ public:
     virtual void setGlobalVars(const std::unordered_map<std::string, std::string>& vars) = 0;
 };
 
-class SchemaInferenceEngine {
-public:
-    virtual ~SchemaInferenceEngine() = default;
-    virtual Tool inferTool(const std::string& naturalLanguageDescription) = 0;
-    virtual Prompt inferPrompt(const std::string& naturalLanguageDescription) = 0;
-};
+
 
 class AgentCore {
 public:
     virtual ~AgentCore() = default;
     virtual bool init(const std::string& componentsDir) = 0;
     // Processes a user goal. Matches prompts by exact name (case-sensitive) against the goal string.
-    // If no exact match, uses SchemaInferenceEngine to infer a new prompt.
-    // If inference also fails, enters the forked tool-calling loop (xRunForkedLoop).
+    // If no exact match, enters the forked tool-calling loop (xRunForkedLoop).
     virtual json processGoal(const std::string& goal) = 0;
     // Streaming variant: processes a goal with streaming tool invocations.
     virtual a0::StreamHandle processGoalStreaming(const std::string& goal,
@@ -258,7 +252,7 @@ graph TB
         HostRunner[HostToolRunner]
         DockerRunner[DockerToolRunner]
         SkillRunner[SkillRunner]
-        InfEngine[SchemaInferenceEngine]
+
         DepResolver[DependencyResolver]
         Persistence[PersistenceStore]
         ContainerMgr[ContainerManager]
@@ -284,7 +278,6 @@ graph TB
     Core --> HostRunner
     Core --> DockerRunner
     Core --> SkillRunner
-    Core --> InfEngine
     SkillMgr --> SkillMgr_Handlers
     SkillMgr --> HostRunner
     SkillMgr --> DockerRunner
@@ -293,8 +286,6 @@ graph TB
     SkillRunner --> SkillMgr
     SkillRunner --> HostRunner
     SkillRunner --> DockerRunner
-    InfEngine --> DeepSeek
-    InfEngine --> SkillMgr
     Core --> Persistence
     Persistence --> DB
     SkillMgr --> SkillsDir
@@ -661,7 +652,7 @@ project/
 │   ├── skill_runner.cpp/.h
 │   ├── deepseek_provider.cpp/.h
 │   ├── context_manager.cpp/.h
-│   ├── schema_inference_engine.cpp/.h
+
 │   ├── dependency_resolver.cpp/.h
 │   ├── trace.h
 │   ├── stream_registry.h/.cpp           # Streaming IPC support
