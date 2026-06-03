@@ -2,6 +2,7 @@
 #include "sse_manager.h"
 #include "c2_event_store.h"
 #include "ipc_protocol.h"
+#include "trace.h"
 #include <unistd.h>
 #include <sys/poll.h>
 #include <cerrno>
@@ -64,6 +65,7 @@ int C2Listener::run() {
         if (pollFds[0].revents & POLLIN) {
             ipc::UnixSocket client;
             if (m_listenSocket.accept(client) == 0 && client.isOpen()) {
+                TRACE_LOG("c2: b1 connect on listen socket");
                 peerFds.push_back(client.release());
             }
         }
@@ -72,6 +74,7 @@ int C2Listener::run() {
         for (size_t i = 1; i < pollFds.size(); ++i) {
             int fd = pollFds[i].fd;
             if (pollFds[i].revents & (POLLHUP | POLLERR)) {
+                TRACE_LOG("c2: b1 disconnected fd=" << fd);
                 ::close(fd);
                 {
                     std::lock_guard<std::mutex> lock(m_b1Mutex);
@@ -155,6 +158,7 @@ int C2Listener::xHandleRegister(const nlohmann::json& msg, int peerFd) {
         m_b1PidToFd[pid] = peerFd;
     }
 
+    TRACE_LOG("c2: b1 registered pid=" << pid << " wd=" << wd << " hostname=" << hostname);
     return m_registry->upsertB1(pid, wd, hostname);
 }
 
@@ -179,6 +183,7 @@ int C2Listener::xHandleUserPrompt(const nlohmann::json& msg) {
     std::string toolCallId = msg.value("toolCallId", "");
     std::string prompt = msg.value("prompt", "");
     if (session.empty() || toolCallId.empty() || prompt.empty()) return -1;
+    TRACE_LOG("c2: user_prompt session=" << session << " toolCallId=" << toolCallId);
 
     m_events->upsertPrompt(session, toolCallId, prompt, "");
 
@@ -205,14 +210,18 @@ int C2Listener::xHandleStreamData(const nlohmann::json& msg) {
     ev["timestamp"] = std::to_string(
         std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::system_clock::now().time_since_epoch()).count());
+    TRACE_LOG("c2: stream_data streamId=" << msg.value("streamId", 0)
+              << " seq=" << msg.value("chunkSeq", 0));
     m_sse->broadcast("stream_chunk", ev.dump());
     return 0;
 }
 
 int C2Listener::xHandleStreamEnd(const nlohmann::json& msg) {
     if (!m_sse) return -1;
+    int64_t sid = msg.value("streamId", 0);
+    TRACE_LOG("c2: stream_end streamId=" << sid);
     nlohmann::json ev;
-    ev["streamId"] = msg.value("streamId", 0);
+    ev["streamId"] = sid;
     ev["exitCode"] = msg.value("pid", 0);
     m_sse->broadcast("stream_end", ev.dump());
     return 0;

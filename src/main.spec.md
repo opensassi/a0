@@ -62,6 +62,12 @@ int main(int argc, char* argv[]);
 //   --max-parallel <n>       Max concurrent tool executions (default 4)
 //   --external-repo <url>    External a0 repo URL for self-development scripts
 //   --skill-arg <key=val>    Repeatable: skill argument key=value pairs
+//   --log-file <path>        Redirect stderr to file; child daemons derive own path
+//
+// Terminal subcommand flags:
+//   a0 [--a0-dir <dir>] [--log-file <path>] terminal --terminal-id <id> --cwd <path>
+//   --terminal-id <id>       Terminal identifier for c2 stream lookup
+//   --cwd <path>             Working directory for the terminal shell (chdir before PTY)
 
 // Wire-up order (no SystemToolRegistry):
 //   1. SqliteStore(a0Dir + "/db/sessions.db")
@@ -80,7 +86,33 @@ int main(int argc, char* argv[]);
 //   8. core.init(skillsDir, a0Dir)       // new 2-arg overload
 ```
 
-## 3. AgentStack
+## 3. Log File Propagation
+
+### Helper
+
+```cpp
+static std::string xChildLog(const std::string& parentLog, const std::string& suffix) {
+    if (parentLog.empty()) return "";
+    auto dot = parentLog.rfind('.');
+    return (dot != std::string::npos)
+        ? parentLog.substr(0, dot) + "-" + suffix + parentLog.substr(dot)
+        : parentLog + "-" + suffix;
+}
+```
+
+`xChildLog("/tmp/c2-e2e.log", "a0")` → `"/tmp/c2-e2e-a0.log"`
+
+### Propagation Chain
+
+```
+c2 --log-file /tmp/c2-e2e.log
+  └── forks a0 terminal with --log-file /tmp/c2-e2e-a0.log
+        └── a0 forks b1 with --log-file /tmp/c2-e2e-a0-b1.log
+```
+
+When `cmdTerminal` launches b1, it checks whether a parent `--log-file` was set. If so, it derives the b1 log path and passes it as `--log-file` to the b1 executable. The REPL mode b1 launch follows the same derivation.
+
+## 4. AgentStack
 
 ```cpp
 struct AgentStack {
@@ -115,7 +147,7 @@ struct AgentStack {
 };
 ```
 
-## 4. Architecture Diagram
+## 5. Architecture Diagram
 
 ```mermaid
 graph TB
@@ -187,7 +219,7 @@ graph TB
     PS --> DB[(.a0/db/sessions.db)]
 ```
 
-## 5. Data Flow
+## 6. Data Flow
 
 ```mermaid
 sequenceDiagram
@@ -238,7 +270,7 @@ sequenceDiagram
     M->>OS: return 0
 ```
 
-## 6. Error Handling
+## 7. Error Handling
 
 | Error Condition | Signal | Notes |
 |---|---|---|
@@ -250,7 +282,7 @@ sequenceDiagram
 | cmdKillAll no PID files | No-op, returns 0 | |
 | `skillsDir` does not exist | `loadAll` returns -1, exit 1 | |
 
-## 7. Testing Requirements
+## 8. Testing Requirements
 
 | Method | Test Case |
 |--------|-----------|
@@ -268,3 +300,9 @@ sequenceDiagram
 | `main` (CLI flags) | `--skill-arg standalone` (no `=`) → treated as `standalone=true` |
 | `main` (CLI flags) | `--external-repo` with missing dir → git clone executed in init |
 | `main` (CLI flags) | `--external-repo` with existing dir → git fetch/checkout/reset executed |
+| `main` (CLI flags) | `--log-file /tmp/a0.log` → stderr redirected, child b1 receives derived `--log-file` |
+| `main` (CLI flags) | `terminal --terminal-id X --cwd /tmp` → terminal subcommand parsed, chdir to /tmp |
+| `cmdTerminal` | b1 auto-launch when b1.sock missing → fork/exec b1, connect, register |
+| `cmdTerminal` | b1 already running → reuses existing b1, no second fork |
+| `xChildLog` | `/tmp/a.log` with suffix `"b1"` → returns `/tmp/a-b1.log` |
+| `xChildLog` | Empty parent log → returns `""` |

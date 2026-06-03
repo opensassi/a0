@@ -21,6 +21,7 @@
 #include "session_context.h"
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <unordered_map>
 #include <fstream>
 #include <iostream>
@@ -36,6 +37,8 @@
 #include <sqlite3.h>
 
 using json = nlohmann::json;
+
+static std::string g_a0LogFile; // --log-file value, propagated to child processes
 
 // ---------------------------------------------------------------------------
 // Helpers (unchanged from original)
@@ -132,6 +135,14 @@ static std::string xSelfDir() {
     std::string path(buf);
     auto slash = path.rfind('/');
     return (slash == std::string::npos) ? "." : path.substr(0, slash);
+}
+
+static std::string xChildLog(const std::string& parentLog, const std::string& suffix) {
+    if (parentLog.empty()) return "";
+    auto dot = parentLog.rfind('.');
+    return (dot != std::string::npos)
+        ? parentLog.substr(0, dot) + "-" + suffix + parentLog.substr(dot)
+        : parentLog + "-" + suffix;
 }
 
 static std::string getC2PidPath() {
@@ -578,8 +589,14 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
             pid_t pid = fork();
             if (pid == 0) {
                 setsid();
-                execlp(b1Path.c_str(), "b1", "--workdir", initialCwd.c_str(),
-                       "--a0-dir", a0Dir.c_str(), nullptr);
+                std::string b1Log = xChildLog(g_a0LogFile, "b1");
+                if (!b1Log.empty()) {
+                    execlp(b1Path.c_str(), "b1", "--workdir", initialCwd.c_str(),
+                           "--a0-dir", a0Dir.c_str(), "--log-file", b1Log.c_str(), nullptr);
+                } else {
+                    execlp(b1Path.c_str(), "b1", "--workdir", initialCwd.c_str(),
+                           "--a0-dir", a0Dir.c_str(), nullptr);
+                }
                 _exit(127);
             }
             for (int i = 0; i < 50; ++i) {
@@ -610,7 +627,24 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
 // Command: terminal
 // ---------------------------------------------------------------------------
 
-static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId) {
+static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, const std::string& cwd) {
+    // Resolve workdir for b1 — use requested cwd or current dir
+    std::string workdir = cwd;
+    if (workdir.empty() || workdir == ".") {
+        char buf[4096];
+        workdir = getcwd(buf, sizeof(buf)) ? buf : ".";
+    } else {
+        char resolved[4096];
+        if (realpath(workdir.c_str(), resolved))
+            workdir = resolved;
+    }
+
+    // Change to the requested working directory before creating PTY
+    if (chdir(workdir.c_str()) != 0) {
+        std::cerr << "a0: terminal: chdir(" << workdir << ") failed: "
+                  << strerror(errno) << "\n";
+    }
+
     a0::persistence::SqliteStore persistence(a0Dir + "/db/sessions.db");
 
     a0::persistence::BuildFingerprint fp;
@@ -619,6 +653,49 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId) 
     std::string sessionUuid = generateHexSessionId();
     int64_t sessionId = persistence.createSession(sessionUuid, 0, 0, agentId);
 
+    // Launch b1 if not running — required for IPC relay to c2
+    std::string b1SockPath = a0Dir + "/b1.sock";
+    std::string b1PidPath = a0Dir + "/b1.pid";
+    {
+        int existingPid = -1;
+        std::ifstream pf(b1PidPath);
+        if (pf) pf >> existingPid;
+        bool alive = (existingPid > 0 && kill(existingPid, 0) == 0);
+        if (!alive) {
+            std::remove(b1SockPath.c_str());
+            std::string b1Path = xSelfDir() + "/b1";
+            pid_t b1Pid = fork();
+            if (b1Pid == 0) {
+                setsid();
+                std::string b1Log = xChildLog(g_a0LogFile, "b1");
+                if (!b1Log.empty()) {
+                    execlp(b1Path.c_str(), "b1", "--workdir", workdir.c_str(),
+                           "--a0-dir", a0Dir.c_str(), "--log-file", b1Log.c_str(), nullptr);
+                } else {
+                    execlp(b1Path.c_str(), "b1", "--workdir", workdir.c_str(),
+                           "--a0-dir", a0Dir.c_str(), nullptr);
+                }
+                _exit(127);
+            }
+            if (b1Pid < 0) {
+                std::cerr << "a0: terminal: fork for b1 failed\n";
+                return 1;
+            }
+            for (int i = 0; i < 50; ++i) {
+                if (access(b1SockPath.c_str(), F_OK) == 0) break;
+                usleep(100000);
+            }
+        }
+    }
+
+    // Connect to b1
+    a0::ipc::UnixSocket b1Sock;
+    if (b1Sock.connect(b1SockPath, 2000) != 0) {
+        std::cerr << "a0: terminal: cannot connect to b1\n";
+        return 1;
+    }
+
+    // Create PTY
     int master = posix_openpt(O_RDWR | O_NOCTTY);
     if (master < 0) {
         std::cerr << "a0: terminal: posix_openpt failed\n";
@@ -627,6 +704,7 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId) 
     grantpt(master);
     unlockpt(master);
 
+    // Fork shell into PTY
     pid_t shellPid = fork();
     if (shellPid == 0) {
         setsid();
@@ -648,12 +726,11 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId) 
         return 1;
     }
 
+    // Create stream and notify c2 via b1
     int64_t streamId = persistence.createStream(sessionId, "",
         "terminal", "host", "", ".", terminalId);
 
-    std::string b1SockPath = a0Dir + "/b1.sock";
-    a0::ipc::UnixSocket b1Sock;
-    if (b1Sock.connect(b1SockPath, 2000) == 0) {
+    {
         a0::ipc::Message ready;
         ready.type = a0::ipc::MessageType::TERMINAL_READY;
         ready.streamId = streamId;
@@ -662,6 +739,7 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId) 
         a0::ipc::sendMessage(b1Sock, ready);
     }
 
+    // Read loop
     {
         char buf[4096];
         int seq = 0;
@@ -740,8 +818,10 @@ int main(int argc, char* argv[]) {
     // Global flags
     std::string a0Dir = "./.a0";
     std::string envFilePath = ".env";
+    std::string logFile;
     app.add_option("--a0-dir", a0Dir, ".a0 state root (default ./.a0)");
     app.add_option("--env-file", envFilePath, ".env file path (default ./.env)");
+    app.add_option("--log-file", logFile, "Redirect stderr to file");
 
     // Agent flags (shared by repl and run modes)
     std::string apiKey, mockUrl, skillsDir = "./skills", resumeSessionId;
@@ -798,8 +878,10 @@ int main(int argc, char* argv[]) {
 
     // Subcommand: terminal
     std::string terminalId;
+    std::string terminalCwd;
     auto* termCmd = app.add_subcommand("terminal", "PTY terminal session");
-    termCmd->add_option("--id", terminalId, "Terminal identifier");
+    termCmd->add_option("--cwd", terminalCwd, "Working directory for the terminal shell");
+    termCmd->add_option("--terminal-id", terminalId, "Terminal identifier");
 
     // 0 subcommands = repl mode (default); unlimited otherwise
     // Nesting works without explicit require_subcommand.
@@ -856,6 +938,16 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Redirect stderr to log file if specified
+    g_a0LogFile = logFile;
+    if (!logFile.empty()) {
+        int fd = ::open(logFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) {
+            ::dup2(fd, STDERR_FILENO);
+            ::close(fd);
+        }
+    }
+
     // Dispatch by subcommand
     if (app.got_subcommand(killCmd))
         return cmdKillAll(a0Dir);
@@ -874,7 +966,7 @@ int main(int argc, char* argv[]) {
                       noDocker, noContainerPool, idleTimeoutStr, maxIdleStr,
                       defaultImage, maxParallel, externalRepo, skillArgs);
     if (app.got_subcommand(termCmd))
-        return cmdTerminal(a0Dir, terminalId);
+        return cmdTerminal(a0Dir, terminalId, terminalCwd);
 
     // Default: repl
     return cmdRepl(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,

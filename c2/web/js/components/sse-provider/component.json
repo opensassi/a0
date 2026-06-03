@@ -1,0 +1,18 @@
+{
+    "name": "sse-provider",
+    "tag": "sse-provider",
+    "description": "Invisible bridge that relays Store events to window CustomEvents and event-log",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": ["event-log"],
+    "ids": {},
+    "dynamicIds": {},
+    "events": {
+        "emits": ["b1_connected", "b1_disconnected", "agent_update", "user_prompt",
+                   "prompt_resolved", "prompt_dismissed", "stream_chunk", "stream_end",
+                   "terminal_ready"],
+        "listens": ["b1_connected", "b1_disconnected", "agent_update", "user_prompt",
+                     "prompt_resolved", "prompt_dismissed", "stream_chunk", "stream_end",
+                     "terminal_ready"]
+    }
+}

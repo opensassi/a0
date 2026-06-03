@@ -1,0 +1,18 @@
+{
+    "name": "prompt-banner",
+    "tag": "prompt-banner",
+    "description": "User prompt input banner allowing response or dismiss for pending agent prompts",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": [],
+    "ids": {
+        "banner": { "description": "Banner container", "type": "container" },
+        "prompt-session": { "description": "Prompt session ID display", "type": "label" },
+        "prompt-text": { "description": "Prompt text display", "type": "label" },
+        "prompt-input": { "description": "Response text input", "type": "input" },
+        "prompt-send": { "description": "Send response button", "type": "button", "action": "send prompt response" },
+        "prompt-dismiss": { "description": "Dismiss prompt button", "type": "button", "action": "dismiss prompt" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": [], "listens": ["newPrompt"] }
+}

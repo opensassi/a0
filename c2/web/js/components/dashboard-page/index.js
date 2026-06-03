@@ -1,14 +1,14 @@
-import Store from '../store.js';
-import { fetchStatus, fetchPending } from '../api.js';
-import { connectHost } from '../sse.js';
-import './stats-cards.js';
-import './host-list.js';
-import './event-log.js';
-import './prompt-banner.js';
+import Store from '../../store.js';
+import { fetchStatus, fetchPending } from '../../api.js';
+import { connectHost } from '../../sse.js';
+import './../stats-cards/index.js';
+import './../host-list/index.js';
+import './../event-log/index.js';
+import './../prompt-banner/index.js';
 
 const template = document.createElement('template');
 template.innerHTML = `
-<div class="page dashboard">
+<div class="page dashboard" id="page-dashboard">
   <h2>Dashboard</h2>
   <stats-cards></stats-cards>
   <div class="dashboard-grid">

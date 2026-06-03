@@ -87,7 +87,31 @@ sequenceDiagram
 | `msg` has side effects | Executed only when `TRACE` is defined |
 | Multiple translation units | Each unit independently controlled by its own `#define TRACE` |
 
-## 7. Testing Requirements
+## 7. Integration
+
+### CMake ENABLE_TRACE
+
+```cmake
+option(ENABLE_TRACE "Enable trace logging" OFF)
+if(ENABLE_TRACE)
+    target_compile_definitions(a0_lib PRIVATE TRACE)
+    target_compile_definitions(b1_lib PRIVATE TRACE)
+    target_compile_definitions(c2_lib PRIVATE TRACE)
+endif()
+```
+
+Set `-DENABLE_TRACE=ON` at configure time to enable `TRACE_LOG` across all three daemons. Each daemon additionally supports `--log-file <path>` to redirect stderr (including TRACE output) to a persistent file.
+
+### Log File Propagation
+
+When daemons are launched with `--log-file`, child daemons derive their own path from the parent's:
+
+| Parent | Child | Path derivation |
+|--------|-------|----------------|
+| `c2 --log-file /tmp/c2.log` | a0 terminal | `/tmp/c2-a0.log` |
+| a0 with `--log-file /tmp/a0.log` | b1 | `/tmp/a0-b1.log` |
+
+## 8. Testing Requirements
 
 | Scenario | Test |
 |---|---|

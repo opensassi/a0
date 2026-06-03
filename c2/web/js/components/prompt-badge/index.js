@@ -1,4 +1,4 @@
-import Store from '../store.js';
+import Store from '../../store.js';
 
 const template = document.createElement('template');
 template.innerHTML = `

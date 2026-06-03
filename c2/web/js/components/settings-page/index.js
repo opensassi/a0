@@ -1,8 +1,8 @@
-import Store from '../store.js';
+import Store from '../../store.js';
 
 const template = document.createElement('template');
 template.innerHTML = `
-<div class="page">
+<div class="page" id="page-settings">
   <h2>Settings</h2>
   <div class="settings-group">
     <h3>Conversation Display</h3>

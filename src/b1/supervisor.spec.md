@@ -138,7 +138,26 @@ sequenceDiagram
     Sup->>C2: forward terminal_ready
 ```
 
-## 5. Error Handling
+## 5. Terminal Open Handler
+
+`xHandleTerminalOpen` receives a `TERMINAL_OPEN` IPC from c2. It:
+
+1. Resolves the requested `cwd` to an absolute path
+2. Resolves the a0 binary path from `/proc/self/exe` (same directory as b1)
+3. Derives child `--log-file` from `g_b1LogFile` if set (`/parent-b1.log` → `/parent-a0.log`)
+4. Forks a child process that:
+   - Calls `setsid()` to detach
+   - `execlp`s `a0 --a0-dir <cwd>/.a0 [--log-file <path>] terminal --cwd <cwd> --terminal-id <id>`
+
+### TRACE_LOG instrumentation
+
+Critical relay points include TRACE_LOG calls (enabled via `-DENABLE_TRACE=ON`):
+- `xHandleRegister` → `"b1: agent register pid=... session=..."`
+- Agent POLLHUP/disconnect → `"b1: agent disconnected pid=..."`
+- `xHandleStreamData` → `"b1: relay stream_data streamId=..."`
+- `xHandleTerminalOpen` → `"b1: terminal_open cwd=..."`
+
+## 6. Error Handling
 
 | Scenario | Behaviour |
 |----------|-----------|
@@ -149,8 +168,9 @@ sequenceDiagram
 | user_prompt from unknown agent | Forwarded to c2 with pid=0 |
 | prompt_reply for unknown session | Logged to stderr, dropped |
 | c2 connection lost mid-operation | Next send returns -1 → fd closed, c2 auto-relaunch |
+| --log-file derivation | Child a0 terminal receives derived log path; if parent log is empty, no --log-file passed |
 
-## 6. Testing Requirements
+## 7. Testing Requirements
 
 | Method | Test Case | Input | Expected |
 |--------|-----------|-------|----------|

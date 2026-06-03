@@ -13,6 +13,9 @@
 #include <sqlite3.h>
 #include <unistd.h>
 #include <cstdlib>
+#include "trace.h"
+
+std::string g_c2LogFile;
 
 namespace a0::c2 {
 
@@ -382,6 +385,7 @@ void DashboardServer::xSetupRoutes(App* app) {
             }
 
             if (matchedB1 > 0) {
+                TRACE_LOG("c2: terminal_open cwd=" << cwd << " via b1 pid=" << matchedB1);
                 // Send TERMINAL_OPEN to the matching b1
                 ipc::Message msg;
                 msg.type = ipc::MessageType::TERMINAL_OPEN;
@@ -403,13 +407,29 @@ void DashboardServer::xSetupRoutes(App* app) {
                         a0Path = self.substr(0, slash) + "/a0";
                 }
                 if (!a0Path.empty()) {
+                    TRACE_LOG("c2: terminal_open cwd=" << cwd << " direct fork a0");
                     pid_t child = fork();
+                    // Derive child log file path
+                    std::string a0Log;
+                    if (!g_c2LogFile.empty()) {
+                        auto dot = g_c2LogFile.rfind('.');
+                        a0Log = (dot != std::string::npos)
+                            ? g_c2LogFile.substr(0, dot) + "-a0" + g_c2LogFile.substr(dot)
+                            : g_c2LogFile + "-a0";
+                    }
                     if (child == 0) {
                         setsid();
                         std::string a0Dir = cwd + "/.a0";
-                        execlp(a0Path.c_str(), "a0", "--terminal", "--cwd", cwd.c_str(),
-                               "--a0-dir", a0Dir.c_str(), "--terminal-id", terminalId.c_str(),
-                               nullptr);
+                        if (!a0Log.empty()) {
+                            execlp(a0Path.c_str(), "a0", "--a0-dir", a0Dir.c_str(),
+                                   "--log-file", a0Log.c_str(),
+                                   "terminal", "--terminal-id", terminalId.c_str(),
+                                   "--cwd", cwd.c_str(), nullptr);
+                        } else {
+                            execlp(a0Path.c_str(), "a0", "--a0-dir", a0Dir.c_str(),
+                                   "terminal", "--terminal-id", terminalId.c_str(),
+                                   "--cwd", cwd.c_str(), nullptr);
+                        }
                         _exit(127);
                     }
                     // Record for status polling
@@ -546,50 +566,45 @@ void DashboardServer::xSetupRoutes(App* app) {
         std::string streamIdStr(req->getParameter(0));
         int64_t streamId = std::stoll(streamIdStr);
 
-        // Find any b1 to resolve DB path from
-        auto b1s = m_registry->listB1s();
-        std::string dbPath;
-        for (const auto& b1 : b1s) {
-            dbPath = b1.workdir + "/.a0/db/sessions.db";
-            break;
+        // Resolve DB path from known terminals (direct + b1-registered)
+        std::vector<std::string> dbPaths;
+        for (const auto& pair : m_directTerminals) {
+            dbPaths.push_back(pair.second + "/.a0/db/sessions.db");
         }
-
-        if (dbPath.empty()) {
-            res->writeHeader("Content-Type", "application/json");
-            res->end("[]");
-            return;
-        }
-
-        sqlite3* db = nullptr;
-        if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
-            if (db) sqlite3_close(db);
-            res->writeHeader("Content-Type", "application/json");
-            res->end("[]");
-            return;
+        for (const auto& b1 : m_registry->listB1s()) {
+            dbPaths.push_back(b1.workdir + "/.a0/db/sessions.db");
         }
 
         nlohmann::json arr = nlohmann::json::array();
-        sqlite3_stmt* stmt;
-        const char* sql = "SELECT id, stream_id, seq, direction, data, timestamp"
-            " FROM stream_chunk WHERE stream_id = ? ORDER BY seq LIMIT 1000";
-        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-            sqlite3_bind_int64(stmt, 1, streamId);
-            while (sqlite3_step(stmt) == SQLITE_ROW) {
-                nlohmann::json c;
-                c["id"] = sqlite3_column_int64(stmt, 0);
-                c["streamId"] = sqlite3_column_int64(stmt, 1);
-                c["seq"] = sqlite3_column_int(stmt, 2);
-                if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)))
-                    c["direction"] = p;
-                if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)))
-                    c["data"] = p;
-                c["timestamp"] = sqlite3_column_int64(stmt, 5);
-                arr.push_back(c);
+        for (const auto& dbPath : dbPaths) {
+            sqlite3* db = nullptr;
+            if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+                if (db) sqlite3_close(db);
+                continue;
             }
-            sqlite3_finalize(stmt);
+            sqlite3_stmt* stmt;
+            const char* sql = "SELECT id, stream_id, seq, direction, data, timestamp"
+                " FROM stream_chunk WHERE stream_id = ? ORDER BY seq LIMIT 1000";
+            if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_int64(stmt, 1, streamId);
+                while (sqlite3_step(stmt) == SQLITE_ROW) {
+                    nlohmann::json c;
+                    c["id"] = sqlite3_column_int64(stmt, 0);
+                    c["streamId"] = sqlite3_column_int64(stmt, 1);
+                    c["seq"] = sqlite3_column_int(stmt, 2);
+                    if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)))
+                        c["direction"] = p;
+                    if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)))
+                        c["data"] = p;
+                    c["timestamp"] = sqlite3_column_int64(stmt, 5);
+                    arr.push_back(c);
+                }
+                sqlite3_finalize(stmt);
+            }
+            sqlite3_close(db);
+            if (!arr.empty()) break;
         }
 
-        sqlite3_close(db);
         res->writeHeader("Content-Type", "application/json");
         res->end(arr.dump(2));
     });

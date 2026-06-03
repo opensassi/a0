@@ -1,0 +1,16 @@
+{
+    "name": "stats-cards",
+    "tag": "stats-cards",
+    "description": "Statistics cards showing B1, agent, crashed, and pending counts",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": [],
+    "ids": {
+        "stat-b1s": { "description": "B1 supervisor count", "type": "stat" },
+        "stat-agents": { "description": "A0 agent count", "type": "stat" },
+        "stat-crashed": { "description": "Crashed agent count", "type": "stat" },
+        "stat-prompts": { "description": "Pending prompt count", "type": "stat" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": [], "listens": ["stats", "pendingPrompts"] }
+}

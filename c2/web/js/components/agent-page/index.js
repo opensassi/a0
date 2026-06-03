@@ -1,11 +1,11 @@
-import Store from '../store.js';
-import { fetchAgent } from '../api.js';
-import './conversation-view.js';
-import './prompt-banner.js';
+import Store from '../../store.js';
+import { fetchAgent } from '../../api.js';
+import './../conversation-view/index.js';
+import './../prompt-banner/index.js';
 
 const template = document.createElement('template');
 template.innerHTML = `
-<div class="page">
+<div class="page" id="page-agent">
   <a href="/" data-nav class="back-link">&larr; Back to Dashboard</a>
   <div id="agent-info" class="agent-info">
     <h2 id="agent-title">Agent</h2>

@@ -1,13 +1,13 @@
-import Store from '../store.js';
+import Store from '../../store.js';
 
 const template = document.createElement('template');
 template.innerHTML = `
 <header>
   <nav>
-    <a href="/" data-nav>Dashboard</a>
-    <a href="/hosts" data-nav>Hosts</a>
-    <a href="/projects" data-nav>Projects</a>
-    <a href="/settings" data-nav>Settings</a>
+    <a href="/" id="nav-dashboard">Dashboard</a>
+    <a href="/hosts" id="nav-hosts">Hosts</a>
+    <a href="/projects" id="nav-projects">Projects</a>
+    <a href="/settings" id="nav-settings">Settings</a>
   </nav>
   <span id="prompt-badge" class="badge hidden"></span>
 </header>
@@ -19,7 +19,7 @@ class AppHeader extends HTMLElement {
     connectedCallback() {
         this.attachShadow({ mode: 'open' });
         this.shadowRoot.appendChild(template.content.cloneNode(true));
-        this.shadowRoot.querySelectorAll('[data-nav]').forEach(a => {
+        this.shadowRoot.querySelectorAll('nav a').forEach(a => {
             a.addEventListener('click', e => {
                 e.preventDefault();
                 window.dispatchEvent(new CustomEvent('navigate', { detail: a.getAttribute('href') }));

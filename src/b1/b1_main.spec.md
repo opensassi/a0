@@ -11,8 +11,7 @@ Entry point for the b1 supervisor daemon (per-project supervisor). Parses CLI fl
 ## 2. Entry Point
 
 ```
-b1 --workdir <path> [--a0-dir <path>] [--no-c2] [--c2-socket <path>]
-```
+b1 --workdir <path> [--a0-dir <path>] [--no-c2] [--c2-socket <path>] [--log-file <path>]
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -20,6 +19,7 @@ b1 --workdir <path> [--a0-dir <path>] [--no-c2] [--c2-socket <path>]
 | `--a0-dir` | `<workdir>/.a0` | a0 agent state directory |
 | `--no-c2` | — | Skip launching c2 |
 | `--c2-socket` | `$XDG_RUNTIME_DIR/a0-c2.sock` | c2 Unix socket path |
+| `--log-file` | — | Redirect stderr to file; child a0 terminal derives own path |
 
 ## 3. Architecture
 
@@ -44,10 +44,11 @@ graph TB
 
 1. Parse CLI flags
 2. Compute socket path (`a0Dir + "/b1.sock"`) and PID path (`a0Dir + "/b1.pid"`)
-3. Create `Supervisor` with paths
-4. Register signal handlers (SIGINT/SIGTERM → `Supervisor::shutdown()`)
-5. `Supervisor::init()` — clean stale socket, write PID, bind socket, launch c2
-6. `Supervisor::run()` — block on poll loop until shutdown
+3. **Redirect stderr** to `--log-file` path if specified (`dup2`)
+4. Create `Supervisor` with paths
+5. Register signal handlers (SIGINT/SIGTERM → `Supervisor::shutdown()`)
+6. `Supervisor::init()` — clean stale socket, write PID, bind socket, launch c2
+7. `Supervisor::run()` — block on poll loop until shutdown
 
 ## 5. Error Handling
 
@@ -64,3 +65,5 @@ graph TB
 | `--help` flag | Prints usage and exits 0 |
 | `--no-c2` flag | Skips c2 launch, runs independently |
 | Supervisor init | Writes PID, binds socket |
+| `--log-file` | Stderr redirected to specified file; file contains `"b1: running"` startup banner |
+| Log propagation | a0 terminal launched via xHandleTerminalOpen receives `--log-file` derived from parent b1 log |

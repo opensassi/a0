@@ -1,0 +1,18 @@
+{
+    "name": "settings-page",
+    "tag": "settings-page",
+    "description": "Display settings for conversation collapse behavior, message limit, and auto-scroll",
+    "shadowDom": true,
+    "routes": ["/settings"],
+    "dependsOn": [],
+    "ids": {
+        "page-settings": { "description": "Page root element", "type": "container" },
+        "collapse-system": { "description": "Collapse system prompts checkbox", "type": "checkbox" },
+        "collapse-reasoning": { "description": "Collapse reasoning checkbox", "type": "checkbox" },
+        "collapse-tool": { "description": "Collapse tool results checkbox", "type": "checkbox" },
+        "max-messages": { "description": "Max messages number input", "type": "input" },
+        "auto-scroll": { "description": "Auto-scroll checkbox", "type": "checkbox" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": [], "listens": ["settings"] }
+}

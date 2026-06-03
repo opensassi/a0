@@ -1,0 +1,15 @@
+{
+    "name": "dashboard-page",
+    "tag": "dashboard-page",
+    "description": "Dashboard overview with stats, host list, event log, and prompt banner",
+    "shadowDom": true,
+    "routes": ["/"],
+    "dependsOn": ["stats-cards", "host-list", "event-log", "prompt-banner"],
+    "ids": {
+        "page-dashboard": { "description": "Page root element", "type": "container" },
+        "event-log": { "description": "Event log component slot", "type": "container" },
+        "prompt-banner": { "description": "Prompt banner component slot", "type": "container" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": [], "listens": ["b1_connected", "b1_disconnected", "agent_update", "user_prompt"] }
+}

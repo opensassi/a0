@@ -53,8 +53,8 @@ terminalTemplate.innerHTML = `
     .xterm-screen { z-index: 1; }
   </style>
   <div class="toolbar">
-    <span class="title" id="title">Terminal</span>
-    <span class="status" id="status">connecting...</span>
+    <span class="title" id="terminal-title">Terminal</span>
+    <span class="status" id="terminal-status">connecting...</span>
   </div>
   <div class="terminal-container" id="terminal"></div>
 `;
@@ -104,8 +104,8 @@ class TerminalView extends HTMLElement {
         const finalContextId = this._contextId || contextId;
 
         const container = this.shadowRoot.getElementById('terminal');
-        const statusEl = this.shadowRoot.getElementById('status');
-        const titleEl = this.shadowRoot.getElementById('title');
+        const statusEl = this.shadowRoot.getElementById('terminal-status');
+        const titleEl = this.shadowRoot.getElementById('terminal-title');
         titleEl.textContent = finalContextId ? 'Terminal – ' + finalContextId : 'Terminal – ' + finalCwd;
 
         // Initialize xterm.js
@@ -157,6 +157,7 @@ class TerminalView extends HTMLElement {
                             this.streamId = d.streamId;
                             statusEl.textContent = 'active';
                             statusEl.className = 'status active';
+                            this._startChunkPolling();
                         } else {
                             setTimeout(poll, 500);
                         }
@@ -176,6 +177,9 @@ class TerminalView extends HTMLElement {
                 if (e.detail.direction === 'stdout') {
                     this.term.write(e.detail.data);
                 }
+                if (e.detail.seq !== undefined) {
+                    this._lastChunkSeq = Math.max(this._lastChunkSeq, e.detail.seq);
+                }
             }
         };
 
@@ -184,6 +188,7 @@ class TerminalView extends HTMLElement {
                 statusEl.textContent = 'exited: ' + e.detail.exitCode;
                 statusEl.className = 'status ended';
                 this.term.write('\r\n\x1b[33mProcess exited with code ' + e.detail.exitCode + '\x1b[0m\r\n');
+                this._stopChunkPolling();
             }
         };
 
@@ -191,7 +196,33 @@ class TerminalView extends HTMLElement {
         window.addEventListener('stream_end', this._onStreamEnd);
     }
 
+    _startChunkPolling() {
+        this._lastChunkSeq = -1;
+        this._pollChunksInterval = setInterval(() => {
+            if (!this.streamId) return this._stopChunkPolling();
+            fetch('/api/stream/' + this.streamId + '/chunks')
+                .then(r => r.json())
+                .then(chunks => {
+                    for (const c of (chunks || [])) {
+                        if (c.seq > this._lastChunkSeq && c.direction === 'stdout') {
+                            this.term.write(c.data);
+                            this._lastChunkSeq = c.seq;
+                        }
+                    }
+                })
+                .catch(() => {});
+        }, 500);
+    }
+
+    _stopChunkPolling() {
+        if (this._pollChunksInterval) {
+            clearInterval(this._pollChunksInterval);
+            this._pollChunksInterval = null;
+        }
+    }
+
     disconnectedCallback() {
+        this._stopChunkPolling();
         if (this._resizeObserver) this._resizeObserver.disconnect();
         if (this.term) this.term.dispose();
         if (this._onStreamChunk) window.removeEventListener('stream_chunk', this._onStreamChunk);

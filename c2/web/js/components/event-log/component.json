@@ -1,0 +1,15 @@
+{
+    "name": "event-log",
+    "tag": "event-log",
+    "description": "Scrollable log of SSE events (b1 connect/disconnect, agent updates, prompts)",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": [],
+    "ids": {
+        "log-container": { "description": "Log entry container", "type": "container" }
+    },
+    "dynamicIds": {
+        "log-entry-{seq}": { "pattern": "log-entry-{number}", "description": "Individual log entry", "type": "log" }
+    },
+    "events": { "emits": [], "listens": [] }
+}

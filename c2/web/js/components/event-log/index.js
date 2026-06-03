@@ -20,12 +20,13 @@ class EventLog extends HTMLElement {
     }
 
     push(type, data) {
-        const entry = { type, data, time: new Date().toLocaleTimeString() };
+        const entry = { type, data, time: new Date().toLocaleTimeString(), seq: this._events.length };
         this._events.push(entry);
         if (this._events.length > this._maxEvents) this._events.shift();
 
         const el = document.createElement('div');
         el.className = `log-entry log-${type}`;
+        el.id = `log-entry-${entry.seq}`;
         el.innerHTML = `<span class="log-time">${entry.time}</span> <span class="log-type">${type}</span> <span class="log-summary">${this._summary(entry)}</span>`;
         this._container.appendChild(el);
         this._container.scrollTop = this._container.scrollHeight;

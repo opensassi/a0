@@ -561,19 +561,35 @@ sequenceDiagram
 ## 6. CLI Entry Point
 
 ```bash
-agent --components-dir <path> [--env-file <path>] [--a0-dir <path>] [--resume <session-id>]
+agent [--a0-dir <path>] [--env-file <path>] [--log-file <path>] [--resume <session-id>]
       [--api-key <key>] [--mock-api <url>]
       [--docker-host <url>] [--container-idle-timeout <seconds>]
       [--max-idle-containers <count>] [--default-docker-image <image>] [--no-docker]
       [--max-parallel <n>] [--external-repo <url>] [--skill-arg <key=val> ...]
+      <subcommand>
 ```
 
+**Subcommands**:
+
+| Subcommand | Flags | Description |
+|-----------|-------|-------------|
+| *(none)* | — | Interactive REPL mode |
+| `run` | `--skill <name> --params <json>` | Execute a skill and exit |
+| `terminal` | `--terminal-id <id> --cwd <path>` | PTY terminal session (shell prompt) |
+| `kill-all` | — | Stop daemon processes (b1, c2) |
+| `session` | `export`, `list` | Session operations |
+
 - `--a0-dir` : Root directory for non-committed agent artifacts (default `./.a0`). Created on startup if missing; on first creation, automatically appended to `.gitignore` when CWD is a git repository. All runtime state (b1 socket/pid, SQLite database, skills store, logs) is scoped under this directory.
-- `--components-dir` : Root directory for components (default `./components`).
 - `--env-file` : Path to `.env` file to load (default `./.env`). Each line is `KEY=VALUE`; `#` comments and blank lines are skipped. **The implementation must overwrite existing environment variables** (i.e., use `setenv(key, val, 1)`).
+- `--log-file <path>` : Redirect stderr to file. Child daemons derive their own path (e.g., `/tmp/a0.log` → b1 gets `/tmp/a0-b1.log`). All three daemons (a0, b1, c2) support this flag.
 
 - `--api-key` : DeepSeek API key; if not provided, read from environment (see precedence below).
 - `--mock-api` : Override the API URL (for testing, e.g., `http://localhost:8080`).
+
+**Terminal subcommand flags**:
+
+- `--terminal-id <id>` : Terminal identifier for c2 stream lookup. Matches the `terminalId` returned by `POST /api/terminal/open`.
+- `--cwd <path>` : Working directory for the terminal shell. a0 `chdir()`s to this path before creating the PTY and forking the login shell.
 
 **Execution flags**:
 
@@ -770,12 +786,27 @@ The `CommandRunner` is a stateless utility class that wraps all subprocess creat
 ```
 project/
 ├── CMakeLists.txt
+├── c2/
+│   └── web/                             # c2 dashboard SPA (WebComponents)
+│       ├── index.html
+│       ├── css/main.css
+│       ├── js/
+│       │   ├── app.js                   # Bootstrap, router, selectById, sanitizeId
+│       │   ├── store.js
+│       │   ├── sse.js
+│       │   ├── api.js
+│       │   └── components/              # 16 WebComponents, each in own folder
+│       │       ├── app-shell/index.js + component.json
+│       │       ├── app-header/index.js + component.json
+│       │       ├── dashboard-page/index.js + component.json
+│       │       └── ... (13 more)
+│       └── lib/xterm/                   # xterm.js terminal emulator
 ├── docker/
 │   ├── Dockerfile.playwright            # Playwright browser automation image
 │   └── docker-compose.playwright.yml    # Playwright compose stack
 ├── scripts/
 │   ├── browser.sh                       # Browser CLI shim
-│   └── playwright-bridge.js             # Node.js HTTP daemon for 22 Playwright actions
+│   └── playwright-bridge.js             # Node.js HTTP daemon for 23 Playwright actions
 ├── src/
 │   ├── a0_dir.h/.cpp                    # .a0/ directory lifecycle (create, gitignore)
 │   ├── command_runner.h/.cpp            # All subprocess management (fork/exec/pipe/alarm)
@@ -829,7 +860,8 @@ project/
 │   │   ├── mock_deepseek_server.py
 │   │   ├── fixtures/
 │   │   ├── run_e2e_tests.sh
-│   │   └── test_playwright_e2e.sh       # 14 Playwright browser E2E tests
+│   │   ├── test_playwright_e2e.sh       # 14 Playwright browser E2E tests
+│   │   └── test_c2_dashboard_e2e.sh     # 29-assertion c2 dashboard E2E test (headed browser)
 ├── skills/                          # three-tier namespace
 │   ├── schema.json                  # Draft-07 JSON Schema for skill.json validation
 │   ├── README.md                    # Developer guide (661 lines)
@@ -873,8 +905,9 @@ project/
 15. Implement `SkillManager::executeToolStreaming` for streaming tool output.
 16. Wire persistent compose (`ComposeManager::startPersistent`/`stopPersistent`).
 17. Add `--external-repo`, `--skill-arg`, `--max-parallel` CLI flags.
-18. Enable `-DTRACE` for debug builds; keep trace logs for diagnosis.
-19. Commit and CI verifies all tests + coverage.
+18. Enable `-DENABLE_TRACE=ON` for debug builds; keep trace logs for diagnosis.
+19. Run E2E tests with `bash test/e2e/test_c2_dashboard_e2e.sh`; inspect logs in `/tmp/c2-e2e.log`.
+20. Commit and CI verifies all tests + coverage.
 
 ---
 
@@ -887,6 +920,125 @@ project/
 - Native `mustache` templating for prompt expansion.
 - **LXC backend** as alternative to Docker (for environments without Docker).
 - Resource limits (CPU/memory) per tool in Docker.
+
+---
+
+## 11. E2E Testing
+
+### 11.1 Test Framework
+
+E2E tests use the **Playwright bridge** (`scripts/playwright-bridge.js`) running on port 3100, controlled via curl or the `selectById` bridge action. Tests open a headed Chromium window for visual debugging and navigate the c2 web dashboard.
+
+**Test script**: `test/e2e/test_c2_dashboard_e2e.sh`
+
+### 11.2 Running Tests
+
+```bash
+# Build with TRACE logging for verbose diagnostics
+cmake -B build -DENABLE_TRACE=ON && cmake --build build -j$(nproc)
+
+# Run E2E test (headed browser)
+bash test/e2e/test_c2_dashboard_e2e.sh
+
+# Keep daemons running after test for interactive inspection
+bash test/e2e/test_c2_dashboard_e2e.sh --no-cleanup
+```
+
+### 11.3 Log Files
+
+When run with `--no-cleanup`, log files persist at:
+
+| File | Source | Contents |
+|------|--------|----------|
+| `/tmp/c2-e2e.log` | c2 daemon | c2 startup, SSE broadcasts, terminal_open, b1 registrations |
+| `/tmp/c2-e2e-a0.log` | a0 terminal | a0 terminal: b1 launch, PTY creation, stream chunks |
+| `/tmp/c2-e2e-a0-b1.log` | b1 daemon | b1: agent register, stream relay, terminal_open |
+| `/tmp/bridge_c2_e2e.log` | Playwright bridge | Bridge HTTP requests |
+
+Each daemon supports `--log-file <path>`: the parent derives and propagates child log paths automatically:
+```
+c2 --log-file /tmp/c2-e2e.log
+  └── a0 terminal --log-file /tmp/c2-e2e-a0.log
+        └── b1 --log-file /tmp/c2-e2e-a0-b1.log
+```
+
+### 11.4 TRACE Logging
+
+Built with `-DENABLE_TRACE=ON`, the `TRACE_LOG(msg)` macro writes `[TRACE] file:line msg` to stderr. Key trace points:
+
+| Daemon | File | Trace point |
+|--------|------|-------------|
+| c2 | `c2_listener.cpp` | b1 register, disconnect, stream_data, stream_end, user_prompt |
+| c2 | `dashboard_server.cpp` | terminal_open (b1 path + direct fork) |
+| c2 | `sse_manager.cpp` | sse broadcast (all events) |
+| b1 | `supervisor.cpp` | agent register, disconnect, stream relay, terminal_open |
+
+### 11.5 Test Helpers
+
+The test script provides helpers for shadow-DOM-safe element access:
+
+```bash
+# Navigate to element by its component.json ID (handles shadow DOM)
+clickById nav-hosts         # Click "Hosts" nav link
+typeById terminal-cwd "/tmp"  # Type into terminal cwd input
+inspectById terminal-status   # Get terminal status element text
+
+# Log inspection
+assert_log /tmp/c2-e2e.log "terminal_open"   # Assert log contains pattern
+show_log /tmp/c2-e2e.log 10                    # Show last 10 lines
+```
+
+Bridge action `selectById` with `perform: "click"|"type"|"focus"` recursively searches light DOM and all shadow roots to find elements by their component-manifest ID.
+
+### 11.6 WebComponent Architecture
+
+Each c2 web UI component lives in its own directory with a component manifest:
+
+```
+c2/web/js/components/
+  app-shell/
+    index.js          # Component implementation
+    component.json    # IDs, routes, events, dependencies
+  app-header/
+    index.js
+    component.json
+  dashboard-page/
+    index.js
+    component.json
+  ...16 components total
+```
+
+The `component.json` manifest lists every element ID, its type, action, and whether it's static or dynamically generated:
+
+```json
+{
+  "name": "app-header",
+  "ids": {
+    "nav-dashboard": { "type": "link", "action": "navigate /" },
+    "nav-hosts":     { "type": "link", "action": "navigate /hosts" }
+  },
+  "dynamicIds": {
+    "host-card-{slug}": { "pattern": "host-card-{slug}", "type": "container" }
+  },
+  "events": { "emits": ["navigate"], "listens": [] }
+}
+```
+
+Dynamic IDs are generated by `window.sanitizeId(raw)` which slugifies the raw value and truncates to 24 characters.
+
+### 11.7 Test Assertions
+
+The test runs 29 assertions covering:
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| Prerequisites | 6 | Binaries exist, ports free, playwright available |
+| Launch | 4 | c2 starts, bridge starts, browser launches |
+| Navigation | 6 | Click Dashboard/Hosts/Projects/Settings links |
+| API | 2 | `/api/status`, `/api/stats` return valid JSON |
+| Terminal | 4 | Navigate, status, console errors, screenshot |
+| Logs | 2 | `terminal_open` and `sse broadcast` appear in c2 log |
+| Cleanup | 2 | Browser closes, processes cleaned |
 
 ---
 

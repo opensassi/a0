@@ -1,0 +1,18 @@
+{
+    "name": "conversation-view",
+    "tag": "conversation-view",
+    "description": "LLM conversation viewer with collapse controls, infinite scroll, and message bubbles",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": ["message-bubble"],
+    "ids": {
+        "collapse-system": { "description": "Collapse system prompts checkbox", "type": "checkbox" },
+        "collapse-reasoning": { "description": "Collapse reasoning checkbox", "type": "checkbox" },
+        "collapse-tool": { "description": "Collapse tool results checkbox", "type": "checkbox" },
+        "conv-status": { "description": "Message count status text", "type": "status" },
+        "msg-container": { "description": "Message list container", "type": "container" },
+        "load-more-btn": { "description": "Load older messages button", "type": "button", "action": "load more messages" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": [], "listens": ["settings"] }
+}

@@ -1,16 +1,16 @@
-import Store from '../store.js';
-import { connectHost, disconnectHost } from '../sse.js';
+import Store from '../../store.js';
+import { connectHost, disconnectHost } from '../../sse.js';
 
 const template = document.createElement('template');
 template.innerHTML = `
-<div class="page">
+<div class="page" id="page-hosts">
   <h2>Manage Hosts</h2>
   <div id="host-list"></div>
   <div class="add-host">
     <h3>Add Host</h3>
     <input type="text" id="new-name" placeholder="Name" />
     <input type="text" id="new-url" placeholder="URL (e.g. https://c2.example.com)" />
-    <button id="add-btn">Add</button>
+    <button id="add-host-btn">Add</button>
   </div>
   <div class="terminal-launch">
     <h3>Terminal</h3>
@@ -29,7 +29,7 @@ class HostsPage extends HTMLElement {
             this._nameInput = this.shadowRoot.getElementById('new-name');
             this._urlInput = this.shadowRoot.getElementById('new-url');
 
-            this.shadowRoot.getElementById('add-btn').addEventListener('click', () => this._add());
+            this.shadowRoot.getElementById('add-host-btn').addEventListener('click', () => this._add());
             this.shadowRoot.getElementById('launch-terminal-btn').addEventListener('click', () => this._launchTerminal());
             this.shadowRoot.getElementById('terminal-cwd').addEventListener('keydown', e => {
                 if (e.key === 'Enter') this._launchTerminal();
@@ -47,8 +47,10 @@ class HostsPage extends HTMLElement {
         const hosts = Store.get('hosts');
         this._list.innerHTML = '';
         hosts.forEach(h => {
+            const hid = sanitizeId(h.id);
             const card = document.createElement('div');
             card.className = `host-card ${h.connected ? 'connected' : 'disconnected'}`;
+            card.id = `host-card-${hid}`;
             card.innerHTML = `
                 <div class="host-card-header">
                     <span class="status-dot ${h.connected ? 'green' : 'red'}"></span>
@@ -59,15 +61,15 @@ class HostsPage extends HTMLElement {
                     ${h.connected ? `<span>${h.b1s.length} b1 instances</span>` : '<span class="error">Disconnected</span>'}
                 </div>
                 <div class="host-card-actions">
-                    ${h.id !== 'local' ? `<button class="remove-btn" data-id="${h.id}">Remove</button>` : ''}
-                    ${h.connected ? `<button class="disconnect-btn" data-id="${h.id}">Disconnect</button>`
-                                  : `<button class="connect-btn" data-id="${h.id}">Connect</button>`}
+                    ${h.id !== 'local' ? `<button id="host-remove-${hid}" class="remove-btn">Remove</button>` : ''}
+                    ${h.connected ? `<button id="host-disconnect-${hid}" class="disconnect-btn">Disconnect</button>`
+                                  : `<button id="host-connect-${hid}" class="connect-btn">Connect</button>`}
                 </div>
             `;
 
-            card.querySelector('.remove-btn')?.addEventListener('click', () => this._remove(h.id));
-            card.querySelector('.disconnect-btn')?.addEventListener('click', () => disconnectHost(h.id));
-            card.querySelector('.connect-btn')?.addEventListener('click', () => {
+            this.shadowRoot.getElementById(`host-remove-${hid}`)?.addEventListener('click', () => this._remove(h.id));
+            this.shadowRoot.getElementById(`host-disconnect-${hid}`)?.addEventListener('click', () => disconnectHost(h.id));
+            this.shadowRoot.getElementById(`host-connect-${hid}`)?.addEventListener('click', () => {
                 connectHost(h.id, h.url ? `${h.url}/api/events` : '/api/events');
             });
 

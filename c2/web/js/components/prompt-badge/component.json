@@ -1,0 +1,14 @@
+{
+    "name": "prompt-badge",
+    "tag": "prompt-badge",
+    "description": "Floating prompt count badge (currently unused in templates)",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": [],
+    "ids": {
+        "badge": { "description": "Prompt badge button", "type": "button", "action": "navigate /" },
+        "count": { "description": "Prompt count number", "type": "stat" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": ["navigate"], "listens": ["pendingPrompts"] }
+}

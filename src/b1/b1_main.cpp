@@ -2,8 +2,11 @@
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
+#include <fcntl.h>
+#include <unistd.h>
 
 static a0::b1::Supervisor* g_supervisor = nullptr;
+extern std::string g_b1LogFile;
 
 static void handleSignal(int sig) {
     (void)sig;
@@ -35,9 +38,20 @@ int main(int argc, char* argv[]) {
             noC2 = true;
         } else if (arg == "--c2-socket" && i + 1 < argc) {
             c2Socket = argv[++i];
+        } else if (arg == "--log-file" && i + 1 < argc) {
+            g_b1LogFile = argv[++i];
         } else if (arg == "--help") {
-            std::cout << "b1 --workdir <path> [--a0-dir <path>] [--no-c2] [--c2-socket <path>]\n";
+            std::cout << "b1 --workdir <path> [--a0-dir <path>] [--no-c2] [--c2-socket <path>] [--log-file <path>]\n";
             return 0;
+        }
+    }
+
+    // Redirect stderr to log file if specified
+    if (!g_b1LogFile.empty()) {
+        int fd = ::open(g_b1LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) {
+            ::dup2(fd, STDERR_FILENO);
+            ::close(fd);
         }
     }
 

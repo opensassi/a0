@@ -1,4 +1,5 @@
 #include "sse_manager.h"
+#include "trace.h"
 #include <sstream>
 
 namespace a0::c2 {
@@ -28,6 +29,7 @@ int SseManager::broadcast(const std::string& eventType, const std::string& dataJ
     oss << "data: " << dataJson << "\n\n";
     std::string payload = oss.str();
 
+    TRACE_LOG("c2: sse broadcast event=" << eventType << " clients=" << m_clients.size());
     std::lock_guard<std::mutex> lock(m_mutex);
     int count = 0;
     auto it = m_clients.begin();

@@ -3,22 +3,47 @@ import { connectHost } from './sse.js';
 import { fetchStatus, fetchPending, fetchStats } from './api.js';
 
 // Import all components to register them
-import './components/app-shell.js';
-import './components/app-header.js';
-import './components/prompt-badge.js';
-import './components/dashboard-page.js';
-import './components/stats-cards.js';
-import './components/host-list.js';
-import './components/event-log.js';
-import './components/hosts-page.js';
-import './components/projects-page.js';
-import './components/agent-page.js';
-import './components/conversation-view.js';
-import './components/message-bubble.js';
-import './components/prompt-banner.js';
-import './components/settings-page.js';
-import './components/sse-provider.js';
-import './components/terminal-view.js';
+import './components/app-shell/index.js';
+import './components/app-header/index.js';
+import './components/prompt-badge/index.js';
+import './components/dashboard-page/index.js';
+import './components/stats-cards/index.js';
+import './components/host-list/index.js';
+import './components/event-log/index.js';
+import './components/hosts-page/index.js';
+import './components/projects-page/index.js';
+import './components/agent-page/index.js';
+import './components/conversation-view/index.js';
+import './components/message-bubble/index.js';
+import './components/prompt-banner/index.js';
+import './components/settings-page/index.js';
+import './components/sse-provider/index.js';
+import './components/terminal-view/index.js';
+
+window.sanitizeId = function(raw) {
+    return String(raw).toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .substring(0, 24);
+};
+
+window.selectById = function(id) {
+    function find(root) {
+        if (root.getElementById) {
+            const el = root.getElementById(id);
+            if (el) return el;
+        }
+        const nodes = root.querySelectorAll ? root.querySelectorAll('*') : [];
+        for (const node of nodes) {
+            if (node.shadowRoot) {
+                const found = find(node.shadowRoot);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+    return find(document);
+};
 
 let appShell = null;
 let currentPage = null;

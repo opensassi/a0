@@ -1,5 +1,5 @@
-import Store from '../store.js';
-import { fetchStats } from '../api.js';
+import Store from '../../store.js';
+import { fetchStats } from '../../api.js';
 
 const template = document.createElement('template');
 template.innerHTML = `

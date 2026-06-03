@@ -1,0 +1,17 @@
+{
+    "name": "app-header",
+    "tag": "app-header",
+    "description": "Top navigation bar with route links and prompt badge",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": [],
+    "ids": {
+        "nav-dashboard": { "description": "Dashboard link", "type": "link", "action": "navigate /" },
+        "nav-hosts": { "description": "Hosts link", "type": "link", "action": "navigate /hosts" },
+        "nav-projects": { "description": "Projects link", "type": "link", "action": "navigate /projects" },
+        "nav-settings": { "description": "Settings link", "type": "link", "action": "navigate /settings" },
+        "prompt-count": { "description": "Pending prompt count badge", "type": "badge" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": ["navigate"], "listens": [] }
+}

@@ -60,6 +60,8 @@ target_link_libraries(a0 PRIVATE a0_lib persistence_lib cmd_runner_lib)
 option(ENABLE_TRACE "Enable trace logging" OFF)
 if(ENABLE_TRACE)
     target_compile_definitions(a0_lib PRIVATE TRACE)
+    target_compile_definitions(b1_lib PRIVATE TRACE)
+    target_compile_definitions(c2_lib PRIVATE TRACE)
 endif()
 
 option(ENABLE_COVERAGE "Enable coverage instrumentation" OFF)

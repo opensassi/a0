@@ -34,7 +34,10 @@ private:
     std::string m_webRoot;
     std::string m_sslKey;
     std::string m_sslCert;
-    bool m_running;
+    bool m_running = false;
+    bool m_shutdownRequested = false;
+    struct us_listen_socket_t* m_listenToken = nullptr;
+    std::unordered_map<std::string, std::string> m_directTerminals; // terminalId → cwd
 
     template<typename App> void xSetupRoutes(App* app);
     template<typename Res> void xServeStatic(Res* res, const std::string& urlPath);
@@ -177,6 +180,11 @@ sequenceDiagram
 | POST | `/api/agent/:uuid/messages` | Append message; resolves prompt if tool role | User input or tool response |
 | DELETE | `/api/agent/:uuid/prompt/:toolCallId` | Dismiss prompt | Cancel without answer |
 | POST | `/api/ping` | Sends pong via SSE; registers `onAborted` handler | Client keepalive |
+| POST | `/api/terminal/open` | Terminal launch | Opens PTY terminal via b1 or direct a0 fork |
+| GET | `/api/terminal/status/:terminalId` | Terminal status | Poll SQLite for stream readiness |
+| POST | `/api/stream/:id/input` | Terminal stdin | Forward input via b1 IPC |
+| GET | `/api/stream/:id/chunks` | Read chunks | Stream output from SQLite ordered by seq |
+| GET | `/api/session/:uuid/streams` | List streams | All streams for a session |
 | GET | `/*` | `xServeStatic()` | Static files, SPA fallthrough |
 
 ## 6. Static File Serving
@@ -210,6 +218,33 @@ MIME mapping: `.html` → `text/html`, `.js` → `text/javascript`, `.css` → `
 | `xMimeType` | .js file | — | `text/javascript` |
 | `xMimeType` | .unknown file | — | `application/octet-stream` |
 
-## 9. Integration
+## 9. Terminal Launch Flow
+
+When `POST /api/terminal/open` is received with `{cwd, contextType}`:
+
+1. **B1 lookup**: Iterate registered b1s by workdir. If a b1 matches:
+   - Send `TERMINAL_OPEN` IPC message to b1
+   - b1 forks `a0 terminal` with `--cwd`, `--terminal-id`, (derived `--log-file`)
+2. **Direct fork** (no matching b1):
+   - Record `m_directTerminals[terminalId] = cwd`
+   - Fork/exec `a0 --a0-dir <cwd>/.a0 --log-file <derivedPath> terminal --terminal-id <id> --cwd <cwd>`
+   - a0 auto-launches b1 if needed, which registers with c2
+
+### Log File Derivation
+
+```cpp
+// dashboard_server.cpp
+std::string a0Log;
+if (!g_c2LogFile.empty()) {
+    auto dot = g_c2LogFile.rfind('.');
+    a0Log = (dot != std::string::npos)
+        ? g_c2LogFile.substr(0, dot) + "-a0" + g_c2LogFile.substr(dot)
+        : g_c2LogFile + "-a0";
+}
+```
+
+When `--log-file` is set on c2, forked a0 terminal processes receive `--log-file /tmp/c2-e2e-a0.log`. The a0 terminal further propagates to b1.
+
+## 10. Integration
 
 `DashboardServer` is constructed in `c2_main.cpp` with pointers to `B1Registry`, `SseManager`, `EventStore`, and `C2Listener`. It runs on the main thread. On SIGINT/SIGTERM, `c2_main.cpp` calls `shutdown()` which sets `m_running = false`.

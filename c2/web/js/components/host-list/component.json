@@ -1,0 +1,15 @@
+{
+    "name": "host-list",
+    "tag": "host-list",
+    "description": "Compact host list showing connected hosts with indicator dots",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": [],
+    "ids": {
+        "host-rows": { "description": "Host row container", "type": "container" }
+    },
+    "dynamicIds": {
+        "host-row-{name}": { "pattern": "host-row-{slug}", "description": "Host row indicator", "type": "indicator" }
+    },
+    "events": { "emits": [], "listens": ["hosts"] }
+}

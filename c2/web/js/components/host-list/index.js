@@ -1,4 +1,4 @@
-import Store from '../store.js';
+import Store from '../../store.js';
 
 const template = document.createElement('template');
 template.innerHTML = `
@@ -26,6 +26,7 @@ class HostList extends HTMLElement {
         hosts.forEach(h => {
             const div = document.createElement('div');
             div.className = `host-row ${h.connected ? 'connected' : 'disconnected'}`;
+            div.id = `host-row-${sanitizeId(h.name)}`;
             div.innerHTML = `
                 <span class="host-indicator ${h.connected ? 'green' : 'red'}"></span>
                 <span class="host-name">${h.name}</span>

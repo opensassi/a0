@@ -1,6 +1,9 @@
 #include "supervisor.h"
 #include "command_runner.h"
 #include "ipc_protocol.h"
+#include "trace.h"
+
+std::string g_b1LogFile;
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -120,6 +123,11 @@ int Supervisor::run() {
             int fd = pollFds[i].fd;
             if (pollFds[i].revents & (POLLIN | POLLHUP | POLLERR)) {
                 if (pollFds[i].revents & (POLLHUP | POLLERR)) {
+                    auto it = m_agents.find(fd);
+                    if (it != m_agents.end()) {
+                        TRACE_LOG("b1: agent disconnected pid=" << it->second.pid
+                                  << " session=" << it->second.sessionUuid);
+                    }
                     ::close(fd);
                     m_agents.erase(fd);
                     continue;
@@ -136,6 +144,8 @@ int Supervisor::run() {
                     } else if (msg.type == ipc::MessageType::USER_PROMPT) {
                         xHandleUserPrompt(msg, fd);
                     } else if (msg.type == ipc::MessageType::STREAM_DATA) {
+                        TRACE_LOG("b1: relay stream_data streamId=" << msg.streamId
+                                  << " fd=" << fd);
                         // Track stream owner and forward to c2
                         m_streamOwners[msg.streamId] = fd;
                         xSendToC2(msg);
@@ -201,6 +211,8 @@ int Supervisor::xHandleRegister(const ipc::Message& msg, int peerFd) {
     auto it = m_agents.find(peerFd);
     if (it == m_agents.end()) return -1;
 
+    TRACE_LOG("b1: agent register pid=" << msg.pid
+              << " session=" << msg.sessionUuid);
     it->second.pid = msg.pid;
     it->second.sessionUuid = msg.sessionUuid;
     it->second.fd = peerFd;
@@ -357,6 +369,7 @@ int Supervisor::xHandleStreamInput(const ipc::Message& msg) {
 
 int Supervisor::xHandleTerminalOpen(const ipc::Message& msg, int peerFd) {
     (void)peerFd;
+    TRACE_LOG("b1: terminal_open cwd=" << msg.cwd);
     // Resolve cwd to an absolute path so the terminal a0 finds the right b1 socket
     // c2 sends an absolute cwd, but resolve it here too for safety
     std::string cwd = m_workdir;
@@ -387,17 +400,40 @@ int Supervisor::xHandleTerminalOpen(const ipc::Message& msg, int peerFd) {
     }
     if (a0Path.empty()) a0Path = "a0";
 
+    // Derive child log file path
+    std::string a0Log;
+    if (!g_b1LogFile.empty()) {
+        auto dot = g_b1LogFile.rfind('.');
+        a0Log = (dot != std::string::npos)
+            ? g_b1LogFile.substr(0, dot) + "-a0" + g_b1LogFile.substr(dot)
+            : g_b1LogFile + "-a0";
+    }
+
     pid_t pid = fork();
     if (pid == 0) {
-        // Child: launch a0 --terminal in the requested directory
+        // Child: launch a0 terminal in the requested directory
         setsid();
         std::string a0Dir = cwd + "/.a0";
         if (!msg.terminalId.empty()) {
-            execlp(a0Path.c_str(), "a0", "--terminal", "--cwd", cwd.c_str(),
-                   "--a0-dir", a0Dir.c_str(), "--terminal-id", msg.terminalId.c_str(), nullptr);
+                    if (!a0Log.empty()) {
+                execlp(a0Path.c_str(), "a0", "--a0-dir", a0Dir.c_str(),
+                       "--log-file", a0Log.c_str(),
+                       "terminal", "--cwd", cwd.c_str(),
+                       "--terminal-id", msg.terminalId.c_str(), nullptr);
+            } else {
+                execlp(a0Path.c_str(), "a0", "--a0-dir", a0Dir.c_str(),
+                       "terminal", "--cwd", cwd.c_str(),
+                       "--terminal-id", msg.terminalId.c_str(), nullptr);
+            }
         } else {
-            execlp(a0Path.c_str(), "a0", "--terminal", "--cwd", cwd.c_str(),
-                   "--a0-dir", a0Dir.c_str(), nullptr);
+            if (!a0Log.empty()) {
+                execlp(a0Path.c_str(), "a0", "--a0-dir", a0Dir.c_str(),
+                       "--log-file", a0Log.c_str(),
+                       "terminal", "--cwd", cwd.c_str(), nullptr);
+            } else {
+                execlp(a0Path.c_str(), "a0", "--a0-dir", a0Dir.c_str(),
+                       "terminal", "--cwd", cwd.c_str(), nullptr);
+            }
         }
         _exit(127);
     }

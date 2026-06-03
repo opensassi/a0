@@ -11,8 +11,7 @@ Entry point for the c2 daemon (machine-level monitor). Parses CLI flags, wires `
 ## 2. Entry Point
 
 ```
-c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-cert <file>]
-```
+c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-cert <file>] [--log-file <path>]
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -21,6 +20,7 @@ c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-ce
 | `--web-root` | `<cwd>/.a0/git/opensassi/a0/c2/web` | Static file root |
 | `--ssl-key` | — | TLS key file |
 | `--ssl-cert` | — | TLS cert file |
+| `--log-file` | — | Redirect stderr to file; child daemons derive paths automatically |
 
 ## 3. Architecture
 
@@ -52,14 +52,16 @@ graph TB
 
 1. Parse CLI flags and env vars
 2. Compute `baseDir` from `XDG_RUNTIME_DIR` or `/tmp`
-3. Write PID file at `baseDir/a0-c2.pid`
-4. Create `EventStore` (SQLite, `<socket>.db`)
-5. Create `SseManager`
-6. Create `B1Registry`, wire `SseManager`
-7. Create `C2Listener` on background thread
-8. Register `sigaction` handlers for SIGINT/SIGTERM
-9. Block on `DashboardServer::run()` (uWS event loop)
-10. On signal: `DashboardServer::shutdown()` + `C2Listener::shutdown()` + unlink socket + `_exit(0)`
+3. **Clean up stale socket** from previous crash (`unlinkPath`)
+4. **Redirect stderr** to `--log-file` path if specified (`dup2`)
+5. Write PID file at `baseDir/a0-c2.pid`
+6. Create `EventStore` (SQLite, `<socket>.db`)
+7. Create `SseManager`
+8. Create `B1Registry`, wire `SseManager`
+9. Create `C2Listener` on background thread
+10. Register `sigaction` handlers for SIGINT/SIGTERM
+11. Block on `DashboardServer::run()` (uWS event loop)
+12. On signal: `DashboardServer::shutdown()` + `C2Listener::shutdown()` + unlink socket + `_exit(0)`
 
 ## 5. Error Handling
 
@@ -80,3 +82,5 @@ graph TB
 | SIGTERM handler | Process exits 0, socket file unlinked |
 | PID file written | Contains PID of running process |
 | Web root path | Serves files from correct directory |
+| `--log-file` | Stderr redirected to specified file; file contains `"c2: running"` startup banner |
+| Stale socket cleanup | Restart after SIGKILL completes without bind error |

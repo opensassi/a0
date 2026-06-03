@@ -1,0 +1,17 @@
+{
+    "name": "agent-page",
+    "tag": "agent-page",
+    "description": "Agent detail page with conversation viewer and prompt banner",
+    "shadowDom": true,
+    "routes": ["/agent/:uuid"],
+    "dependsOn": ["conversation-view", "prompt-banner"],
+    "ids": {
+        "page-agent": { "description": "Page root element", "type": "container" },
+        "agent-info": { "description": "Agent information panel", "type": "container" },
+        "agent-title": { "description": "Agent title heading", "type": "heading" },
+        "agent-details": { "description": "Agent detail fields", "type": "container" },
+        "conversation": { "description": "Conversation view slot", "type": "container" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": ["navigate"], "listens": [] }
+}

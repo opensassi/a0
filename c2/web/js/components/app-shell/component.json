@@ -1,0 +1,13 @@
+{
+    "name": "app-shell",
+    "tag": "app-shell",
+    "description": "Root shell container with header and main content slot",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": ["app-header"],
+    "ids": {
+        "main-content": { "description": "Route content slot for page components", "type": "container" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": [], "listens": ["pendingPrompts"] }
+}

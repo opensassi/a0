@@ -1,0 +1,17 @@
+{
+    "name": "terminal-view",
+    "tag": "terminal-view",
+    "description": "PTY terminal emulator using xterm.js with SSE stream support and chunk polling fallback",
+    "shadowDom": true,
+    "routes": ["/terminal"],
+    "dependsOn": [],
+    "ids": {
+        "terminal-title": { "description": "Terminal title bar text", "type": "label" },
+        "terminal-status": { "description": "Terminal connection status indicator", "type": "status" },
+        "terminal": { "description": "xterm.js terminal container", "type": "container" }
+    },
+    "dynamicIds": {
+        "terminal-stream-{streamId}": { "pattern": "terminal-stream-{number}", "description": "Active stream reference (not a DOM id)", "type": "ref" }
+    },
+    "events": { "emits": [], "listens": ["stream_chunk", "stream_end"] }
+}

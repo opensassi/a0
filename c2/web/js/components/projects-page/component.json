@@ -1,0 +1,18 @@
+{
+    "name": "projects-page",
+    "tag": "projects-page",
+    "description": "Projects view showing all b1 instances grouped by host with agent lists",
+    "shadowDom": true,
+    "routes": ["/projects"],
+    "dependsOn": [],
+    "ids": {
+        "page-projects": { "description": "Page root element", "type": "container" },
+        "project-list": { "description": "Project card list container", "type": "container" }
+    },
+    "dynamicIds": {
+        "project-card-{pid}": { "pattern": "project-card-{number}", "description": "Project card for a b1 instance", "type": "container" },
+        "agent-row-{session}": { "pattern": "agent-row-{slug}", "description": "Agent row in project card", "type": "container" },
+        "agent-link-{session}": { "pattern": "agent-link-{slug}", "description": "View agent link", "type": "link", "action": "navigate /agent/:uuid" }
+    },
+    "events": { "emits": ["navigate"], "listens": ["hosts"] }
+}

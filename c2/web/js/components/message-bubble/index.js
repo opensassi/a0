@@ -1,4 +1,6 @@
-import Store from '../store.js';
+import Store from '../../store.js';
+
+let _bubbleSeq = 0;
 
 const template = document.createElement('template');
 template.innerHTML = `
@@ -44,6 +46,8 @@ class MessageBubble extends HTMLElement {
 
         this._roleEl.textContent = role === 'tool' ? `tool: ${toolName}` : role;
         this._timeEl.textContent = time;
+
+        this.id = `msg-${sanitizeId(role)}-${_bubbleSeq++}`;
 
         if (role === 'system' || role === 'reasoning' || role === 'tool') {
             const s = Store.get('settings');

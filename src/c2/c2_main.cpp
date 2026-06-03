@@ -10,11 +10,14 @@
 #include <cstdlib>
 #include <csignal>
 #include <thread>
+#include <fcntl.h>
+#include <unistd.h>
 
 static a0::c2::DashboardServer* g_dashboard = nullptr;
 static a0::c2::C2Listener* g_listener = nullptr;
 static std::string* g_socketPath = nullptr;
 static std::string* g_pidPath = nullptr;
+extern std::string g_c2LogFile;
 
 static void handleSignal(int) {
     if (g_dashboard) g_dashboard->shutdown();
@@ -59,11 +62,25 @@ int main(int argc, char* argv[]) {
             sslKey = argv[++i];
         } else if (arg == "--ssl-cert" && i + 1 < argc) {
             sslCert = argv[++i];
+        } else if (arg == "--log-file" && i + 1 < argc) {
+            g_c2LogFile = argv[++i];
         } else if (arg == "--help") {
-            std::cout << "c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-cert <file>]\n";
+            std::cout << "c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-cert <file>] [--log-file <path>]\n";
             return 0;
         }
     }
+
+    // Redirect stderr to log file if specified
+    if (!g_c2LogFile.empty()) {
+        int fd = ::open(g_c2LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) {
+            ::dup2(fd, STDERR_FILENO);
+            ::close(fd);
+        }
+    }
+
+    // Clean up stale socket from previous crash before binding
+    a0::ipc::UnixSocket::unlinkPath(socketPath);
 
     std::string dbPath = socketPath + ".db";
     a0::c2::EventStore eventStore(dbPath);

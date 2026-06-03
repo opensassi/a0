@@ -1,6 +1,6 @@
-import Store from '../store.js';
-import { fetchMessages } from '../api.js';
-import './message-bubble.js';
+import Store from '../../store.js';
+import { fetchMessages } from '../../api.js';
+import './../message-bubble/index.js';
 
 const template = document.createElement('template');
 template.innerHTML = `
@@ -115,6 +115,7 @@ class ConversationView extends HTMLElement {
         if (this._hasMore && this._messages.length > 0) {
             const loadMore = document.createElement('div');
             loadMore.className = 'load-more';
+            loadMore.id = 'load-more-btn';
             loadMore.textContent = '\u2191 Load older messages';
             this._container.appendChild(loadMore);
         }

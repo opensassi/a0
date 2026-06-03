@@ -223,6 +223,45 @@ async function handleAction(action, args) {
       UNSAFE_LOCAL = args.value !== false;
       return { ok: true, mode: UNSAFE_LOCAL ? 'host' : 'docker' };
 
+    // --- `selectById` — find element by id across shadow DOM boundaries,
+    //     optionally perform an action (click, type) on it.
+    //     If perform is set, the action is executed and the result returned.
+    //     If perform is omitted, element info (tag, id, text) is returned.
+    case 'selectById':
+      return await p.evaluate(({ id, perform, value }) => {
+        function find(root) {
+          if (root.getElementById) {
+            const el = root.getElementById(id);
+            if (el) return el;
+          }
+          const nodes = root.querySelectorAll ? root.querySelectorAll('*') : [];
+          for (const node of nodes) {
+            if (node.shadowRoot) {
+              const found = find(node.shadowRoot);
+              if (found) return found;
+            }
+          }
+          return null;
+        }
+        const el = find(document);
+        if (!el) return { error: 'element not found: ' + id };
+        if (perform === 'click') { el.click(); return { ok: true, tag: el.tagName, id: el.id }; }
+        if (perform === 'focus') { el.focus(); return { ok: true, tag: el.tagName, id: el.id }; }
+        if (perform === 'type') {
+          el.value = value || '';
+          el.focus();
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return { ok: true, tag: el.tagName, id: el.id };
+        }
+        return {
+          ok: true,
+          tag: el.tagName,
+          id: el.id,
+          text: (el.textContent || '').substring(0, 200),
+          value: el.value !== undefined ? el.value : undefined
+        };
+      }, { id: args.id, perform: args.perform || '', value: args.value || '' });
+
     default:
       return { error: 'unknown action: ' + action };
   }

@@ -283,6 +283,11 @@ Replaces inline HTML with static file serving from `webRoot`. Uses a template-ba
 | POST | `/api/agent/:uuid/messages` | Append message + resolve prompt if tool role |
 | DELETE | `/api/agent/:uuid/prompt/:toolCallId` | Dismiss prompt |
 | POST | `/api/ping` | Triggers pong on SSE |
+| POST | `/api/terminal/open` | Launch PTY terminal via b1 or direct a0 fork |
+| GET | `/api/terminal/status/:terminalId` | Poll SQLite for stream readiness |
+| POST | `/api/stream/:id/input` | Forward terminal stdin via b1 IPC |
+| GET | `/api/stream/:id/chunks` | Stream output from SQLite ordered by seq |
+| GET | `/api/session/:uuid/streams` | All streams for a session |
 | GET | `/*` | Static files, SPA fallthrough |
 
 ---
@@ -483,8 +488,7 @@ sequenceDiagram
 ### 5.1 c2 CLI
 
 ```
-c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-cert <file>]
-```
+c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-cert <file>] [--log-file <path>]
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -493,6 +497,7 @@ c2 [--port <n>] [--socket <path>] [--web-root <path>] [--ssl-key <file> --ssl-ce
 | `--web-root` | `<cwd>/.a0/git/opensassi/a0/c2/web` | Static file serving root |
 | `--ssl-key` | — | TLS key file path |
 | `--ssl-cert` | — | TLS cert file path |
+| `--log-file` | — | Redirect stderr to file; forked a0 terminal derives own path |
 
 ### 5.2 Environment Variables
 

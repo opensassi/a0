@@ -1,0 +1,24 @@
+{
+    "name": "hosts-page",
+    "tag": "hosts-page",
+    "description": "Manage hosts page with CRUD for remote c2 instances and terminal launcher",
+    "shadowDom": true,
+    "routes": ["/hosts"],
+    "dependsOn": [],
+    "ids": {
+        "page-hosts": { "description": "Page root element", "type": "container" },
+        "host-list": { "description": "Host card list container", "type": "container" },
+        "new-name": { "description": "Add host name input", "type": "input" },
+        "new-url": { "description": "Add host URL input", "type": "input" },
+        "add-host-btn": { "description": "Add host button", "type": "button", "action": "add host" },
+        "terminal-cwd": { "description": "Terminal working directory input", "type": "input" },
+        "launch-terminal-btn": { "description": "Launch terminal button", "type": "button", "action": "launch terminal" }
+    },
+    "dynamicIds": {
+        "host-card-{slug}": { "pattern": "host-card-{slug}", "description": "Host card", "type": "container" },
+        "host-remove-{slug}": { "pattern": "host-remove-{slug}", "description": "Remove host button", "type": "button", "action": "remove host" },
+        "host-connect-{slug}": { "pattern": "host-connect-{slug}", "description": "Connect host button", "type": "button", "action": "connect host" },
+        "host-disconnect-{slug}": { "pattern": "host-disconnect-{slug}", "description": "Disconnect host button", "type": "button", "action": "disconnect host" }
+    },
+    "events": { "emits": ["navigate"], "listens": ["hosts"] }
+}

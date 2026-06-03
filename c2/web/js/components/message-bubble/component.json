@@ -1,0 +1,13 @@
+{
+    "name": "message-bubble",
+    "tag": "message-bubble",
+    "description": "Single LLM message display with role label, time, content, and collapse toggle",
+    "shadowDom": true,
+    "routes": [],
+    "dependsOn": [],
+    "ids": {},
+    "dynamicIds": {
+        "msg-{role}-{seq}": { "pattern": "msg-{role}-{number}", "description": "Message bubble element", "type": "message" }
+    },
+    "events": { "emits": [], "listens": ["settings"] }
+}
