@@ -1,0 +1,165 @@
+{
+  "name": "github",
+  "version": "1.0.0",
+  "description": "GitHub CLI operations — issue management, project board automation, and GraphQL API access for the opensassi/a0 repository",
+  "tools": [
+    {
+      "name": "auth_check",
+      "description": "Verify that gh CLI is authenticated. Fails with a clear error if not logged in.",
+      "command": "gh auth status",
+      "inputMode": "args",
+      "timeoutSecs": 10,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "issue_list",
+      "description": "List GitHub issues with filters. Supports filtering by state, label, and custom JSON output fields.",
+      "command": "gh issue list",
+      "inputMode": "args",
+      "timeoutSecs": 30,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "repo": { "type": "string", "description": "Repository in owner/name format (e.g. opensassi/a0)" },
+          "state": { "type": "string", "enum": ["open", "closed", "all"], "default": "open" },
+          "limit": { "type": "number", "default": 80 },
+          "json": { "type": "string", "description": "Comma-separated JSON fields to return (e.g. number,title,milestone,labels)" },
+          "label": { "type": "string", "description": "Comma-separated label filter" }
+        },
+        "required": ["repo"]
+      }
+    },
+    {
+      "name": "issue_view",
+      "description": "View a single GitHub issue. Can return full details or specific JSON fields with jq filtering.",
+      "command": "gh issue view",
+      "inputMode": "args",
+      "timeoutSecs": 30,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "_": { "type": "number", "description": "Issue number" },
+          "repo": { "type": "string", "description": "Repository in owner/name format" },
+          "json": { "type": "string", "description": "Comma-separated JSON fields to return" },
+          "jq": { "type": "string", "description": "jq filter expression to apply to the JSON output" }
+        },
+        "required": ["_", "repo"]
+      }
+    },
+    {
+      "name": "issue_create",
+      "description": "Create a new GitHub issue with title, labels, and body.",
+      "command": "gh issue create",
+      "inputMode": "args",
+      "timeoutSecs": 30,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "repo": { "type": "string", "description": "Repository in owner/name format" },
+          "title": { "type": "string", "description": "Issue title" },
+          "label": { "type": "string", "description": "Comma-separated labels" },
+          "body": { "type": "string", "description": "Issue body text (can include markdown)" }
+        },
+        "required": ["repo", "title"]
+      }
+    },
+    {
+      "name": "issue_edit",
+      "description": "Edit an existing GitHub issue — milestone, body, body-file, add-label, remove-label.",
+      "command": "gh issue edit",
+      "inputMode": "args",
+      "timeoutSecs": 30,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "_": { "type": "number", "description": "Issue number to edit" },
+          "repo": { "type": "string", "description": "Repository in owner/name format" },
+          "milestone": { "type": "string", "description": "Milestone name to assign" },
+          "body": { "type": "string", "description": "New body text (replaces existing)" },
+          "bodyFile": { "type": "string", "description": "Path to file containing body text" },
+          "addLabel": { "type": "string", "description": "Comma-separated labels to add" },
+          "removeLabel": { "type": "string", "description": "Comma-separated labels to remove" }
+        },
+        "required": ["_", "repo"]
+      }
+    },
+    {
+      "name": "graphql",
+      "description": "Execute a GitHub GraphQL API query or mutation via gh api graphql. Pass query via the 'field' parameter as 'query=...' key=value string.",
+      "command": "gh api graphql",
+      "inputMode": "args",
+      "timeoutSecs": 30,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "field": { "type": "string", "description": "GraphQL field in key=value format (e.g. query=query { viewer { login } })" },
+          "jq": { "type": "string", "description": "jq filter to apply to the response" },
+          "rawField": { "type": "string", "description": "Additional raw fields sent as-is (for mutation inputs)" },
+          "method": { "type": "string", "default": "POST", "description": "HTTP method" }
+        },
+        "required": ["field"]
+      }
+    },
+    {
+      "name": "project_field_list",
+      "description": "List custom fields and their selectable options for a GitHub Project V2.",
+      "command": "gh project field-list",
+      "inputMode": "args",
+      "timeoutSecs": 30,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "_": { "type": "number", "description": "Project number" },
+          "owner": { "type": "string", "description": "Project owner (org or user)" },
+          "format": { "type": "string", "default": "json" }
+        },
+        "required": ["_", "owner"]
+      }
+    }
+  ],
+  "prompts": [
+    {
+      "name": "verify_setup",
+      "description": "Verify gh CLI authentication and discover the open GitHub Project V2 linked to this repository",
+      "dependencies": [
+        "local-github-auth_check",
+        "local-github-graphql"
+      ],
+      "promptFile": "prompts/verify_setup.md"
+    },
+    {
+      "name": "lookup_phase_fields",
+      "description": "Look up current Phase option IDs for the project board",
+      "dependencies": [
+        "local-github-project_field_list",
+        "local-github-graphql"
+      ],
+      "promptFile": "prompts/lookup_phase_fields.md"
+    },
+    {
+      "name": "create_board_issue",
+      "description": "Create a new issue and fully set up its project board fields (milestone, phase, status, size)",
+      "dependencies": [
+        "local-github-auth_check",
+        "local-github-issue_create",
+        "local-github-issue_edit",
+        "local-github-graphql",
+        "local-github-project_field_list"
+      ],
+      "promptFile": "prompts/create_board_issue.md"
+    },
+    {
+      "name": "link_sub_issue",
+      "description": "Link a sub-issue to a parent epic by appending a tasklist entry to the epic's body",
+      "dependencies": [
+        "local-github-issue_view",
+        "local-github-issue_edit"
+      ],
+      "promptFile": "prompts/link_sub_issue.md"
+    }
+  ]
+}
