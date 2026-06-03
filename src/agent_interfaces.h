@@ -10,6 +10,8 @@
 
 #include "command_runner.h"
 
+class ToolState;
+
 using json = nlohmann::json;
 
 enum class TrustLevel {
@@ -49,6 +51,8 @@ struct Prompt {
     // Component context for short-name resolution in tool templates
     std::string ns;
     std::string component;
+
+    bool parallelValidators = false;   // run validators in parallel when independent
 };
 
 class SkillRegistry {
@@ -201,6 +205,15 @@ public:
     virtual void setCurrentPrompt(const Prompt& prompt) = 0;
     virtual std::string getCurrentNetwork() const = 0;
     virtual void clearCurrentPrompt() = 0;
+
+    /// Start a persistent compose environment that stays alive across multiple tool calls.
+    /// Call stopPersistent() at session end to tear down. The stack will NOT be stopped
+    /// after individual execute() calls.
+    virtual std::string startPersistent(const std::string& name,
+                                         const std::string& composeFile,
+                                         const std::string& skillDirectory) = 0;
+    virtual void stopPersistent(const std::string& name) = 0;
+    virtual bool isPersistent(const std::string& name) const = 0;
 };
 
 class DockerToolRunner : public ToolRunner {

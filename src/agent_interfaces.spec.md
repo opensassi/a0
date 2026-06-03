@@ -75,6 +75,7 @@ struct Prompt {
     std::string prompt;
     std::vector<std::string> dependencies;
     std::vector<ValidatorBinding> validators;
+    bool parallelValidators = false;   // run validators in parallel when independent
 };
 ```
 
@@ -307,17 +308,25 @@ public:
 class ComposeManager {
 public:
     virtual ~ComposeManager() = default;
-    /** @param skill          Skill with composeFile set
+    /** @param prompt         Prompt with composeFile set
      *  @param skillDirectory Working directory
-     *  @return stdout of docker compose up */
-    virtual std::string startEnvironment(const Skill& skill,
+     *  @return network name of the started stack */
+    virtual std::string startEnvironment(const Prompt& prompt,
                                          const std::string& skillDirectory) = 0;
-    virtual void stopEnvironment(const Skill& skill) = 0;
-    virtual void markUsed(const Skill& skill) = 0;
-    virtual void setCurrentSkill(const Skill& skill) = 0;
+    virtual void stopEnvironment(const Prompt& prompt) = 0;
+    virtual void markUsed(const Prompt& prompt) = 0;
+    virtual void setCurrentPrompt(const Prompt& prompt) = 0;
     /** @return Current compose network name */
     virtual std::string getCurrentNetwork() const = 0;
-    virtual void clearCurrentSkill() = 0;
+    virtual void clearCurrentPrompt() = 0;
+
+    /// Start a persistent compose environment that stays alive across multiple tool calls.
+    /// Call stopPersistent() at session end to tear down.
+    virtual std::string startPersistent(const std::string& name,
+                                         const std::string& composeFile,
+                                         const std::string& skillDirectory) = 0;
+    virtual void stopPersistent(const std::string& name) = 0;
+    virtual bool isPersistent(const std::string& name) const = 0;
 };
 ```
 

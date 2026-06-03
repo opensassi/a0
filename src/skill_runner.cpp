@@ -1,6 +1,7 @@
 #include "skill_runner.h"
 #include "base_prompt.h"
 #include "skills/skills.h"
+#include "dependency_graph.h"
 #include "trace.h"
 #include <regex>
 #include <sstream>
@@ -194,39 +195,98 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
 
 json DefaultSkillRunner::runValidators(const Prompt& prompt, const json& input) {
     TRACE_LOG("runValidators(" << prompt.name << ")");
-    json current = input;
-    for (const auto& vb : prompt.validators) {
-        a0::skills::SkillTool skillTool;
-        bool found = false;
-        if (m_skillMgr && m_skillMgr->getTool(vb.toolName, skillTool) == 0) {
-            found = true;
-        }
+    if (prompt.validators.empty()) return input;
 
-        if (!found) {
-            current = "VALIDATOR_ERROR: tool not found: " + vb.toolName;
-            break;
-        }
+    if (!prompt.parallelValidators) {
+        // Sequential: pipe output from one validator to the next
+        json current = input;
+        for (const auto& vb : prompt.validators) {
+            a0::skills::SkillTool skillTool;
+            bool found = false;
+            if (m_skillMgr && m_skillMgr->getTool(vb.toolName, skillTool) == 0) {
+                found = true;
+            }
 
-        json params;
-        if (current.is_string()) {
-            params["input"] = current.get<std::string>();
-        } else {
-            params["input"] = current.dump();
-        }
-
-        json validatorResult = runTool(skillTool, params,
-                                        m_toolRunner, m_dockerRunner);
-
-        if (validatorResult.is_string()) {
-            std::string out = validatorResult.get<std::string>();
-            if (out.find("ERROR:") == 0) {
-                current = "VALIDATOR_ERROR: " + out;
+            if (!found) {
+                current = "VALIDATOR_ERROR: tool not found: " + vb.toolName;
                 break;
             }
+
+            json params;
+            if (current.is_string()) {
+                params["input"] = current.get<std::string>();
+            } else {
+                params["input"] = current.dump();
+            }
+
+            json validatorResult = runTool(skillTool, params,
+                                            m_toolRunner, m_dockerRunner);
+
+            if (validatorResult.is_string()) {
+                std::string out = validatorResult.get<std::string>();
+                if (out.find("ERROR:") == 0) {
+                    current = "VALIDATOR_ERROR: " + out;
+                    break;
+                }
+            }
+            current = validatorResult;
         }
-        current = validatorResult;
+        return current;
     }
-    return current;
+
+    // Parallel: all validators receive the same input, run independently
+    std::vector<a0::ToolInvocation> invocations;
+    std::vector<std::string> toolNames;
+    for (const auto& vb : prompt.validators) {
+        a0::skills::SkillTool skillTool;
+        if (!m_skillMgr || m_skillMgr->getTool(vb.toolName, skillTool) != 0) {
+            continue;
+        }
+        json params;
+        if (input.is_string()) {
+            params["input"] = input.get<std::string>();
+        } else {
+            params["input"] = input.dump();
+        }
+        // Use qualified name as-is — resolve at execution time
+        invocations.push_back({vb.toolName, params, nullptr, "", 0});
+        toolNames.push_back(vb.toolName);
+    }
+
+    if (invocations.empty()) return input;
+
+    auto batches = a0::DependencyGraph::buildBatches(invocations);
+    auto batchResults = a0::DependencyGraph::executeBatches(batches, m_skillMgr, m_maxParallel);
+
+    // Check all results: if any validator failed, prefix with VALIDATOR_ERROR
+    std::vector<std::string> errors;
+    std::vector<json> outputs;
+    size_t idx = 0;
+    for (const auto& br : batchResults) {
+        for (size_t i = 0; i < br.outputs.size(); ++i) {
+            if (!br.errors.empty() && i < br.errors.size() && !br.errors[i].empty()) {
+                errors.push_back(toolNames[idx] + ": " + br.errors[i]);
+            }
+            std::string out = br.outputs[i];
+            if (out.find("VALIDATOR_ERROR:") == 0) {
+                errors.push_back(toolNames[idx] + ": " + out);
+            }
+            outputs.push_back(json(out));
+            ++idx;
+        }
+    }
+
+    if (!errors.empty()) {
+        std::string err = "VALIDATOR_ERROR: ";
+        for (size_t i = 0; i < errors.size(); ++i) {
+            if (i > 0) err += "; ";
+            err += errors[i];
+        }
+        return json(err);
+    }
+
+    // All validators passed — return first output (or original input if none)
+    return outputs.empty() ? input : outputs[0];
 }
 
 a0::StreamHandle DefaultSkillRunner::executeStreaming(
@@ -235,7 +295,6 @@ a0::StreamHandle DefaultSkillRunner::executeStreaming(
     TRACE_LOG("executeStreaming(" << prompt.name << ")");
     auto missing = m_depResolver->missingDependencies(prompt);
     if (!missing.empty()) {
-        // Return a no-op handle (already done)
         a0::StreamHandle h;
         return h;
     }
@@ -254,13 +313,28 @@ a0::StreamHandle DefaultSkillRunner::executeStreaming(
             json toolParams = params;
             toolParams.erase("_tool");
             toolParams.erase("streaming");
-            return runToolStreaming(skillTool, toolParams,
-                                     std::move(onChunk),
-                                     m_toolRunner, m_dockerRunner);
+
+            // Route through SkillManager for qualified name resolution
+            std::string qualified = toolName;
+            if (toolName.find('-') == std::string::npos &&
+                !prompt.ns.empty() && !prompt.component.empty()) {
+                qualified = a0::skills::buildQualifiedName(prompt.ns, prompt.component, toolName);
+            }
+
+            if (m_skillMgr) {
+                return m_skillMgr->executeToolStreaming(
+                    qualified, toolParams, std::move(onChunk));
+            }
         }
     }
 
-    // Default: no streaming tool found, return empty handle
+    // Check if this is a valid prompt with streaming-capable tools via eager expansion
+    if (prompt.prompt.find("{{tool:") != std::string::npos) {
+        // Fall through to sync execute for eager tool expansion (not streaming)
+        a0::StreamHandle h;
+        return h;
+    }
+
     a0::StreamHandle h;
     return h;
 }
@@ -300,8 +374,9 @@ json DefaultSkillRunner::execute(const Prompt& prompt, const json& params) {
 
     json finalResult = runValidators(prompt, llmResult);
 
-    // Stop compose if needed
-    if (!prompt.composeFile.empty() && m_composeMgr) {
+    // Stop compose if needed (skip if this stack is persistent)
+    if (!prompt.composeFile.empty() && m_composeMgr &&
+        !m_composeMgr->isPersistent(prompt.name)) {
         m_composeMgr->stopEnvironment(prompt);
     }
 

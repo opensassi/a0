@@ -115,6 +115,15 @@ public:
 
     // Clear the current prompt reference.
     virtual void clearCurrentPrompt() = 0;
+
+    // Start a persistent compose environment that stays alive across multiple tool calls.
+    // Call stopPersistent() at session end to tear down. The stack will NOT be stopped
+    // after individual execute() calls.
+    virtual std::string startPersistent(const std::string& name,
+                                         const std::string& composeFile,
+                                         const std::string& skillDirectory) = 0;
+    virtual void stopPersistent(const std::string& name) = 0;
+    virtual bool isPersistent(const std::string& name) const = 0;
 };
 ```
 

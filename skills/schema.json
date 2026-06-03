@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://opensassi.ai/skills/skill.json",
+  "title": "Skill Manifest",
+  "description": "Schema for a0 agent skill.json manifest files",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique skill/component name"
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the skill"
+    },
+    "subModules": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of sub-component directories to auto-load"
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SkillTool" },
+      "description": "Tool definitions provided by this skill"
+    },
+    "args": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SkillArg" },
+      "description": "Documentation for CLI arguments accepted by this skill. Passed via --skill-arg=<name>=<value> at runtime."
+    },
+    "prompts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SkillPrompt" },
+      "description": "Prompt definitions provided by this skill"
+    }
+  },
+  "required": ["name", "version", "description"],
+
+  "$defs": {
+    "SkillTool": {
+      "type": "object",
+      "description": "A tool definition — either a system (C++ handler) tool or a command-based subprocess tool",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique tool name within the component"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what the tool does"
+        },
+        "command": {
+          "type": "string",
+          "description": "Shell command to execute (required for command-based tools)"
+        },
+        "inputMode": {
+          "type": "string",
+          "enum": ["stdin", "args"],
+          "default": "stdin",
+          "description": "How parameters are passed to the command: stdin (pipe as JSON) or args (CLI arguments)"
+        },
+        "timeoutSecs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Per-tool timeout in seconds"
+        },
+        "dockerImage": {
+          "type": "string",
+          "description": "Docker image for containerized execution (e.g. ubuntu:22.04)"
+        },
+        "trustLevel": {
+          "type": "string",
+          "enum": ["HIGH", "MEDIUM", "LOW"],
+          "default": "MEDIUM",
+          "description": "Docker container trust/isolation level"
+        },
+        "useContainerPool": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to use shared container pool (false = ephemeral docker run --rm)"
+        },
+        "aptDependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "APT packages to install inside the container"
+        },
+        "systemTool": {
+          "type": "boolean",
+          "default": false,
+          "description": "True if implemented as a C++ handler, false if a subprocess command"
+        },
+        "default": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include in LLM anchor schema (default tools)"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "JSON Schema object for LLM function-calling parameters"
+        },
+        "subCommand": {
+          "type": "string",
+          "description": "Override for hyphenated CLI subcommands (e.g. rev-parse for tool rev_parse)"
+        },
+        "streaming": {
+          "type": "boolean",
+          "default": false,
+          "description": "Tool supports streaming output via StreamHandle/StreamCallback"
+        }
+      },
+      "required": ["name", "description"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "systemTool": { "const": true } },
+            "required": ["systemTool"]
+          },
+          "then": {
+            "required": ["name", "description"]
+          },
+          "else": {
+            "required": ["name", "description", "command"]
+          }
+        }
+      ]
+    },
+
+    "SkillPrompt": {
+      "type": "object",
+      "description": "A prompt-based capability within a skill package",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique prompt name within the component"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what the prompt does"
+        },
+        "promptFile": {
+          "type": "string",
+          "description": "Path to the prompt markdown file (relative to skill.json directory)"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Inline prompt text (used when promptFile is absent)"
+        },
+        "chain": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Parent/base prompt names to chain this prompt on"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Qualified tool/prompt names required by this prompt"
+        },
+        "validators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ValidatorBinding" },
+          "description": "Post-LLM processing chain of validators"
+        },
+        "parallelValidators": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run validators in parallel (independent) or sequentially (default)"
+        }
+      },
+      "required": ["name", "description"]
+    },
+
+    "SkillArg": {
+      "type": "object",
+      "description": "A CLI argument that this skill accepts. The name is relative to the skill; at runtime it is prefixed by the skill name (e.g. skill 'playwright' with arg 'headless' becomes --skill-arg=playwright-headless).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Argument name, used as the key in --skill-arg=<name>=<value>"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["boolean", "string", "number"],
+          "default": "boolean",
+          "description": "Value type"
+        },
+        "default": {
+          "description": "Default value if not specified"
+        },
+        "description": {
+          "type": "string",
+          "description": "Help text for the argument"
+        }
+      },
+      "required": ["name"]
+    },
+
+    "ValidatorBinding": {
+      "type": "object",
+      "properties": {
+        "toolName": {
+          "type": "string",
+          "description": "Name of the validator tool to run"
+        }
+      },
+      "required": ["toolName"]
+    }
+  }
+}

@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  # c2 web dashboard — the target application under test
+  c2:
+    image: a0-playwright:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.playwright
+    command: ["c2", "--port=8080"]
+    ports:
+      - "8080:8080"
+    networks:
+      - testnet
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Playwright bridge — persistent browser daemon
+  browser:
+    image: a0-playwright:latest
+    command: ["node", "/opt/a0/scripts/playwright-bridge.js"]
+    ports:
+      - "3100:3100"
+    networks:
+      - testnet
+    depends_on:
+      c2:
+        condition: service_healthy
+    environment:
+      - BRIDGE_PORT=3100
+      - BRIDGE_HEADLESS=true
+
+networks:
+  testnet:
+    driver: bridge

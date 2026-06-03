@@ -5,5 +5,8 @@ add_library(skills_lib STATIC
     validation_engine.cpp
 )
 
-target_include_directories(skills_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(skills_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/thirdparty
+)
 target_link_libraries(skills_lib PUBLIC nlohmann_json::nlohmann_json cmd_runner_lib)

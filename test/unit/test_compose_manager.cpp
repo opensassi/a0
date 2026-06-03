@@ -92,3 +92,56 @@ TEST_F(ComposeManagerTest, MultipleSkillsDifferentNetworks) {
     EXPECT_EQ(net2, "app2_default");
     EXPECT_NE(net1, net2);
 }
+
+// ===========================================================================
+// Persistent mode
+// ===========================================================================
+
+TEST_F(ComposeManagerTest, StartPersistent_ReturnsNetwork) {
+    std::string network = mgr->startPersistent("persist_test", "docker-compose.yml", "/tmp/proj");
+    EXPECT_FALSE(network.empty());
+    EXPECT_EQ(network, "proj_default");
+}
+
+TEST_F(ComposeManagerTest, StartPersistent_MarksAsPersistent) {
+    mgr->startPersistent("persistent_skill", "docker-compose.yml", "/tmp/app");
+    EXPECT_TRUE(mgr->isPersistent("persistent_skill"));
+}
+
+TEST_F(ComposeManagerTest, TransientNotPersistent) {
+    Prompt p = makePrompt("transient", "docker-compose.yml");
+    mgr->startEnvironment(p, "/tmp/proj");
+    EXPECT_FALSE(mgr->isPersistent("transient"));
+}
+
+TEST_F(ComposeManagerTest, StopPersistent_ClearsFlag) {
+    mgr->startPersistent("will_stop", "docker-compose.yml", "/tmp/app");
+    EXPECT_TRUE(mgr->isPersistent("will_stop"));
+    mgr->stopPersistent("will_stop");
+    EXPECT_FALSE(mgr->isPersistent("will_stop"));
+}
+
+TEST_F(ComposeManagerTest, StopPersistent_UnknownName_NoThrow) {
+    EXPECT_NO_THROW(mgr->stopPersistent("does_not_exist"));
+}
+
+TEST_F(ComposeManagerTest, StartPersistent_EmptyComposeFile_ReturnsEmpty) {
+    std::string network = mgr->startPersistent("empty", "", "/tmp");
+    EXPECT_TRUE(network.empty());
+    EXPECT_FALSE(mgr->isPersistent("empty"));
+}
+
+TEST_F(ComposeManagerTest, TransientStop_DoesNotAffectPersistent) {
+    // Start transient
+    Prompt p = makePrompt("transient_app", "docker-compose.yml");
+    mgr->startEnvironment(p, "/tmp/proj");
+    EXPECT_FALSE(mgr->isPersistent("transient_app"));
+
+    // Start persistent with different name
+    mgr->startPersistent("persistent_app", "docker-compose.yml", "/tmp/proj");
+    EXPECT_TRUE(mgr->isPersistent("persistent_app"));
+
+    // Stop transient does not affect persistent
+    mgr->stopEnvironment(p);
+    EXPECT_TRUE(mgr->isPersistent("persistent_app")) << "Stopping transient should not affect persistent stack";
+}

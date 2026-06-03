@@ -34,6 +34,7 @@ std::string DockerComposeManager::startEnvironment(
         DockerCLIWrapper::getNetworkName(prompt.composeFile, skillDirectory);
 
     ComposeStackInfo info;
+    info.composeFile = prompt.composeFile;
     info.networkName = networkName;
     info.lastUsed = std::time(nullptr);
     m_stacks[prompt.name] = std::move(info);
@@ -75,6 +76,59 @@ std::string DockerComposeManager::getCurrentNetwork() const {
 
 void DockerComposeManager::clearCurrentPrompt() {
     m_currentPromptName.clear();
+}
+
+std::string DockerComposeManager::startPersistent(
+    const std::string& name,
+    const std::string& composeFile,
+    const std::string& skillDirectory)
+{
+    TRACE_LOG("startPersistent(" << name << ")");
+    if (composeFile.empty()) return "";
+
+    auto it = m_stacks.find(name);
+    if (it != m_stacks.end()) {
+        m_persistentStacks.insert(name);
+        it->second.lastUsed = std::time(nullptr);
+        return it->second.networkName;
+    }
+
+    try {
+        DockerCLIWrapper::composeUp(composeFile, skillDirectory);
+    } catch (const std::exception& e) {
+        TRACE_LOG("composeUp failed: " << e.what());
+        return "";
+    }
+
+    std::string networkName =
+        DockerCLIWrapper::getNetworkName(composeFile, skillDirectory);
+
+    ComposeStackInfo info;
+    info.composeFile = composeFile;
+    info.networkName = networkName;
+    info.lastUsed = std::time(nullptr);
+    m_stacks[name] = std::move(info);
+    m_persistentStacks.insert(name);
+
+    return networkName;
+}
+
+void DockerComposeManager::stopPersistent(const std::string& name) {
+    TRACE_LOG("stopPersistent(" << name << ")");
+    auto it = m_stacks.find(name);
+    if (it == m_stacks.end()) return;
+
+    try {
+        DockerCLIWrapper::composeDown(it->second.composeFile, "");
+    } catch (const std::exception& e) {
+        TRACE_LOG("composeDown failed: " << e.what());
+    }
+    m_persistentStacks.erase(name);
+    m_stacks.erase(it);
+}
+
+bool DockerComposeManager::isPersistent(const std::string& name) const {
+    return m_persistentStacks.find(name) != m_persistentStacks.end();
 }
 
 } // namespace docker

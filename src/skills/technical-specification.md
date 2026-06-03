@@ -49,6 +49,7 @@ All classes are defined in the `a0::skills` namespace, declared in `src/skills/`
 #include <unordered_map>
 #include <optional>
 #include "nlohmann/json.hpp"
+#include "../tool_state.h"
 
 namespace a0::skills {
 
@@ -65,6 +66,12 @@ struct ToolSchema {
     nlohmann::json output;  // JSON Schema for return value
 };
 
+/// Context passed to every C++ system tool handler.
+struct HandlerContext {
+    std::string subcommand;       // wildcard suffix or tool name
+    ToolState* toolState = nullptr; // per-session shared state (nullable)
+};
+
 /// Extended tool definition with versioned schema.
 struct SkillTool {
     std::string name;
@@ -79,6 +86,8 @@ struct SkillTool {
     bool default_ = false;         // included in LLM anchor schema
     int timeoutSecs = 30;
     nlohmann::json parameters;     // JSON Schema for LLM function calling
+    std::string subCommand;        // override CLI subcommand (e.g. "rev-parse")
+    bool streaming = false;        // tool supports streaming output
 };
 
 /// Return type for C++ system tool handler functions.
@@ -91,7 +100,8 @@ struct HandlerResult {
 /// Function signature for system tool C++ handlers.
 /// Previously `SystemToolRegistry` static methods, now free functions
 /// registered onto SkillManager via registerHandler().
-using ToolHandler = std::function<::a0::HandlerResult(const nlohmann::json& params)>;
+using ToolHandler = std::function<::a0::HandlerResult(const nlohmann::json& params,
+                                                       HandlerContext ctx)>;
 
 /// A prompt-based capability within a skill package.
 struct SkillPrompt {
@@ -285,6 +295,21 @@ public:
     void setDockerRunner(::DockerToolRunner* runner);
     void setDockerSecurityFilter(::a0::DockerSecurityFilter* filter);
 
+    /// Execute a tool with streaming output.
+    /// For command tools with streaming=true, delegates to ToolRunner::runStreaming.
+    /// For system tools, falls through to synchronous executeToolWithMeta path.
+    a0::StreamHandle executeToolStreaming(const std::string& qualifiedName,
+        const nlohmann::json& params, a0::StreamCallback onChunk,
+        int* seq = nullptr, const std::string& toolCallId = "",
+        int64_t subSessionId = 0);
+
+    /// Enable auto-recording of tool execution results to persistence.
+    /// When active, every executeToolWithMeta call records appendMessage + appendInvocation.
+    void setRecordingSession(int64_t sessionDbId);
+
+    /// Access the per-session ToolState bag (thread-safe).
+    ToolState& toolState() { return m_toolState; }
+
 private:
     std::string m_skillsRoot;
     std::string m_storeRoot;
@@ -295,6 +320,9 @@ private:
     ::ToolRunner* m_toolRunner = nullptr;
     ::DockerToolRunner* m_dockerRunner = nullptr;
     ::a0::DockerSecurityFilter* m_dockerSecurityFilter = nullptr;
+    ::a0::persistence::PersistenceStore* m_persistence = nullptr;
+    int64_t m_sessionDbId = 0;
+    ToolState m_toolState;
 
     SkillManager(const SkillManager&) = delete;
     SkillManager& operator=(const SkillManager&) = delete;
@@ -306,10 +334,16 @@ private:
 ### 2.3 SkillLoader
 
 ```cpp
+#include <valijson/validator.hpp>
+#include <valijson/schema.hpp>
+#include <valijson/schema_parser.hpp>
+#include <valijson/adapters/nlohmann_json_adapter.hpp>
+
 namespace a0::skills {
 
 /// Walks the skills/ directory tree, parses skill.json manifests.
 /// Maintains an in-memory index of all loaded components.
+/// Validates manifests against skills/schema.json (Draft-07) on load.
 class SkillLoader {
 public:
     explicit SkillLoader(const std::string& root);
@@ -320,56 +354,54 @@ public:
     /// \retval -1 Root directory missing.
     int loadAll();
 
+    /// Validate a JSON object against the skill.json schema.
+    /// \param json     The parsed JSON object to validate.
+    /// \param errors   Output: human-readable validation errors.
+    /// \retval 0   Valid.
+    /// \retval -1  Invalid (errors populated).
+    int validateAgainstSchema(const nlohmann::json& json, std::string& errors) const;
+
     /// Lookup a tool by qualified name components.
-    /// \param ns         Namespace string (e.g. "system", "local", "github_alice").
-    /// \param component  Component name.
-    /// \param toolName   Tool name within component.
-    /// \param[out] tool  Populated on success.
-    /// \retval 0  Found.
-    /// \retval -1 Component not found.
-    /// \retval -2 Tool not found.
-    int getTool(const std::string& ns,
-                const std::string& component,
-                const std::string& toolName,
-                SkillTool& tool) const;
+    int getTool(const std::string& ns, const std::string& component,
+                const std::string& toolName, SkillTool& tool) const;
 
     /// Lookup a prompt by qualified name components.
-    int getPrompt(const std::string& ns,
-                  const std::string& component,
-                  const std::string& promptName,
-                  SkillPrompt& prompt) const;
+    int getPrompt(const std::string& ns, const std::string& component,
+                  const std::string& promptName, Prompt& prompt) const;
 
     /// List components in a namespace.
-    /// \param ns  Namespace to list.
-    /// \returns   Component names.
     std::vector<std::string> listComponents(SkillNamespace ns) const;
 
     /// Write a manifest back to disk (local namespace only).
-    /// \param component  Component name.
-    /// \param manifest   Manifest to persist.
-    /// \retval 0  Written.
-    /// \retval -1 Namespace is read-only.
     int writeManifest(const std::string& component, const SkillManifest& manifest);
-
-    /// Read a manifest from disk (for validation against a stored version).
-    /// \param path  Path to skill.json file.
-    /// \param[out] manifest  Populated on success.
-    /// \retval 0  Parsed.
-    /// \retval -1 Parse error.
-    int readManifest(const std::string& path, SkillManifest& manifest) const;
 
 private:
     std::string m_root;
     std::unordered_map<std::string, SkillManifest> m_components;  // key: "ns:component"
     std::unordered_map<std::string, SkillNamespace> m_nsMap;     // dir → enum
+    valijson::Schema m_schema;                    // compiled schema for validation
+    mutable valijson::Validator m_validator;      // reusable validator instance
+    bool m_schemaLoaded = false;                  // true when schema successfully loaded
 
     int xLoadNamespace(const std::string& dirPath, SkillNamespace ns);
     int xParseManifestFile(const std::string& path, SkillManifest& manifest) const;
+    int xLoadSchema(const std::string& schemaPath);
     std::string xDirForNamespace(SkillNamespace ns) const;
     SkillNamespace xNsForDir(const std::string& dir) const;
 };
+```
 
 } // namespace a0::skills
+
+**Schema Validation Details:**
+
+- On construction, `SkillLoader` calls `xLoadSchema(skillsRoot + "/schema.json")` to load the Draft-07 schema from `skills/schema.json`.
+- If the schema file is missing or unparseable, a warning is printed and `m_schemaLoaded = false` — all validation passes through.
+- Every `xParseManifestFile` call:
+  1. Reads and parses JSON from the file path
+  2. Calls `validateAgainstSchema(j, errors)` — if invalid, the component is **skipped** with a warning
+  3. Populates the manifest struct from JSON
+- The `readManifest` public method has been **removed** — all parsing is now inline in `xParseManifestFile`, which also handles `parallelValidators`, `streaming`, and `subCommand` fields.
 ```
 
 ### 2.4 VersionManager

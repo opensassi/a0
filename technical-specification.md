@@ -237,7 +237,7 @@ public:
 
 ## 3. System Architecture
 
-The architecture includes both host and Docker execution paths, with mandatory dependency check and container pooling. The `SystemToolRegistry` has been eliminated — all tool dispatch (both C++ system handlers and command-based subprocess tools) goes through `SkillManager`'s handler registry.
+The architecture includes both host and Docker execution paths, with mandatory dependency check and container pooling. The `SystemToolRegistry` has been eliminated — all tool dispatch (both C++ system handlers and command-based subprocess tools) goes through `SkillManager`'s handler registry. A `DependencyGraph` batch executor parallelizes reader-class tools, and a `ToolState` bag carries per-session state across invocations.
 
 ```mermaid
 graph TB
@@ -249,6 +249,8 @@ graph TB
         Context[ContextManager]
         SkillMgr[SkillManager]
         SkillMgr_Handlers[m_handlers: xBash, xRead, xGitCommand, ...]
+        ToolState[m_toolState: ToolState]
+        DepGraph[DependencyGraph]
         HostRunner[HostToolRunner]
         DockerRunner[DockerToolRunner]
         SkillRunner[SkillRunner]
@@ -270,6 +272,7 @@ graph TB
 
     subgraph "Filesystem"
         SkillsDir[(skills/)]
+        SchemaJSON[skills/schema.json]
     end
 
     User --> Core
@@ -278,9 +281,11 @@ graph TB
     Core --> HostRunner
     Core --> DockerRunner
     Core --> SkillRunner
+    Core --> DepGraph
     SkillMgr --> SkillMgr_Handlers
     SkillMgr --> HostRunner
     SkillMgr --> DockerRunner
+    SkillMgr --> ToolState
     SkillRunner --> DepResolver
     SkillRunner --> DeepSeek
     SkillRunner --> SkillMgr
@@ -289,20 +294,64 @@ graph TB
     Core --> Persistence
     Persistence --> DB
     SkillMgr --> SkillsDir
+    SkillMgr --> SchemaJSON
 
     DockerRunner --> ContainerMgr
     DockerRunner --> ComposeMgr
     ContainerMgr --> Containers
     ComposeMgr --> ComposeStacks
+    DepGraph --> SkillMgr
+    DepGraph --> HostRunner
 ```
 
-**Caption**: `SkillManager` owns both the manifest index (loaded from `skills/`) and the `m_handlers` registry of C++ system tool handlers. It dispatches to `HostToolRunner`/`DockerToolRunner` for command-based tools. All built-in tools (bash, read, edit, git, docker, etc.) are registered as handlers on `SkillManager` at startup.
+**Caption**: `SkillManager` owns both the manifest index (loaded from `skills/`) and the `m_handlers` registry of C++ system tool handlers. It dispatches to `HostToolRunner`/`DockerToolRunner` for command-based tools. `DependencyGraph` batches tool invocations from the forked loop, parallelizing pure readers. `ToolState` is injected into handlers via `HandlerContext` for cross-invocation state. `SkillLoader` validates all `skill.json` manifests against `skills/schema.json` (Draft-07) at load time.
 
 ---
 
 ## 4. Detailed Data Flow
 
 The following sequence diagrams show the execution paths for skills and Docker‑based tools.
+
+### 4.0 DependencyGraph Batched Tool Execution
+
+```mermaid
+sequenceDiagram
+    participant LLM
+    participant Core as AgentCore (xRunForkedLoop)
+    participant DG as DependencyGraph
+    participant SM as SkillManager
+    participant CR as CommandRunner
+
+    LLM->>Core: tool_calls: [read1, read2, write1, read3]
+    Core->>Core: collect ToolInvocation vector
+    Core->>DG: buildBatches(invocations)
+    DG->>DG: classifyTool(read1)=READER, read2=READER, write1=WRITER, read3=READER
+    DG-->>Core: batches: [[read1,read2,read3], [write1]]
+
+    Core->>DG: executeBatches(batches, skillMgr, maxParallel=4)
+
+    rect rgb(230, 255, 230)
+        Note over DG,CR: Batch 0: 3 READERs (parallel when all subprocess)
+        alt all are command tools
+            DG->>CR: runAll([cmd1, cmd2, cmd3], 30s, 4)
+            CR-->>DG: [out1, out2, out3]
+        else mixed system + command
+            loop each reader
+                DG->>SM: executeToolWithMeta(qn, params)
+                SM-->>DG: HandlerResult
+            end
+        end
+    end
+
+    rect rgb(255, 240, 230)
+        Note over DG,SM: Batch 1: WRITER (serial)
+        DG->>SM: executeToolWithMeta(write1, params)
+        SM-->>DG: HandlerResult{output}
+    end
+
+    DG-->>Core: [BatchResult{outputs:[out1,out2,out3]}, BatchResult{outputs:[out4]}]
+    Core->>Core: flatten into message order
+```
 
 ### 4.1 Skill Execution with Dependency Check and Eager Tool Calls
 
@@ -345,6 +394,46 @@ sequenceDiagram
         SkillRunner-->>Core: ["f1"]
         Core-->>User: result
     end
+```
+
+### 4.1a Streaming Tool Execution
+
+```mermaid
+sequenceDiagram
+    participant Client as AgentCore/SkillRunner
+    participant SM as SkillManager
+    participant TR as ToolRunner
+    participant CR as CommandRunner
+
+    Client->>SM: executeToolStreaming(qn, params, onChunk)
+
+    alt system tool handler
+        SM->>SM: exact match in m_handlers
+        SM->>SM: run handler synchronously
+        SM->>SM: call onChunk(output, "stdout")
+        SM-->>Client: completed StreamHandle
+    else command tool with streaming=true
+        SM->>SM: resolve to SkillTool{streaming:true}
+        SM->>TR: runStreaming(tool, params, onChunk)
+        TR->>CR: runStreaming(cmd, onChunk, timeout)
+        CR-->>TR: StreamHandle
+        TR-->>SM: StreamHandle
+        SM-->>Client: StreamHandle (live)
+    else command tool without streaming
+        SM->>SM: fall through to executeToolWithMeta
+        SM-->>Client: synchronous result via onChunk
+    end
+```
+
+### 4.1b ToolState Lifecycle
+
+```
+processGoal() start → ToolState::clear()           ← reset all per-session state
+     ↓
+xRunForkedLoop turn 1 → handler set("browser:page", handle)
+xRunForkedLoop turn 2 → handler get("browser:page") → reuse handle
+     ↓
+processGoal() end    → next processGoal() clears again
 ```
 
 ### 4.2 Docker Tool Execution (Containerized)
@@ -391,6 +480,22 @@ sequenceDiagram
 | `AgentCore`          | `processGoal` with exact prompt name match                  | Uses the prompt, does not infer a new one          |
 | `AgentCore`          | `processGoal` with non‑existent goal                        | Falls back to forked tool-calling loop             |
 | `AgentCore`          | `processGoal` forked loop max turns exceeded                | Returns `"ERROR: max tool call turns exceeded"`    |
+| `DependencyGraph`    | `classifyTool` READER prefix                                | Returns READER                                       |
+| `DependencyGraph`    | `classifyTool` WRITER prefix                                | Returns WRITER                                       |
+| `DependencyGraph`    | `classifyTool` unknown                                      | Returns READ_WRITE                                   |
+| `DependencyGraph`    | `buildBatches` mixed readers/writers                        | Correct ordering: readers batch first, then writers  |
+| `DependencyGraph`    | `executeBatches` reader command tools                       | `CommandRunner::runAll` called for parallel execution |
+| `ToolState`          | `set`/`get`/`has`/`remove`/`clear`                          | All CRUD operations correct                          |
+| `ToolState`          | Thread-safe concurrent access                               | No data races under TSAN                             |
+| `SkillManager`       | `executeToolStreaming` system tool                          | Synchronous handler, single onChunk call             |
+| `SkillManager`       | `executeToolStreaming` command tool                         | Delegates to `ToolRunner::runStreaming`              |
+| `SkillManager`       | `toolState` accessor                                        | Returns reference to `m_toolState`                   |
+| `SkillLoader`        | `validateAgainstSchema` valid manifest                      | Returns 0                                            |
+| `SkillLoader`        | `validateAgainstSchema` invalid manifest                    | Returns -1, errors populated                         |
+| `SkillLoader`        | Schema file missing                                         | Warning printed, validation passes through           |
+| `ComposeManager`     | `startPersistent` new stack                                 | composeUp called, persistent set                     |
+| `ComposeManager`     | `stopPersistent` active stack                               | composeDown called, entries removed                  |
+| `ComposeManager`     | `isPersistent` persistent vs ephemeral                      | Correct boolean returned                             |
 
 ### 5.2 End‑to‑End Tests (against mock DeepSeek)
 
@@ -403,6 +508,15 @@ sequenceDiagram
 | E2E‑03 | Use tool        | Invoke `count_lines` with `{path:"/etc/passwd"}`                                                                         | Returns number of lines                                    |
 | E2E‑04 | Infer new prompt/skill | Send goal: "create a skill that lists files in a directory and filters those containing 'log' using list_files and grep" | New prompt appears; dependencies correct |
 | E2E‑05 | Use prompt       | Invoke prompt with `{directory:"/var/log"}`                                                                               | Returns array of existing files with "log" in name         |
+
+#### Skill Schema Validation Tests
+
+| ID     | Scenario                      | Steps                                                                               | Expected                                                       |
+| ------ | ----------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| E2E‑S1 | Valid skill.json              | Load skills with well-formed manifest                                               | Component loaded, tools+prompts available                      |
+| E2E‑S2 | Invalid skill.json            | Load skills with manifest missing required `version` field                          | Warning printed, component skipped                             |
+| E2E‑S3 | Schema file missing           | Delete `skills/schema.json`, restart agent                                          | Warning printed, validation disabled, all manifests load       |
+| E2E‑S4 | Skill with `streaming` tool   | Define tool with `"streaming": true`, invoke via `executeToolStreaming`             | Streaming handle returned, chunks delivered via callback       |
 
 #### Negative E2E Tests (Critical for Guardrails)
 
@@ -439,6 +553,8 @@ sequenceDiagram
 | E2E‑D4 | Trust level LOW – isolation                  | Each tool gets its own container     |
 | E2E‑D5 | Skill with `docker-compose.yml`              | Services start, tool can connect     |
 | E2E‑D6 | Container pruning                            | Idle container removed after timeout |
+| E2E‑D7 | Persistent compose lifecycle                 | `startPersistent` → tool calls → `stopPersistent` cleanly tears down |
+| E2E‑D8 | Playwright browser skill                     | `playwright` skill runs E2E test via browser.sh + bridge.js |
 
 ---
 
@@ -449,6 +565,7 @@ agent --components-dir <path> [--env-file <path>] [--a0-dir <path>] [--resume <s
       [--api-key <key>] [--mock-api <url>]
       [--docker-host <url>] [--container-idle-timeout <seconds>]
       [--max-idle-containers <count>] [--default-docker-image <image>] [--no-docker]
+      [--max-parallel <n>] [--external-repo <url>] [--skill-arg <key=val> ...]
 ```
 
 - `--a0-dir` : Root directory for non-committed agent artifacts (default `./.a0`). Created on startup if missing; on first creation, automatically appended to `.gitignore` when CWD is a git repository. All runtime state (b1 socket/pid, SQLite database, skills store, logs) is scoped under this directory.
@@ -457,6 +574,12 @@ agent --components-dir <path> [--env-file <path>] [--a0-dir <path>] [--resume <s
 
 - `--api-key` : DeepSeek API key; if not provided, read from environment (see precedence below).
 - `--mock-api` : Override the API URL (for testing, e.g., `http://localhost:8080`).
+
+**Execution flags**:
+
+- `--max-parallel <n>` : Maximum concurrent tool executions for the DependencyGraph batching subsystem (default `4`). Controls how many subprocesses run simultaneously in a READER batch.
+- `--external-repo <url>` : External a0 repository URL for self-development scripts and tool resources. The repo is cloned into `a0Dir/external/a0/` at startup (or fetched/checkout/reset if already present). Sets global var `A0_SRC_DIR`.
+- `--skill-arg <key=val>` : Repeatable flag. Passes arguments to skill tool handlers via `ToolState` (keyed `"args:<skill>-<arg>"`). Bare keys (without `=`) are treated as `key=true`.
 
 **Docker‑specific flags**:
 
@@ -485,7 +608,9 @@ agent --components-dir <path> [--env-file <path>] [--a0-dir <path>] [--resume <s
 
 ```bash
 export DEEPSEEK_API_KEY="sk-..."
-agent --components-dir ./my_components --container-idle-timeout 600 --max-idle-containers 5
+agent --components-dir ./my_components --container-idle-timeout 600 --max-idle-containers 5 \
+      --max-parallel 8 --external-repo https://github.com/opensassi/a0 \
+      --skill-arg playwright-headless=true
 ```
 
 ---
@@ -509,14 +634,18 @@ agent --components-dir ./my_components --container-idle-timeout 600 --max-idle-c
 
 On launch, `main.cpp` follows this order:
 
-1. **Parse flags (two-pass)** — extract `--env-file` first, then all flags including `--a0-dir`.
-2. **Resolve API key** — `--api-key` → `DEEPSEEK_API_KEY` env → `.env` → `~/.deepseek.env`.
-3. **Initialize `.a0/`** — `ensureA0Dir(a0Dir)` creates the directory if missing. On first creation, if the CWD is a git repository, appends `.a0/` to `.gitignore`.
-4. **`--kill-all` cleanup** — reads `.a0/b1.pid` and the c2 PID file, sends SIGTERM/SIGKILL, unlinks sockets, exits.
-5. **Component construction** — skill registry, tool runners, Docker managers, etc.
-6. **b1 auto-launch** — if not `--no-b1` and not in `--run` mode, start/connect to b1 supervisor using paths under `a0Dir`.
-7. **`--run` mode** — execute a skill non-interactively and exit.
-8. **Interactive REPL** — `core.run()` blocks until EOF.
+1. **Parse flags (two-pass)** — extract `--env-file` first, then all flags including `--a0-dir`, `--max-parallel`, `--external-repo`, `--skill-arg` (repeatable).
+2. **Parse `--skill-arg`** — split each `key=val` pair into a map (bare keys → `"true"`).
+3. **Resolve API key** — `--api-key` → `DEEPSEEK_API_KEY` env → `.env` → `~/.deepseek.env`.
+4. **Initialize `.a0/`** — `ensureA0Dir(a0Dir)` creates the directory if missing. On first creation, if the CWD is a git repository, appends `.a0/` to `.gitignore`.
+5. **`--kill-all` cleanup** — reads `.a0/b1.pid` and the c2 PID file, sends SIGTERM/SIGKILL, unlinks sockets, exits.
+6. **Component construction** — skill registry (SkillLoader with valijson schema validation), tool runners, Docker managers, etc.
+7. **Handler registration** — `xRegisterSystemHandlers()` registers all C++ handlers with `HandlerContext` (carrying `ToolState*`).
+8. **Wire settings** — `core.setMaxParallel(maxParallel)`, `core.setExternalRepo(externalRepo)`, `core.setSkillArgs(skillArgs)`.
+9. **`core.init(skillsDir, a0Dir)`** — loads manifests (schema-validated), clones external repo if `--external-repo` set, injects skill args into ToolState, generates session ID.
+10. **b1 auto-launch** — if not `--no-b1` and not in `--run` mode, start/connect to b1 supervisor using paths under `a0Dir`.
+11. **`--run` mode** — execute a skill non-interactively and exit.
+12. **Interactive REPL** — `core.run()` blocks until EOF.
 
 ### 7.3 Implementation Plan (Test‑Driven, 90% Coverage)
 
@@ -641,9 +770,17 @@ The `CommandRunner` is a stateless utility class that wraps all subprocess creat
 ```
 project/
 ├── CMakeLists.txt
+├── docker/
+│   ├── Dockerfile.playwright            # Playwright browser automation image
+│   └── docker-compose.playwright.yml    # Playwright compose stack
+├── scripts/
+│   ├── browser.sh                       # Browser CLI shim
+│   └── playwright-bridge.js             # Node.js HTTP daemon for 22 Playwright actions
 ├── src/
 │   ├── a0_dir.h/.cpp                    # .a0/ directory lifecycle (create, gitignore)
 │   ├── command_runner.h/.cpp            # All subprocess management (fork/exec/pipe/alarm)
+│   ├── dependency_graph.h/.cpp          # Reader/writer classification + batch execution
+│   ├── tool_state.h/.cpp                # Thread-safe per-session key-value state bag
 │   ├── handler_results.h                # HandlerResult struct for system tool dispatch
 │   ├── system_handlers.h/.cpp           # Free-standing C++ handler functions (xBash, xRead, xGitCommand, etc.)
 │   ├── main.cpp
@@ -668,7 +805,7 @@ project/
 │       ├── technical-specification.md   # Full skills integration spec
 │       ├── skills.h                     # Data structures + SkillManager facade + ToolHandler typedef
 │       ├── skill_manager.cpp
-│       ├── skill_loader.h/.cpp
+│       ├── skill_loader.h/.cpp          # Now with valijson schema validation
 │       ├── version_manager.h/.cpp
 │       ├── validation_engine.h/.cpp
 │       └── CMakeLists.txt
@@ -680,14 +817,28 @@ project/
 │   │   ├── test_skill_manager.cpp
 │   │   ├── test_skill_loader.cpp
 │   │   ├── test_version_manager.cpp
-│   │   └── test_validation_engine.cpp
+│   │   ├── test_validation_engine.cpp
+│   │   ├── test_dependency_graph.cpp    # DependencyGraph batching + execution
+│   │   ├── test_tool_state.cpp          # ToolState CRUD + thread safety
+│   │   ├── test_pipeline_execution.cpp  # End-to-end pipeline tests
+│   │   ├── test_external_a0.cpp         # External repo clone tests
+│   │   ├── test_skill_args.cpp          # --skill-arg injection tests
+│   │   ├── test_skill_pipeline.cpp      # Multi-step skill pipeline tests
+│   │   └── test_skill_schema.cpp        # JSON Schema validation tests
 │   ├── e2e/
 │   │   ├── mock_deepseek_server.py
 │   │   ├── fixtures/
-│   │   └── run_e2e_tests.sh
-├── skills/                          # created at runtime — three-tier namespace
+│   │   ├── run_e2e_tests.sh
+│   │   └── test_playwright_e2e.sh       # 14 Playwright browser E2E tests
+├── skills/                          # three-tier namespace
+│   ├── schema.json                  # Draft-07 JSON Schema for skill.json validation
+│   ├── README.md                    # Developer guide (661 lines)
 │   ├── system/                      # shipped with agent (read-only)
 │   ├── local/                       # agent-created (writable)
+│   │   └── playwright/              # Playwright skill (22 tools, 1 prompt)
+│   │       ├── skill.json
+│   │       └── prompts/
+│   │           └── e2e_test.md
 │   └── github_<user>/               # installed from GitHub (read-only)
 ├── .a0/                             # agent internal state (auto-created, gitignored)
 │   ├── b1.pid                       # b1 supervisor PID file
@@ -716,8 +867,14 @@ project/
 9. Run Docker‑specific tests (unit and E2E with real Docker).
 10. Implement Skills sub‑module (following `./src/skills/technical-specification.md`).
 11. Implement `CommandRunner` utility — centralize all fork/exec/pipe/alarm code.
-12. Enable `-DTRACE` for debug builds; keep trace logs for diagnosis.
-13. Commit and CI verifies all tests + coverage.
+12. Implement `DependencyGraph` — reader/writer classification, batch builder, batch executor.
+13. Implement `ToolState` — per-session state bag for cross-invocation tool state.
+14. Integrate valijson schema validation in `SkillLoader` — `skills/schema.json` at load time.
+15. Implement `SkillManager::executeToolStreaming` for streaming tool output.
+16. Wire persistent compose (`ComposeManager::startPersistent`/`stopPersistent`).
+17. Add `--external-repo`, `--skill-arg`, `--max-parallel` CLI flags.
+18. Enable `-DTRACE` for debug builds; keep trace logs for diagnosis.
+19. Commit and CI verifies all tests + coverage.
 
 ---
 
@@ -737,6 +894,10 @@ project/
 
 The complete technical specification for the Docker sub‑module is provided in a separate document: `./src/docker/technical-specification.md`. It includes detailed class specifications, sequence diagrams, configuration options, and testing requirements. The sub‑module is **required** for containerized execution; when `--no-docker` is used, the agent reverts to host‑only execution, but the Docker code is still compiled.
 
+**New in this commit:**
+- `ComposeManager` adds `startPersistent()` / `stopPersistent()` / `isPersistent()` for compose environments that survive across multiple tool calls.
+- `ComposeStackInfo` now stores `composeFile` path for use by persistent mode teardown.
+
 **Location**: `./src/docker/technical-specification.md`  
 **Source code**: `./src/docker/`
 
@@ -745,6 +906,14 @@ The complete technical specification for the Docker sub‑module is provided in 
 The complete technical specification for the Skills sub‑module is provided in a separate document: `./src/skills/technical-specification.md`. It includes detailed class specifications, sequence diagrams, configuration options, and testing requirements. The sub‑module is **required** — it implements a three-tier namespace system with version validation via historical log replay and GitHub distribution support.
 
 `SkillManager` serves as the unified tool dispatch layer, replacing `SystemToolRegistry`. A handler registry (`m_handlers`) holds C++ functions registered at startup by `xRegisterSystemHandlers()` in `main.cpp`. `executeTool()` and `schemas()` provide the single point of dispatch and schema generation for the LLM.
+
+**New in this commit:**
+- `SkillLoader` validates all `skill.json` manifests against `skills/schema.json` (Draft-07) via valijson at load time — invalid manifests are skipped with warnings.
+- `SkillManager` owns a `ToolState` instance (`m_toolState`) injected into every handler via `HandlerContext` for per-session cross-invocation state.
+- `SkillManager::executeToolStreaming()` enables streaming output for command tools with `streaming=true`.
+- `HandlerContext` now carries both `subcommand` and `toolState*`.
+- All handlers accept `HandlerContext` as a second parameter.
+- `DependencyGraph` (in `src/dependency_graph.h/.cpp`) classifies tools as READER/WRITER/READ_WRITE and builds parallel-safe execution batches, used by `AgentCore::xRunForkedLoop()` for batched tool dispatch.
 
 **Location**: `./src/skills/technical-specification.md`  
 **Source code**: `./src/skills/`

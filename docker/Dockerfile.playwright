@@ -1,0 +1,52 @@
+# Playwright E2E Test Container
+# Builds a0 + c2, installs Playwright + Chromium, and runs the bridge.
+
+# Stage 1: Build a0 + c2
+FROM ubuntu:22.04 AS builder
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    build-essential cmake git libcurl4-openssl-dev libsqlite3-dev \
+    libssl-dev pkg-config libgtest-dev \
+    && rm -rf /var/lib/apt/lists/* && \
+    git clone --branch v3.11.3 --depth 1 \
+        https://github.com/nlohmann/json.git /tmp/nlohmann_json && \
+    cd /tmp/nlohmann_json && cmake . && make install && rm -rf /tmp/nlohmann_json
+
+WORKDIR /src
+COPY CMakeLists.txt ./
+COPY src/ ./src/
+COPY test/ ./test/
+COPY thirdparty/ ./thirdparty/
+RUN mkdir build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make -j$(nproc) a0 c2 b1
+
+# Stage 2: Runtime
+FROM ubuntu:22.04
+
+# Install runtime deps
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    ca-certificates curl jq libcurl4 libsqlite3-0 libssl3 \
+    nodejs npm sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Playwright and Chromium
+RUN npm install -g playwright && \
+    npx playwright install chromium && \
+    npx playwright install-deps chromium
+
+# Copy built binaries
+COPY --from=builder /src/build/a0 /usr/local/bin/
+COPY --from=builder /src/build/c2 /usr/local/bin/
+COPY --from=builder /src/build/b1 /usr/local/bin/
+
+# Copy scripts and skills
+COPY scripts/ /opt/a0/scripts/
+COPY skills/ /opt/a0/skills/
+
+WORKDIR /workspace
+ENV PATH="/opt/a0/scripts:${PATH}"
+
+EXPOSE 3100 8080
+
+# Default: start the Playwright bridge
+CMD ["node", "/opt/a0/scripts/playwright-bridge.js"]

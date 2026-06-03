@@ -9,6 +9,9 @@
 #include "nlohmann/json.hpp"
 #include "../agent_interfaces.h"
 #include "../handler_results.h"
+#include "../tool_state.h"
+
+class ToolState;
 
 namespace a0 { class DockerSecurityFilter; }
 namespace a0::persistence { class PersistenceStore; }
@@ -25,6 +28,7 @@ namespace a0::skills {
 
 struct HandlerContext {
     std::string subcommand;   // wildcard suffix or tool name
+    ToolState* toolState = nullptr;   // per-session shared state (nullable)
 };
 
 // ---------------------------------------------------------------------------
@@ -67,6 +71,7 @@ struct SkillTool {
     int timeoutSecs = 30;
     nlohmann::json parameters;   // JSON Schema for LLM function calling
     std::string subCommand;      // override CLI subcommand (e.g. "rev-parse" for tool "rev_parse")
+    bool streaming = false;      // tool supports streaming output
 };
 
 struct CompatBridge {
@@ -193,6 +198,20 @@ public:
     ///   4. Error if tool not found or unhandled
     json executeTool(const std::string& qualifiedName, const json& params);
 
+    /// Execute a tool with streaming output.
+    /// For command tools with streaming=true, delegates to ToolRunner::runStreaming.
+    /// For system tools, falls through to the synchronous executeToolWithMeta path.
+    /// \param qualifiedName  Fully qualified tool name.
+    /// \param params         Tool parameters.
+    /// \param onChunk        Called from a background thread with (data, direction) chunks.
+    /// \param seq            Optional sequence counter for persistence recording.
+    /// \param toolCallId     LLM tool call id.
+    /// \param subSessionId   Fork sub-session id.
+    a0::StreamHandle executeToolStreaming(const std::string& qualifiedName,
+        const json& params, a0::StreamCallback onChunk,
+        int* seq = nullptr, const std::string& toolCallId = "",
+        int64_t subSessionId = 0);
+
     /// Enable auto-recording of tool execution results to persistence.
     /// When active, every executeToolWithMeta call records appendMessage + appendInvocation.
     void setRecordingSession(int64_t sessionDbId);
@@ -218,6 +237,8 @@ public:
     void setDockerRunner(::DockerToolRunner* runner);
     void setDockerSecurityFilter(::a0::DockerSecurityFilter* filter);
 
+    ToolState& toolState() { return m_toolState; }
+
 private:
     std::string m_skillsRoot;
     std::string m_storeRoot;
@@ -230,6 +251,7 @@ private:
     ::a0::DockerSecurityFilter* m_dockerSecurityFilter = nullptr;
     ::a0::persistence::PersistenceStore* m_persistence = nullptr;
     int64_t m_sessionDbId = 0;
+    ToolState m_toolState;
 
     SkillManager(const SkillManager&) = delete;
     SkillManager& operator=(const SkillManager&) = delete;

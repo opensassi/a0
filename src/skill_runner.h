@@ -24,6 +24,7 @@ public:
     void setSkillsDir(const std::string& path);
     void setGlobalVar(const std::string& key, const std::string& value);
     void setGlobalVars(const std::unordered_map<std::string, std::string>& vars);
+    void setMaxParallel(int n) { m_maxParallel = n; }
 
 private:
     void xRebuildBasePrompt();
@@ -38,4 +39,5 @@ private:
     std::string m_skillsDir;
 
     std::unordered_map<std::string, std::string> m_globalVars;
+    int m_maxParallel = 4;
 };

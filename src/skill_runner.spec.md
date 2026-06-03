@@ -36,6 +36,7 @@ public:
     void setSkillsDir(const std::string& path);
     void setGlobalVar(const std::string& key, const std::string& value);
     void setGlobalVars(const std::unordered_map<std::string, std::string>& vars);
+    void setMaxParallel(int n);
 
 private:
     ToolRunner* m_toolRunner;
@@ -97,6 +98,14 @@ graph TB
     selectRunner --> TR
     selectRunner --> DTR
 ```
+
+## 4a. Streaming Execution
+
+`DefaultSkillRunner::executeStreaming()` routes streaming tool invocations:
+1. Calls `SkillManager::executeToolStreaming(qn, params, onChunk, ...)`
+2. For system tools: synchronous handler execution, single onChunk call, complete
+3. For command tools with `streaming=true`: delegates to `ToolRunner::runStreaming()` or `DockerToolRunner::runStreaming()` with chunk callbacks
+4. For command tools without streaming: falls through to synchronous `executeToolWithMeta`
 
 ## 5. Data Flow
 

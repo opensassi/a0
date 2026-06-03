@@ -451,7 +451,7 @@ json SkillManager::executeTool(const std::string& qualifiedName, const json& par
     {
         auto it = m_handlers.find(qualifiedName);
         if (it != m_handlers.end()) {
-            auto hr = it->second(params, HandlerContext{});
+            auto hr = it->second(params, HandlerContext{"", &m_toolState});
             output = hr.output;
             recommendedTools = hr.recommendedTools;
             goto record;
@@ -466,7 +466,7 @@ json SkillManager::executeTool(const std::string& qualifiedName, const json& par
             if (qn3 != qualifiedName) {
                 auto it = m_handlers.find(qn3);
                 if (it != m_handlers.end()) {
-                    auto hr = it->second(params, HandlerContext{});
+                    auto hr = it->second(params, HandlerContext{"", &m_toolState});
                     output = hr.output;
                     recommendedTools = hr.recommendedTools;
                     goto record;
@@ -488,7 +488,7 @@ json SkillManager::executeTool(const std::string& qualifiedName, const json& par
                 if (getTool(qualifiedName, tool) == 0 && !tool.subCommand.empty()) {
                     sub = tool.subCommand;
                 }
-                auto hr = wit->second(params, HandlerContext{sub});
+                auto hr = wit->second(params, HandlerContext{sub, &m_toolState});
                 output = hr.output;
                 recommendedTools = hr.recommendedTools;
                 goto record;
@@ -539,6 +539,83 @@ record:
     }
 
     return {output, recommendedTools};
+}
+
+a0::StreamHandle SkillManager::executeToolStreaming(
+    const std::string& qualifiedName, const json& params,
+    a0::StreamCallback onChunk,
+    int* seq, const std::string& toolCallId, int64_t subSessionId)
+{
+    // 1. Check for system tool handler (C++ handlers are synchronous — run once, then complete)
+    {
+        auto it = m_handlers.find(qualifiedName);
+        if (it != m_handlers.end()) {
+            auto hr = it->second(params, HandlerContext{"", &m_toolState});
+            onChunk(hr.output, "stdout");
+            a0::StreamHandle h;
+            return h;
+        }
+    }
+
+    // 2. Wildcard match
+    {
+        auto lastDash = qualifiedName.rfind('-');
+        if (lastDash != std::string::npos) {
+            std::string wildcard = qualifiedName.substr(0, lastDash) + "-*";
+            auto wit = m_handlers.find(wildcard);
+            if (wit != m_handlers.end()) {
+                std::string sub = qualifiedName.substr(lastDash + 1);
+                SkillTool tool;
+                if (getTool(qualifiedName, tool) == 0 && !tool.subCommand.empty())
+                    sub = tool.subCommand;
+                auto hr = wit->second(params, HandlerContext{sub, &m_toolState});
+                onChunk(hr.output, "stdout");
+                a0::StreamHandle h;
+                return h;
+            }
+        }
+    }
+
+    // 3. Look up tool definition
+    SkillTool tool;
+    if (getTool(qualifiedName, tool) != 0) {
+        onChunk("ERROR: tool not found: " + qualifiedName, "stdout");
+        return {};
+    }
+
+    if (tool.systemTool) {
+        onChunk("ERROR: system tools do not support streaming: " + qualifiedName, "stdout");
+        return {};
+    }
+
+    // 4. Command tool — delegate to ToolRunner::runStreaming
+    ::Tool legacy = skillToolToTool(tool);
+    ::ToolRunner* runner = (!tool.dockerImage.empty() && m_dockerRunner)
+        ? m_dockerRunner : m_toolRunner;
+
+    if (!runner) {
+        onChunk("ERROR: no ToolRunner available", "stdout");
+        return {};
+    }
+
+    auto handle = runner->runStreaming(legacy, params, std::move(onChunk));
+
+    // Record to persistence if active
+    if (m_sessionDbId > 0 && m_persistence && seq) {
+        int currentSeq = (*seq)++;
+        m_persistence->appendMessage(m_sessionDbId,
+            subSessionId > 0 ? std::optional<int64_t>(subSessionId) : std::nullopt,
+            currentSeq, "tool", "", "", toolCallId, qualifiedName, "");
+
+        std::string ns, comp, tName;
+        if (parseQualifiedName(qualifiedName, ns, comp, tName)) {
+            int sType = (ns == "system") ? 0 : (ns == "local") ? 1 : 2;
+            int skillId = m_persistence->ensureSkill(sType, comp);
+            m_persistence->appendInvocation(0, skillId, tName, params.dump(), "");
+        }
+    }
+
+    return handle;
 }
 
 std::vector<std::string> SkillManager::missingHandlers() const

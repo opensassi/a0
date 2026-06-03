@@ -1,4 +1,5 @@
 #include "skills/skills.h"
+#include "tool_runner.h"
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include <filesystem>
@@ -575,4 +576,76 @@ TEST_F(SkillManagerTest, ListSkills_FilteredNamespace) {
 TEST_F(SkillManagerTest, ListSkills_Empty) {
     auto all = m_mgr->listSkills(std::nullopt);
     EXPECT_TRUE(all.empty());
+}
+
+// ===========================================================================
+// executeToolStreaming
+// ===========================================================================
+
+TEST_F(SkillManagerTest, ExecuteToolStreaming_SystemHandlerSyncFallback) {
+    m_mgr->registerHandler("system-test-read", [](const json& p, const HandlerContext&) {
+        return ::a0::HandlerResult{p.value("file", "ok"), {}};
+    });
+
+    std::string output;
+    auto handle = m_mgr->executeToolStreaming("system-test-read",
+        {{"file", "content"}},
+        [&](const std::string& data, const std::string&) { output += data; });
+
+    EXPECT_EQ(output, "content");
+    // No streaming handle returned for sync fallback
+    EXPECT_EQ(handle.streamId, 0);
+}
+
+TEST_F(SkillManagerTest, ExecuteToolStreaming_WildcardSyncFallback) {
+    m_mgr->registerHandler("system-git-*", [](const json& p, const HandlerContext& ctx) {
+        return ::a0::HandlerResult{"ran: " + ctx.subcommand, {}};
+    });
+
+    std::string output;
+    auto handle = m_mgr->executeToolStreaming("system-git-status",
+        json::object(),
+        [&](const std::string& data, const std::string&) { output += data; });
+
+    EXPECT_EQ(output, "ran: status");
+    EXPECT_EQ(handle.streamId, 0);
+}
+
+TEST_F(SkillManagerTest, ExecuteToolStreaming_UnknownTool) {
+    std::string output;
+    auto handle = m_mgr->executeToolStreaming("local-nonexistent-ghost",
+        json::object(),
+        [&](const std::string& data, const std::string&) { output += data; });
+
+    EXPECT_TRUE(output.find("ERROR: tool not found") != std::string::npos);
+    EXPECT_EQ(handle.streamId, 0);
+}
+
+TEST_F(SkillManagerTest, ExecuteToolStreaming_HandlerTakesPrecedenceOverCommandTool) {
+    // When both a handler and a manifest tool exist, the handler wins.
+    // This verifies the step-1 dispatch in executeToolStreaming.
+    writeManifest(m_skillsRoot, "local", "stream_comp", json{
+        {"name", "stream_comp"},
+        {"version", "1.0.0"},
+        {"tools", json::array({
+            json{{"name", "echo_stream"}, {"description", "streaming echo"},
+                 {"command", "echo"}, {"inputMode", "stdin"},
+                 {"streaming", true}, {"timeoutSecs", 5}}
+        })}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+
+    // Register a handler that shields the command tool
+    m_mgr->registerHandler("local-stream_comp-echo_stream", [](const json& p, const HandlerContext&) {
+        return ::a0::HandlerResult{p.value("input", "default"), {}};
+    });
+
+    std::string output;
+    auto handle = m_mgr->executeToolStreaming("local-stream_comp-echo_stream",
+        {{"input", "hello handler"}},
+        [&](const std::string& data, const std::string&) { output += data; });
+
+    // Handler path produces output synchronously via callback
+    EXPECT_EQ(output, "hello handler");
+    EXPECT_EQ(handle.streamId, 0);
 }

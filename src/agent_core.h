@@ -20,6 +20,9 @@ public:
                      ComposeManager* composeMgr = nullptr);
 
     bool init(const std::string& skillsDir) override;
+    bool init(const std::string& skillsDir, const std::string& a0Dir);
+    void setExternalRepo(const std::string& url) { m_externalRepoUrl = url; }
+    void setSkillArgs(const std::unordered_map<std::string, std::string>& args) { m_skillArgs = args; }
     json processGoal(const std::string& goal) override;
     json processGoal(const std::string& goal, const json& params);
     json runSkill(const std::string& skillName, const json& params);
@@ -37,6 +40,7 @@ public:
     /// sessionCtx is owned by the caller and must outlive this AgentCore.
     void setSession(const std::string& sessionId, int64_t sessionDbId,
                     a0::SessionContext* sessionCtx = nullptr);
+    void setMaxParallel(int n) { m_maxParallel = n; }
 
 private:
     void xPushToContext(const std::string& goal, const json& result);
@@ -67,4 +71,9 @@ private:
 
     std::unordered_map<std::string, std::string> m_dispatch;
     std::unordered_set<std::string> m_accumulatedTools;
+    int m_maxParallel = 4;
+    std::string m_skillsDir;
+    std::string m_externalRepoUrl = "https://github.com/opensassi/a0";
+    std::string m_a0Dir;
+    std::unordered_map<std::string, std::string> m_skillArgs;
 };

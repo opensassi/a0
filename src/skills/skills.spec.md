@@ -13,6 +13,8 @@ Central header for the Skills sub-module. Defines data structures (SkillTool, Sk
 ## 2. Data Structures
 
 ```cpp
+#include "../tool_state.h"
+
 namespace a0 { class DockerSecurityFilter; }
 namespace a0::persistence { class PersistenceStore; }
 
@@ -21,6 +23,11 @@ namespace a0::skills {
 enum class SkillNamespace { SYSTEM, LOCAL, GITHUB };
 
 struct ToolSchema { nlohmann::json input; nlohmann::json output; };
+
+struct HandlerContext {
+    std::string subcommand;   // wildcard suffix or tool name
+    ToolState* toolState = nullptr;   // per-session shared state (nullable)
+};
 
 struct SkillTool {
     std::string name, description, command, inputMode = "stdin";
@@ -32,10 +39,13 @@ struct SkillTool {
     bool default_ = false;          // appears in anchor schema set
     int timeoutSecs = 30;
     nlohmann::json parameters;      // JSON Schema for LLM function calling
+    std::string subCommand;         // override CLI subcommand (e.g. "rev-parse")
+    bool streaming = false;         // tool supports streaming output
 };
 
 // Tool handler — C++ function that implements a system tool
-using ToolHandler = std::function<::a0::HandlerResult(const nlohmann::json& params)>;
+using ToolHandler = std::function<::a0::HandlerResult(const nlohmann::json& params,
+                                                       HandlerContext ctx)>;
 
 struct CompatBridge { /* version migration tooling */ };
 
@@ -94,10 +104,24 @@ public:
     std::vector<::ToolSchema> schemas(bool defaultOnly = true) const;
     std::vector<std::string> missingHandlers() const;
 
+    /// Execute a tool with streaming output.
+    /// For command tools with streaming=true, delegates to ToolRunner::runStreaming.
+    /// For system tools, falls through to synchronous executeToolWithMeta path.
+    a0::StreamHandle executeToolStreaming(const std::string& qualifiedName,
+        const json& params, a0::StreamCallback onChunk,
+        int* seq = nullptr, const std::string& toolCallId = "",
+        int64_t subSessionId = 0);
+
+    /// Enable auto-recording of tool execution results to persistence.
+    void setRecordingSession(int64_t sessionDbId);
+
     // --- Tool runner wiring for command-based tools ---
     void setToolRunner(::ToolRunner* runner);
     void setDockerRunner(::DockerToolRunner* runner);
     void setDockerSecurityFilter(::a0::DockerSecurityFilter* filter);
+
+    /// Access the per-session ToolState bag (thread-safe).
+    ToolState& toolState() { return m_toolState; }
 
 private:
     SkillLoader* m_loader;
@@ -107,9 +131,25 @@ private:
     ::ToolRunner* m_toolRunner = nullptr;
     ::DockerToolRunner* m_dockerRunner = nullptr;
     ::a0::DockerSecurityFilter* m_dockerSecurityFilter = nullptr;
+    ::a0::persistence::PersistenceStore* m_persistence = nullptr;
+    int64_t m_sessionDbId = 0;
+    ToolState m_toolState;
 };
 
 } // namespace a0::skills
+```
+
+## 2a. Handler Dispatch Update
+
+All `SkillManager::executeTool` and `executeToolWithMeta` calls now construct a `HandlerContext` with a `ToolState*` pointing to `m_toolState`. The `HandlerContext` is passed to every registered handler:
+
+```cpp
+auto hr = it->second(params, HandlerContext{"", &m_toolState});
+```
+
+For wildcard dispatch:
+```cpp
+auto hr = wit->second(params, HandlerContext{sub, &m_toolState});
 ```
 
 ## 3. Architecture

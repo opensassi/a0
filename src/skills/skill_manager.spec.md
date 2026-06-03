@@ -50,10 +50,24 @@ public:
     std::vector<ToolSchema> schemas(bool defaultOnly = true) const;
     std::vector<std::string> missingHandlers() const;
 
+    /// Execute a tool with streaming output.
+    /// For command tools with streaming=true, delegates to ToolRunner::runStreaming.
+    /// For system tools, falls through to synchronous executeToolWithMeta path.
+    a0::StreamHandle executeToolStreaming(const std::string& qualifiedName,
+        const json& params, a0::StreamCallback onChunk,
+        int* seq = nullptr, const std::string& toolCallId = "",
+        int64_t subSessionId = 0);
+
+    /// Enable auto-recording of tool results to persistence.
+    void setRecordingSession(int64_t sessionDbId);
+
     // --- Runner wiring ---
     void setToolRunner(ToolRunner* runner);
     void setDockerRunner(DockerToolRunner* runner);
     void setDockerSecurityFilter(DockerSecurityFilter* filter);
+
+    /// Access the per-session ToolState bag.
+    ToolState& toolState() { return m_toolState; }
 };
 ```
 
@@ -61,20 +75,37 @@ public:
 
 ```cpp
 HandlerResult SkillManager::executeToolWithMeta(const std::string& qn, const json& params) {
-    // 1. Exact match in m_handlers
+    // 1. Exact match in m_handlers (with HandlerContext containing ToolState*)
     auto it = m_handlers.find(qn);
-    if (it != m_handlers.end()) return it->second(params);
-
-    // 2. 2-part alias: "system:bash" → "system:bash:bash"
-    //    (when parseQualifiedName gives name == component)
-
-    // 3. Wildcard: "system:git:commit" → "system:git:*"
-    //    Sets params["_subcommand"] = "commit"
-
-    // 4. Command tool via ToolRunner (systemTool == false, has command field)
-
-    // 5. Error
+    if (it != m_handlers.end())
+        return it->second(params, HandlerContext{"", &m_toolState});
+    // ...
 }
+```
+
+### Streaming Dispatch
+
+```cpp
+a0::StreamHandle SkillManager::executeToolStreaming(const std::string& qn,
+    const json& params, a0::StreamCallback onChunk, ...) {
+    // 1. System tool handler (exact match) — synchronous, call once then complete
+    // 2. Wildcard match — same as exact, call once then complete
+    // 3. Look up tool definition
+    // 4. If systemTool — error (no streaming support)
+    // 5. Command tool — delegate to ToolRunner/DockerToolRunner::runStreaming()
+    // 6. Auto-record to persistence if setRecordingSession active
+}
+```
+
+### Streaming Resolution Order
+
+| Step | Lookup | Behaviour |
+|------|--------|-----------|
+| 1 | Exact handler match | Run handler synchronously, call onChunk once, return completed handle |
+| 2 | Wildcard match | Same as exact |
+| 3 | Tool definition lookup | Requires SkillTool with `streaming=true` for command tools |
+| 4 | System tool (no streaming) | Error: "system tools do not support streaming" |
+| 5 | Command tool via ToolRunner | `DockerToolRunner::runStreaming()` or `ToolRunner::runStreaming()` |
 ```
 
 ### Resolution Order
@@ -160,6 +191,10 @@ graph TB
     SL --> GITHUB
     VM --> STORE[.a0/store/]
 ```
+
+## 6a. ToolState
+
+`SkillManager` owns a `ToolState` instance (`m_toolState`) that is cleared at the start of each `processGoal()`. Handlers access it through the `HandlerContext::toolState` pointer. System tool registrations (in `xRegisterSystemHandlers`) receive the `ToolState*` via `HandlerContext` and can `set`/`get` state across invocations.
 
 ## 7. Testing Requirements
 

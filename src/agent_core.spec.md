@@ -25,6 +25,7 @@ public:
                      ComposeManager* composeMgr = nullptr);
 
     bool init(const std::string& skillsDir) override;
+    bool init(const std::string& skillsDir, const std::string& a0Dir);
     json processGoal(const std::string& goal) override;
     json processGoal(const std::string& goal, const json& params);
     json runSkill(const std::string& skillName, const json& params);
@@ -33,6 +34,10 @@ public:
     void run() override;
     a0::StreamHandle processGoalStreaming(const std::string& goal,
                                            a0::StreamCallback onChunk) override;
+
+    void setExternalRepo(const std::string& url);
+    void setSkillArgs(const std::unordered_map<std::string, std::string>& args);
+    void setMaxParallel(int n);
 
 private:
     a0::skills::SkillManager* m_skillMgr;
@@ -50,6 +55,11 @@ private:
 
     std::unordered_map<std::string, std::string> m_dispatch;
     std::unordered_set<std::string> m_accumulatedTools;
+    int m_maxParallel = 4;
+    std::string m_skillsDir;
+    std::string m_a0Dir;
+    std::string m_externalRepoUrl = "https://github.com/opensassi/a0";
+    std::unordered_map<std::string, std::string> m_skillArgs;
 
     void xPushToContext(const std::string& goal, const json& result);
     void xBuildDispatchTable();
@@ -97,7 +107,35 @@ graph TB
 4. buildBasePrompt()
 5. setGlobalVars: SESSION_ID, PROJECT_DIR, etc.
 6. BuildIdentity → persistence.registerAgent()
-7. m_initialized = true
+
+[New in init(skillsDir, a0Dir) overload:]
+7. External repo clone:
+   - If m_a0Dir non-empty and m_externalRepoUrl non-empty:
+     - If external/a0 dir missing → git clone (depth 1, branch main)
+     - If exists → git fetch origin main + checkout + reset --hard
+   - Set global var "A0_SRC_DIR" = a0Dir/external/a0
+8. Skill args injection:
+   - For each (key, val) in m_skillArgs → toolState().set("args:"+key, val)
+   - Also setGlobalVar(key, val)
+9. m_initialized = true
+```
+
+## 4a. processGoal() Changes
+
+At the start of `processGoal()`:
+```
+- skillMgr->toolState().clear()     — reset per-session tool state
+```
+
+## 4b. xRunForkedLoop() Changes
+
+Tool dispatch now uses `DependencyGraph` batching:
+```
+For each LLM response with tool_calls:
+  1. Collect all invocations into a vector<ToolInvocation>
+  2. DependencyGraph::buildBatches(invocations) → batches
+  3. DependencyGraph::executeBatches(batches, skillMgr, m_maxParallel) → batchResults
+  4. Flatten results back into message order
 ```
 
 ## 5. Data Flow (Tool Dispatch)
@@ -183,7 +221,10 @@ sequenceDiagram
 | `processGoal` | No match, forked loop | Unknown goal | Calls xRunForkedLoop |
 | `processGoal` | Forked loop max turns exceeded | Loop with 25+ calls | Returns `"ERROR: max tool call turns exceeded"` |
 | `xRunForkedLoop` | System tool dispatch | Short name in dispatch table → SkillManager::executeToolWithMeta | Handler output returned |
-| `xRunForkedLoop` | Unknown tool | Name not in dispatch | Returns `"ERROR: unknown tool: <name>"` |
+| `xRunForkedLoop` | Unknown tool | Name not in dispatch | DependencyGraph returns error string |
+| `xRunForkedLoop` | Batched tool dispatch | Multiple tool_calls in one turn | DependencyGraph::buildBatches + executeBatches called |
+| `processGoal` | ToolState clear | Repeated processGoal calls | ToolState empty at each new call |
+| `setMaxParallel` | Configure parallelism | Set to 8 | DependencyGraph uses 8 subprocess workers |
 | `xRunForkedLoop` | tools_for_prompt injection | First turn auto-analysis | recommendedTools inserted into m_accumulatedTools |
 | `runSkill` | Valid skill | `system:test` with params | Skill executed, result returned |
 | `resumeSession` | Valid session | Existing session ID | Returns `true`, context rebuilt |

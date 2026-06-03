@@ -58,6 +58,11 @@ static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
 int main(int argc, char* argv[]);
 
 // Flag parsing uses CLI11.hpp.
+// New flags:
+//   --max-parallel <n>       Max concurrent tool executions (default 4)
+//   --external-repo <url>    External a0 repo URL for self-development scripts
+//   --skill-arg <key=val>    Repeatable: skill argument key=value pairs
+
 // Wire-up order (no SystemToolRegistry):
 //   1. SqliteStore(a0Dir + "/db/sessions.db")
 //   2. SkillManager(skillsDir, a0Dir + "/store", &persistence)
@@ -65,9 +70,14 @@ int main(int argc, char* argv[]);
 //   4. skillMgr.setToolRunner(&toolRunner)
 //      skillMgr.setDockerRunner(dockerRunner)
 //      skillMgr.setDockerSecurityFilter(&dockerFilter)
-//   5. xRegisterSystemHandlers(skillMgr, &dockerFilter, &provider)
+//   5. xRegisterSystemHandlers(skillMgr, &dockerFilter, &provider)  // now passes HandlerContext
 //   6. DefaultSkillRunner(toolRunner, provider, &skillMgr, ...)
+//      skillRunner.setMaxParallel(maxParallel)
 //   7. DefaultAgentCore(toolRunner, skillRunner, ..., &skillMgr, ...)
+//      core.setMaxParallel(maxParallel)
+//      core.setExternalRepo(externalRepo)
+//      core.setSkillArgs(skillArgs)
+//   8. core.init(skillsDir, a0Dir)       // new 2-arg overload
 ```
 
 ## 3. AgentStack
@@ -75,7 +85,7 @@ int main(int argc, char* argv[]);
 ```cpp
 struct AgentStack {
     a0::persistence::SqliteStore persistence;
-    a0::skills::SkillManager skillMgr;       // holds m_handlers + runners
+    a0::skills::SkillManager skillMgr;       // holds m_handlers + runners + m_toolState
     SubprocessToolRunner toolRunner;
     DeepSeekProvider provider;
     DefaultContextManager context;
@@ -88,12 +98,20 @@ struct AgentStack {
     DefaultSkillRunner* skillRunner;
     DefaultAgentCore* core;
 
-    // Constructor wire-up:
+    // Constructor:
+    //   AgentStack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
+    //              idleTimeoutStr, maxIdleStr, defaultImage,
+    //              maxParallel=4, externalRepo="https://github.com/opensassi/a0")
+    //
+    // Wire-up:
     //   skillMgr.setToolRunner(&toolRunner)
     //   skillMgr.setDockerRunner(dockerRunner)
     //   xRegisterSystemHandlers(skillMgr, ...)
-    //   skillRunner → DefaultSkillRunner(toolRunner, provider, skillMgr, ...)
-    //   core → DefaultAgentCore(toolRunner, skillRunner, ..., skillMgr, ...)
+    //   skillRunner → DefaultSkillRunner(..., skillMgr, ...)
+    //   skillRunner.setMaxParallel(maxParallel)
+    //   core → DefaultAgentCore(..., skillMgr, ...)
+    //   core.setMaxParallel(maxParallel)
+    //   core.setExternalRepo(externalRepo)
 };
 ```
 
@@ -244,3 +262,9 @@ sequenceDiagram
 | `main` (--kill-all) | `a0 --kill-all` → cmdKillAll called, b1/c2 cleaned up |
 | `main` (run mode) | `a0 run system:test --params '{}'` → skill executed, JSON printed |
 | `main` (init with missing handler) | System tool without registerHandler → error printed, exit 1 |
+| `main` (CLI flags) | `--max-parallel 8` → core.setMaxParallel(8) called |
+| `main` (CLI flags) | `--external-repo https://example.com/repo` → core.setExternalRepo set |
+| `main` (CLI flags) | `--skill-arg key=val` → parsed into skillArgs map, injected via ToolState |
+| `main` (CLI flags) | `--skill-arg standalone` (no `=`) → treated as `standalone=true` |
+| `main` (CLI flags) | `--external-repo` with missing dir → git clone executed in init |
+| `main` (CLI flags) | `--external-repo` with existing dir → git fetch/checkout/reset executed |

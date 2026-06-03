@@ -10,6 +10,7 @@ namespace a0::skills {
 SkillLoader::SkillLoader(const std::string& root)
     : m_root(root)
 {
+    xLoadSchema(m_root + "/schema.json");
 }
 
 int SkillLoader::loadAll()
@@ -142,6 +143,7 @@ int SkillLoader::writeManifest(const std::string& component, const SkillManifest
                 jp["validators"].push_back(jv);
             }
         }
+        if (p.parallelValidators) jp["parallelValidators"] = true;
         j["prompts"].push_back(jp);
     }
 
@@ -153,94 +155,6 @@ int SkillLoader::writeManifest(const std::string& component, const SkillManifest
         return -1;
     }
     ofs << j.dump(2) << std::endl;
-    return 0;
-}
-
-int SkillLoader::readManifest(const std::string& path, SkillManifest& manifest) const
-{
-    std::ifstream ifs(path);
-    if (!ifs) {
-        return -1;
-    }
-    nlohmann::json j;
-    try {
-        ifs >> j;
-    } catch (...) {
-        return -1;
-    }
-    manifest.name = j.value("name", "");
-    manifest.version = j.value("version", "0.0.0");
-    manifest.description = j.value("description", "");
-    if (j.contains("tools")) {
-        for (const auto& jt : j["tools"]) {
-            SkillTool tool;
-            tool.name = jt.value("name", "");
-            tool.description = jt.value("description", "");
-            tool.command = jt.value("command", "");
-            tool.inputMode = jt.value("inputMode", "stdin");
-            tool.systemTool = jt.value("systemTool", false);
-            tool.default_ = jt.value("default", false);
-            tool.timeoutSecs = jt.value("timeoutSecs", 30);
-            if (jt.contains("parameters"))
-                tool.parameters = jt["parameters"];
-            if (jt.contains("dockerImage"))
-                tool.dockerImage = jt["dockerImage"].get<std::string>();
-            if (jt.contains("trustLevel")) {
-                std::string tl = jt["trustLevel"].get<std::string>();
-                if (tl == "HIGH") tool.trustLevel = TrustLevel::HIGH;
-                else if (tl == "LOW") tool.trustLevel = TrustLevel::LOW;
-                else tool.trustLevel = TrustLevel::MEDIUM;
-            }
-            if (jt.contains("aptDependencies"))
-                tool.aptDependencies = jt["aptDependencies"].get<std::vector<std::string>>();
-            tool.subCommand = jt.value("subCommand", "");
-            manifest.tools.push_back(tool);
-        }
-    }
-    if (j.contains("prompts")) {
-        for (const auto& jp : j["prompts"]) {
-            Prompt prompt;
-            prompt.name = jp.value("name", "");
-            prompt.description = jp.value("description", "");
-            // Load prompt text: promptFile takes precedence over inline prompt
-            if (jp.contains("promptFile")) {
-                std::string relPath = jp["promptFile"].get<std::string>();
-                // Resolve relative to the skill.json directory (parent of path)
-                std::string baseDir = path;
-                auto slash = baseDir.find_last_of("/\\");
-                if (slash != std::string::npos)
-                    baseDir = baseDir.substr(0, slash);
-                std::string fullPath = baseDir + "/" + relPath;
-                std::ifstream pf(fullPath);
-                if (pf) {
-                    std::stringstream ss;
-                    ss << pf.rdbuf();
-                    prompt.prompt = ss.str();
-                } else {
-                    std::cerr << "Warning: promptFile not found: " << fullPath << std::endl;
-                }
-            } else {
-                prompt.prompt = jp.value("prompt", "");
-            }
-            if (jp.contains("dependencies")) {
-                prompt.dependencies = jp["dependencies"].get<std::vector<std::string>>();
-            }
-            if (jp.contains("chain")) {
-                prompt.chain = jp["chain"].get<std::vector<std::string>>();
-            }
-            if (jp.contains("validators")) {
-                for (const auto& jv : jp["validators"]) {
-                    ValidatorBinding vb;
-                    vb.toolName = jv.value("toolName", "");
-                    prompt.validators.push_back(std::move(vb));
-                }
-            }
-            manifest.prompts.push_back(prompt);
-        }
-    }
-    if (j.contains("subModules")) {
-        manifest.subModules = j["subModules"].get<std::vector<std::string>>();
-    }
     return 0;
 }
 
@@ -327,6 +241,61 @@ int SkillLoader::getManifest(SkillNamespace ns,
 }
 
 // ---------------------------------------------------------------------------
+// Schema validation
+// ---------------------------------------------------------------------------
+
+int SkillLoader::xLoadSchema(const std::string& schemaPath)
+{
+    std::ifstream ifs(schemaPath);
+    if (!ifs) {
+        std::cerr << "Warning: schema file not found: " << schemaPath
+                  << " (validation disabled)" << std::endl;
+        return -1;
+    }
+    nlohmann::json schemaJson;
+    try {
+        ifs >> schemaJson;
+    } catch (...) {
+        std::cerr << "Warning: failed to parse schema: " << schemaPath
+                  << " (validation disabled)" << std::endl;
+        return -1;
+    }
+
+    valijson::SchemaParser parser;
+    valijson::adapters::NlohmannJsonAdapter schemaAdapter(schemaJson);
+    try {
+        parser.populateSchema(schemaAdapter, m_schema);
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: failed to compile schema: " << e.what()
+                  << " (validation disabled)" << std::endl;
+        return -1;
+    }
+    m_schemaLoaded = true;
+    return 0;
+}
+
+int SkillLoader::validateAgainstSchema(const nlohmann::json& json, std::string& errors) const
+{
+    if (!m_schemaLoaded) {
+        return 0;
+    }
+    valijson::adapters::NlohmannJsonAdapter targetAdapter(json);
+    valijson::ValidationResults results;
+    if (m_validator.validate(m_schema, targetAdapter, &results)) {
+        return 0;
+    }
+    // Collect errors
+    for (const auto& error : results) {
+        std::string path;
+        for (const auto& seg : error.context) {
+            path += "/" + seg;
+        }
+        errors += path + ": " + error.description + "\n";
+    }
+    return -1;
+}
+
+// ---------------------------------------------------------------------------
 // Private
 // ---------------------------------------------------------------------------
 
@@ -381,7 +350,100 @@ int SkillLoader::xLoadNamespace(const std::string& dirPath, SkillNamespace ns)
 
 int SkillLoader::xParseManifestFile(const std::string& path, SkillManifest& manifest) const
 {
-    return readManifest(path, manifest);
+    // Read and parse JSON
+    std::ifstream ifs(path);
+    if (!ifs) {
+        return -1;
+    }
+    nlohmann::json j;
+    try {
+        ifs >> j;
+    } catch (...) {
+        return -1;
+    }
+
+    // Validate against schema before populating the manifest
+    std::string errors;
+    if (validateAgainstSchema(j, errors) != 0) {
+        std::cerr << "Warning: schema validation failed for " << path << ":\n" << errors;
+        return -1;
+    }
+
+    // Populate manifest from parsed JSON
+    manifest.name = j.value("name", "");
+    manifest.version = j.value("version", "0.0.0");
+    manifest.description = j.value("description", "");
+    if (j.contains("tools")) {
+        for (const auto& jt : j["tools"]) {
+            SkillTool tool;
+            tool.name = jt.value("name", "");
+            tool.description = jt.value("description", "");
+            tool.command = jt.value("command", "");
+            tool.inputMode = jt.value("inputMode", "stdin");
+            tool.systemTool = jt.value("systemTool", false);
+            tool.default_ = jt.value("default", false);
+            tool.timeoutSecs = jt.value("timeoutSecs", 30);
+            if (jt.contains("parameters"))
+                tool.parameters = jt["parameters"];
+            if (jt.contains("dockerImage"))
+                tool.dockerImage = jt["dockerImage"].get<std::string>();
+            if (jt.contains("trustLevel")) {
+                std::string tl = jt["trustLevel"].get<std::string>();
+                if (tl == "HIGH") tool.trustLevel = TrustLevel::HIGH;
+                else if (tl == "LOW") tool.trustLevel = TrustLevel::LOW;
+                else tool.trustLevel = TrustLevel::MEDIUM;
+            }
+            if (jt.contains("aptDependencies"))
+                tool.aptDependencies = jt["aptDependencies"].get<std::vector<std::string>>();
+            tool.subCommand = jt.value("subCommand", "");
+            tool.streaming = jt.value("streaming", false);
+            manifest.tools.push_back(tool);
+        }
+    }
+    if (j.contains("prompts")) {
+        for (const auto& jp : j["prompts"]) {
+            Prompt prompt;
+            prompt.name = jp.value("name", "");
+            prompt.description = jp.value("description", "");
+            if (jp.contains("promptFile")) {
+                std::string relPath = jp["promptFile"].get<std::string>();
+                std::string baseDir = path;
+                auto slash = baseDir.find_last_of("/\\");
+                if (slash != std::string::npos)
+                    baseDir = baseDir.substr(0, slash);
+                std::string fullPath = baseDir + "/" + relPath;
+                std::ifstream pf(fullPath);
+                if (pf) {
+                    std::stringstream ss;
+                    ss << pf.rdbuf();
+                    prompt.prompt = ss.str();
+                } else {
+                    std::cerr << "Warning: promptFile not found: " << fullPath << std::endl;
+                }
+            } else {
+                prompt.prompt = jp.value("prompt", "");
+            }
+            if (jp.contains("dependencies")) {
+                prompt.dependencies = jp["dependencies"].get<std::vector<std::string>>();
+            }
+            if (jp.contains("chain")) {
+                prompt.chain = jp["chain"].get<std::vector<std::string>>();
+            }
+            if (jp.contains("validators")) {
+                for (const auto& jv : jp["validators"]) {
+                    ValidatorBinding vb;
+                    vb.toolName = jv.value("toolName", "");
+                    prompt.validators.push_back(std::move(vb));
+                }
+            }
+            prompt.parallelValidators = jp.value("parallelValidators", false);
+            manifest.prompts.push_back(prompt);
+        }
+    }
+    if (j.contains("subModules")) {
+        manifest.subModules = j["subModules"].get<std::vector<std::string>>();
+    }
+    return 0;
 }
 
 std::string SkillLoader::xDirForNamespace(SkillNamespace ns) const

@@ -1,11 +1,13 @@
 #include "agent_core.h"
 #include "base_prompt.h"
 #include "skills/skills.h"
+#include "dependency_graph.h"
 #include "persistence/persistence_store.h"
 #include "persistence/build_identity.h"
 #include "hex_session_id.h"
 #include "trace.h"
 #include <unistd.h>
+#include <filesystem>
 #include <chrono>
 #include <iostream>
 #include <sstream>
@@ -14,6 +16,7 @@
 
 using a0::persistence::BuildIdentity;
 using a0::skills::SkillTool;
+namespace fs = std::filesystem;
 
 // ---------------------------------------------------------------------------
 // UTF-8 sanitization: replace invalid bytes with '?' so nlohmann/json
@@ -79,7 +82,13 @@ DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
     , m_initialized(false) {}
 
 bool DefaultAgentCore::init(const std::string& skillsDir) {
+    return init(skillsDir, "");
+}
+
+bool DefaultAgentCore::init(const std::string& skillsDir, const std::string& a0Dir) {
     TRACE_LOG("init(" << skillsDir << ")");
+    m_skillsDir = skillsDir;
+    m_a0Dir = a0Dir;
 
     // Load all skills from disk
     if (m_skillMgr && m_skillMgr->loadAll() != 0) {
@@ -96,6 +105,42 @@ bool DefaultAgentCore::init(const std::string& skillsDir) {
             }
             std::cerr << "Register handlers via SkillManager::registerHandler() in main.cpp." << std::endl;
             return false;
+        }
+    }
+
+    // Ensure external/a0 repo for self-development and tool scripts
+    if (!m_a0Dir.empty() && m_skillMgr && !m_externalRepoUrl.empty()) {
+        std::string externalDir = m_a0Dir + "/external/a0";
+        if (!fs::is_directory(externalDir)) {
+            std::cerr << "a0: cloning " << m_externalRepoUrl << " into " << externalDir << std::endl;
+            json cloneParams = {
+                {"args", json::array({
+                    "clone", "--depth", "1", "-b", "main",
+                    m_externalRepoUrl, externalDir
+                })}
+            };
+            auto result = m_skillMgr->executeTool("system-git-clone", cloneParams);
+            std::string output = result.is_string() ? result.get<std::string>() : result.dump();
+            if (output.find("ERROR:") == 0) {
+                std::cerr << "Warning: git clone failed: " << output << std::endl;
+            }
+        } else {
+            // Fetch latest main for existing clone
+            json fetchParams = {{"args", json::array({"-C", externalDir, "fetch", "origin", "main"})}};
+            m_skillMgr->executeTool("system-git-fetch", fetchParams);
+            json checkoutParams = {{"args", json::array({"-C", externalDir, "checkout", "main"})}};
+            m_skillMgr->executeTool("system-git-checkout", checkoutParams);
+            json resetParams = {{"args", json::array({"-C", externalDir, "reset", "--hard", "origin/main"})}};
+            m_skillMgr->executeTool("system-git-reset", resetParams);
+        }
+        m_skillRunner->setGlobalVar("A0_SRC_DIR", externalDir);
+    }
+
+    // Apply skill-level CLI args to ToolState (keyed "args:<skill>-<arg>")
+    if (!m_skillArgs.empty() && m_skillMgr) {
+        for (const auto& [key, val] : m_skillArgs) {
+            m_skillMgr->toolState().set("args:" + key, json(val));
+            m_skillRunner->setGlobalVar(key, val);
         }
     }
 
@@ -288,37 +333,49 @@ std::string DefaultAgentCore::xRunForkedLoop(
                     "assistant", "", tcsJsonStr, "", "", "");
             }
 
+            // Collect tool calls into DependencyGraph invocations for batched execution
+            std::vector<a0::ToolInvocation> invocations;
+            invocations.reserve(response.toolCalls.size());
             for (auto& tc : response.toolCalls) {
                 TRACE_LOG("forked_tool_call[" << turn << "]: " << tc.name
                           << " args=" << tc.arguments.dump());
-
-                std::string result;
-
                 auto dit = m_dispatch.find(tc.name);
                 if (dit != m_dispatch.end()) {
-                    const std::string& qualifiedName = dit->second;
-                    if (m_skillMgr) {
-                        // executeToolWithMeta auto-records tool result + invocation to persistence
-                        auto handlerResult = m_skillMgr->executeToolWithMeta(
-                            qualifiedName, tc.arguments, &subSeq, tc.id, subSessionId);
-                        result = handlerResult.output;
-                    } else {
-                        result = "ERROR: no SkillManager available";
-                    }
+                    invocations.push_back({dit->second, tc.arguments,
+                                           &subSeq, tc.id, subSessionId});
                 } else {
-                    result = "ERROR: unknown tool: " + tc.name;
+                    // Unknown tool — create a synthetic invocation that will error
+                    invocations.push_back({tc.name, tc.arguments,
+                                           &subSeq, tc.id, subSessionId});
                 }
+            }
 
-                std::string safeOutput = sanitizeUtf8(truncateForLLM(result));
+            // Execute invocations through DependencyGraph batching
+            auto batches = a0::DependencyGraph::buildBatches(invocations);
+            auto batchResults = a0::DependencyGraph::executeBatches(
+                batches, m_skillMgr, m_maxParallel);
 
-                messages.push_back({"tool", safeOutput, tc.id});
+            // Flatten batch results back into message order (same as invocations)
+            size_t invIdx = 0;
+            for (const auto& br : batchResults) {
+                for (size_t i = 0; i < br.outputs.size(); ++i) {
+                    std::string result = br.outputs[i];
+                    if (!br.errors.empty() && i < br.errors.size() &&
+                        !br.errors[i].empty()) {
+                        result = br.errors[i] + "\n" + result;
+                    }
+                    std::string safeOutput = sanitizeUtf8(truncateForLLM(result));
+                    messages.push_back({"tool", safeOutput,
+                                        response.toolCalls[invIdx].id});
+                    ++invIdx;
 
-                size_t totalBytes = 0;
-                for (const auto& m : messages)
-                    totalBytes += m.content.size();
-                if (totalBytes > maxPayloadBytes) {
-                    return "ERROR: cumulative message payload (" +
-                        std::to_string(totalBytes) + " bytes) exceeds limit";
+                    size_t totalBytes = 0;
+                    for (const auto& m : messages)
+                        totalBytes += m.content.size();
+                    if (totalBytes > maxPayloadBytes) {
+                        return "ERROR: cumulative message payload (" +
+                            std::to_string(totalBytes) + " bytes) exceeds limit";
+                    }
                 }
             }
             continue;
@@ -413,6 +470,10 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
             }
         }
     }
+
+    // Clear tool state for a new processing session
+    if (m_skillMgr)
+        m_skillMgr->toolState().clear();
 
     // Phase 2: Forked tool-calling loop
     xBuildDispatchTable();

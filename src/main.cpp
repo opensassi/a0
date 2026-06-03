@@ -21,6 +21,7 @@
 #include "session_context.h"
 #include <cstdlib>
 #include <cstdio>
+#include <unordered_map>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -369,7 +370,8 @@ struct AgentStack {
                const std::string& apiKey, const std::string& mockUrl,
                bool noDocker, bool noContainerPool,
                const std::string& idleTimeoutStr, const std::string& maxIdleStr,
-               const std::string& defaultImage)
+               const std::string& defaultImage, int maxParallel = 4,
+               const std::string& externalRepo = "https://github.com/opensassi/a0")
         : persistence(a0Dir + "/db/sessions.db")
         , skillMgr(skillsDir, a0Dir + "/store", &persistence)
         , provider(apiKey)
@@ -407,13 +409,16 @@ struct AgentStack {
         // Register all system tool C++ handlers
         xRegisterSystemHandlers(skillMgr, &provider);
 
-        skillRunner = new DefaultSkillRunner(&toolRunner, &provider, &skillMgr,
-            &depResolver, dockerRunner, composeMgr);
+    skillRunner = new DefaultSkillRunner(&toolRunner, &provider, &skillMgr,
+        &depResolver, dockerRunner, composeMgr);
         skillRunner->setSkillsDir(skillsDir);
 
         core = new DefaultAgentCore(&toolRunner, skillRunner, &provider, &context,
             &depResolver, &skillMgr,
             &persistence, dockerRunner, composeMgr);
+        core->setMaxParallel(maxParallel);
+        core->setExternalRepo(externalRepo);
+        skillRunner->setMaxParallel(maxParallel);
     }
 
     ~AgentStack() {
@@ -437,14 +442,18 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
                   bool noDocker, bool noContainerPool,
                   const std::string& idleTimeoutStr,
                   const std::string& maxIdleStr,
-                  const std::string& defaultImage) {
+                  const std::string& defaultImage,
+                  int maxParallel = 4,
+                  const std::string& externalRepo = "https://github.com/opensassi/a0",
+                  const std::unordered_map<std::string, std::string>& skillArgs = {}) {
     AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
-                     idleTimeoutStr, maxIdleStr, defaultImage);
+                     idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
+    stack.core->setSkillArgs(skillArgs);
 
     if (!resumeSessionId.empty())
         stack.core->resumeSession(resumeSessionId);
 
-    if (!stack.core->init(skillsDir)) {
+    if (!stack.core->init(skillsDir, a0Dir)) {
         std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
         return 1;
     }
@@ -501,14 +510,18 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
                    bool noDocker, bool noContainerPool, bool noB1,
                    const std::string& idleTimeoutStr,
                    const std::string& maxIdleStr,
-                   const std::string& defaultImage) {
+                   const std::string& defaultImage,
+                   int maxParallel = 4,
+                   const std::string& externalRepo = "https://github.com/opensassi/a0",
+                   const std::unordered_map<std::string, std::string>& skillArgs = {}) {
     AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
-                     idleTimeoutStr, maxIdleStr, defaultImage);
+                     idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
+    stack.core->setSkillArgs(skillArgs);
 
     if (!resumeSessionId.empty())
         stack.core->resumeSession(resumeSessionId);
 
-    if (!stack.core->init(skillsDir)) {
+    if (!stack.core->init(skillsDir, a0Dir)) {
         std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
         return 1;
     }
@@ -744,7 +757,13 @@ int main(int argc, char* argv[]) {
     app.add_flag("--no-b1", noB1, "Skip b1 supervisor launch");
     app.add_option("--container-idle-timeout", idleTimeoutStr, "Container idle timeout (s)");
     app.add_option("--max-idle-containers", maxIdleStr, "Max idle containers");
+    int maxParallel = 4;
+    app.add_option("--max-parallel", maxParallel, "Max concurrent tool executions (default 4)");
     app.add_option("--default-docker-image", defaultImage, "Default Docker image");
+    std::string externalRepo = "https://github.com/opensassi/a0";
+    app.add_option("--external-repo", externalRepo, "External a0 repo URL for self-development scripts");
+    std::vector<std::string> skillArgsRaw;
+    app.add_option("--skill-arg", skillArgsRaw, "Skill argument (repeatable): --skill-arg=playwright-headless=true")->take_all();
 
     // Subcommand: kill-all
     auto* killCmd = app.add_subcommand("kill-all", "Stop daemon processes");
@@ -789,6 +808,17 @@ int main(int argc, char* argv[]) {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
         return app.exit(e);
+    }
+
+    // Parse skill args into a map
+    std::unordered_map<std::string, std::string> skillArgs;
+    for (const auto& raw : skillArgsRaw) {
+        auto eq = raw.find('=');
+        if (eq == std::string::npos) {
+            skillArgs[raw] = "true";
+        } else {
+            skillArgs[raw.substr(0, eq)] = raw.substr(eq + 1);
+        }
     }
 
     // Load env file (needed by all modes)
@@ -841,12 +871,13 @@ int main(int argc, char* argv[]) {
     if (app.got_subcommand(runCmd))
         return cmdRun(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
                       runPrompt, runSkillName, runParamsStr,
-                      noDocker, noContainerPool, idleTimeoutStr, maxIdleStr, defaultImage);
+                      noDocker, noContainerPool, idleTimeoutStr, maxIdleStr,
+                      defaultImage, maxParallel, externalRepo, skillArgs);
     if (app.got_subcommand(termCmd))
         return cmdTerminal(a0Dir, terminalId);
 
     // Default: repl
     return cmdRepl(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
                    noDocker, noContainerPool, noB1,
-                   idleTimeoutStr, maxIdleStr, defaultImage);
+                   idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo, skillArgs);
 }

@@ -26,6 +26,8 @@ set(LIB_SOURCES
     src/skills/skill_loader.cpp
     src/skills/version_manager.cpp
     src/skills/validation_engine.cpp
+    src/dependency_graph.cpp
+    src/tool_state.cpp
 )
 
 # CommandRunner — isolated utility with no agent dependencies
@@ -92,6 +94,27 @@ add_agent_test(test_session_context test/unit/test_session_context.cpp)
 # add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
 # add_agent_test(test_interfaces test/unit/test_interfaces.cpp)
 add_agent_test(test_skill_manager test/unit/test_skill_manager.cpp)
+add_agent_test(test_skill_schema test/unit/test_skill_schema.cpp)
+target_compile_definitions(test_skill_schema PRIVATE
+    TEST_PROJECT_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_agent_test(test_dependency_graph test/unit/test_dependency_graph.cpp)
+target_link_libraries(test_dependency_graph PRIVATE pthread)
+
+add_agent_test(test_pipeline_execution test/unit/test_pipeline_execution.cpp)
+target_link_libraries(test_pipeline_execution PRIVATE pthread)
+
+add_agent_test(test_skill_pipeline test/unit/test_skill_pipeline.cpp)
+target_link_libraries(test_skill_pipeline PRIVATE pthread)
+
+add_agent_test(test_tool_state test/unit/test_tool_state.cpp)
+target_link_libraries(test_tool_state PRIVATE pthread)
+
+add_agent_test(test_external_a0 test/unit/test_external_a0.cpp)
+target_link_libraries(test_external_a0 PRIVATE pthread)
+
+add_agent_test(test_skill_args test/unit/test_skill_args.cpp)
+target_link_libraries(test_skill_args PRIVATE pthread)
 add_agent_test(test_context_manager test/unit/test_context_manager.cpp)
 add_agent_test(test_deepseek_provider test/unit/test_deepseek_provider.cpp)
 
