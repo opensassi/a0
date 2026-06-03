@@ -111,6 +111,8 @@ std::string DefaultSkillRunner::expandPrompt(const Prompt& prompt, const json& p
         }
     }
 
+    TRACE_LOG("expandPrompt result=" << result);
+
     // Pass 2: replace {{tool:qualified_name key="value" ...}} eager tool calls
     std::regex toolRe(R"(\{\{tool:([\w_-]+)\s+([^}]+)\}\})");
     std::smatch match;

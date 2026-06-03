@@ -428,8 +428,21 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
     // the skill instructions.
     if (m_skillMgr) {
         Prompt resolved;
+        json phaseParams = params;
+        if (!phaseParams.contains("goal")) {
+            phaseParams["goal"] = goal;
+        }
         if (m_skillMgr->getPromptResolved(goal, resolved) == 0) {
-            std::string expanded = m_skillRunner->expandPrompt(resolved, params);
+            auto missing = m_depResolver->missingDependencies(resolved);
+            if (!missing.empty()) {
+                std::string err = "Missing dependencies: " + missing[0];
+                for (size_t i = 1; i < missing.size(); ++i)
+                    err += ", " + missing[i];
+                json finalResult = json(err);
+                xPushToContext(goal, finalResult);
+                return finalResult;
+            }
+            std::string expanded = m_skillRunner->expandPrompt(resolved, phaseParams);
             xBuildDispatchTable();
             auto toolSchemas = m_skillMgr ? m_skillMgr->schemas(true)
                                            : std::vector<ToolSchema>();
@@ -449,9 +462,18 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
         auto allSkills = m_skillMgr->listSkills(std::nullopt);
         for (const auto& comp : allSkills) {
             for (const auto& ns : {"local", "system"}) {
-                std::string qn = std::string(ns) + ":" + comp + ":" + goal;
+                std::string qn = std::string(ns) + "-" + comp + "-" + goal;
                 if (m_skillMgr->getPromptResolved(qn, resolved) == 0) {
-                    std::string expanded = m_skillRunner->expandPrompt(resolved, params);
+                    auto missing = m_depResolver->missingDependencies(resolved);
+                    if (!missing.empty()) {
+                        std::string err = "Missing dependencies: " + missing[0];
+                        for (size_t i = 1; i < missing.size(); ++i)
+                            err += ", " + missing[i];
+                        json finalResult = json(err);
+                        xPushToContext(goal, finalResult);
+                        return finalResult;
+                    }
+                    std::string expanded = m_skillRunner->expandPrompt(resolved, phaseParams);
                     xBuildDispatchTable();
                     auto toolSchemas = m_skillMgr ? m_skillMgr->schemas(true)
                                                    : std::vector<ToolSchema>();

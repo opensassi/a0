@@ -19,6 +19,7 @@ import './components/prompt-banner/index.js';
 import './components/settings-page/index.js';
 import './components/sse-provider/index.js';
 import './components/terminal-view/index.js';
+import './components/interact-page/index.js';
 
 window.sanitizeId = function(raw) {
     return String(raw).toLowerCase()
@@ -55,23 +56,39 @@ const routes = [
     { pattern: '/projects', Component: 'projects-page' },
     { pattern: '/settings', Component: 'settings-page' },
     { pattern: '/terminal', Component: 'terminal-view' },
+    { pattern: '/agent/:uuid/interact', Component: 'interact-page', paramKey: 'uuid' },
     { pattern: '/agent/:uuid', Component: 'agent-page', paramKey: 'uuid' },
 ];
 
 function matchRoute(path) {
-    // Strip hash fragment for pattern matching
     const clean = path.split('#')[0];
+    const segs = clean.split('/').filter(Boolean);
+
     for (const route of routes) {
-        if (route.pattern === clean) return { route, params: {} };
-        if (route.paramKey) {
-            const prefix = route.pattern.replace(`:${route.paramKey}`, '');
-            if (clean.startsWith(prefix)) {
-                const uuid = clean.substring(prefix.length);
-                if (uuid) return { route, params: { [route.paramKey]: uuid } };
+        const patSegs = route.pattern.split('/').filter(Boolean);
+
+        if (!route.paramKey) {
+            if (route.pattern === clean) return { route, params: {} };
+            continue;
+        }
+
+        if (segs.length !== patSegs.length) continue;
+
+        const params = {};
+        let match = true;
+        for (let i = 0; i < patSegs.length; i++) {
+            if (patSegs[i] === `:${route.paramKey}`) {
+                params[route.paramKey] = segs[i];
+            } else if (patSegs[i] !== segs[i]) {
+                match = false;
+                break;
             }
         }
+
+        if (match) return { route, params };
     }
-    return { route: routes[0], params: {} }; // default to dashboard
+
+    return { route: routes[0], params: {} };
 }
 
 function renderPage(path) {

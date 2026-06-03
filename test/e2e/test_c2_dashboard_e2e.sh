@@ -39,20 +39,27 @@ cleanup() {
     fi
     echo ""
     echo "=== Cleaning up ==="
-    # Kill known PIDs first  
-    timeout 3 kill "${BRIDGE_PID:-}" 2>/dev/null || true
-    timeout 3 kill "${C2_PID:-}" 2>/dev/null || true
-    sleep 1
-    # Force kill anything still alive
-    timeout 3 kill -9 "${BRIDGE_PID:-}" 2>/dev/null || true
-    timeout 3 kill -9 "${C2_PID:-}" 2>/dev/null || true
-    # Kill orphaned a0 terminal children of c2, and b1 daemons
-    timeout 3 pkill -9 -f "build/a0.*terminal" 2>/dev/null || true
-    timeout 3 pkill -9 -f "build/b1" 2>/dev/null || true
+    # Kill known PIDs first
+    for sig in TERM KILL; do
+        for pid in "${BRIDGE_PID:-}" "${C2_PID:-}"; do
+            [ -n "$pid" ] && kill -"$sig" "$pid" 2>/dev/null || true
+        done
+        sleep 1
+    done
+    # Kill orphaned a0 terminal + b1 daemons by reading /proc directly
+    # (avoids pkill which can hang on zombie entries)
+    for pd in /proc/[0-9]*; do
+        cmdline="${pd}/cmdline"
+        [ -r "$cmdline" ] || continue
+        cmd=$(tr '\0' ' ' < "$cmdline" 2>/dev/null || true)
+        case "$cmd" in
+            *a0*terminal*)  kill -9 "${pd#/proc/}" 2>/dev/null || true ;;
+            *b1*--workdir*) kill -9 "${pd#/proc/}" 2>/dev/null || true ;;
+        esac
+    done
     # Clean up socket, PID, and log files
     rm -f /tmp/a0-c2.sock /tmp/a0-c2.pid /tmp/a0-c2.sock.db \
        "${PROJECT_ROOT}/.a0/b1.sock" "${PROJECT_ROOT}/.a0/b1.pid"
-    # Remove logs (preserved with --no-cleanup)
     rm -f "${C2_LOG}" "${A0_LOG}" "${B1_LOG}" "${BRIDGE_LOG}"
     echo "Cleanup done"
 }

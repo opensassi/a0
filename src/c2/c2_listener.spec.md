@@ -43,6 +43,7 @@ private:
     int xHandleUserPrompt(const nlohmann::json& msg);
     int xHandleStreamData(const nlohmann::json& msg);
     int xHandleStreamEnd(const nlohmann::json& msg);
+    void xCleanupPeer(int fd);      // remove fd → pid mapping + removeB1 from registry
     void xCleanupStaleSocket();
 };
 
@@ -130,6 +131,7 @@ sequenceDiagram
 | Socket path stale from crash | `xCleanupStaleSocket` unlinks before bind |
 | sendToB1 to disconnected b1 | Returns -1 (fd closed or not found) |
 | stream_data with missing fields | Returns -1, no SSE broadcast |
+| b1 socket hangup or recv error | `xCleanupPeer` called → `removeB1(pid)` to prevent stale entries |
 
 ## 6. Testing Requirements
 

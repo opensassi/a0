@@ -1,0 +1,23 @@
+{
+    "name": "interact-page",
+    "tag": "interact-page",
+    "description": "Agent interaction page with conversation viewer, real-time monitoring, and message injection",
+    "shadowDom": true,
+    "routes": ["/agent/:uuid/interact"],
+    "dependsOn": ["conversation-view", "message-bubble"],
+    "ids": {
+        "page-interact": { "description": "Page root element", "type": "container" },
+        "agent-header": { "description": "Agent information header", "type": "container" },
+        "agent-title": { "description": "Agent monitor title heading", "type": "heading" },
+        "agent-details": { "description": "Agent detail fields", "type": "container" },
+        "interact-layout": { "description": "Main layout container", "type": "container" },
+        "interact-main": { "description": "Conversation view slot", "type": "container" },
+        "conversation": { "description": "Conversation view instance", "type": "container" },
+        "interact-input": { "description": "Message input area", "type": "container" },
+        "msg-input": { "description": "Message composition textarea", "type": "input" },
+        "btn-send-queue": { "description": "Send message on next turn", "type": "button", "action": "send message queued" },
+        "btn-send-abort": { "description": "Send message and interrupt current turn", "type": "button", "action": "send message and abort" }
+    },
+    "dynamicIds": {},
+    "events": { "emits": ["navigate"], "listens": ["stream_chunk", "new_message"] }
+}

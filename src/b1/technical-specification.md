@@ -90,10 +90,12 @@ public:
 
     virtual ~Supervisor();
 
-    /// Write PID file, create + bind socket, connect to c2 (or launch it).
+    /// Check existing instance, write PID file, create + bind socket, connect to c2 (or launch it).
     /// \retval 0  Initialized successfully.
     /// \retval -1  Socket bind failed.
     /// \retval -2  PID file write failed.
+    /// \retval -3  Another b1 instance already running for this workdir.
+    /// \retval -3  Another b1 instance already running for this workdir.
     int init();
 
     /// Main event loop. Uses poll(2) on the listening socket and the c2 socket.
@@ -142,6 +144,7 @@ private:
     int xSendToC2(const ipc::Message& msg);
     int xSendToAgent(int agentFd, const ipc::Message& msg);
     int xFindAgentFdBySession(const std::string& sessionUuid) const;
+    int xCheckExistingInstance();   // checks PID file, returns -1 if alive
     void xCleanupStaleSocket();
     int xWritePidFile();
 };

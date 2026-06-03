@@ -537,6 +537,35 @@ prompt-badge .prompt-badge {
     font-weight: 600;
 }
 
+/* Interact Page */
+interact-page { display: block; }
+interact-page .page { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.interact-layout { display: flex; gap: 20px; margin-bottom: 16px; }
+.interact-main { flex: 1; min-width: 0; }
+.interact-input { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.interact-input textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px; color: var(--text);
+    font-size: 14px; font-family: var(--font); resize: vertical; outline: none;
+}
+.interact-input textarea:focus { border-color: var(--accent); }
+.interact-buttons { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+.btn {
+    padding: 8px 18px; border: none; border-radius: var(--radius);
+    cursor: pointer; font-size: 14px; font-weight: 500;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { opacity: 0.85; }
+.btn-danger { background: var(--red); color: white; }
+.btn-danger:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Agent state colors in details */
+.agent-state.running { color: var(--green); }
+.agent-state.crashed { color: var(--red); }
+.agent-state.stopped { color: var(--text-muted); }
+.agent-details code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: var(--text-muted); }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

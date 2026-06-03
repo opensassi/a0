@@ -13,6 +13,7 @@ RESPONSES = {
     "skill": json.load(open(os.path.join(FIXTURES_DIR, "infer_skill_response.json"))),
     "files": json.load(open(os.path.join(FIXTURES_DIR, "find_related_files_response.json"))),
     "tool_calls": json.load(open(os.path.join(FIXTURES_DIR, "tool_calls_response.json"))),
+    "tools_for_prompt": json.load(open(os.path.join(FIXTURES_DIR, "tools_for_prompt_response.json"))),
     "tool_result": {"id":"mock-completion-5","choices":[{"index":0,"message":{"role":"assistant","content":"Tool executed successfully"}}]}
 }
 
@@ -37,8 +38,11 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
             elif role == "tool":
                 has_tool_role = True
 
+        # tools_for_prompt analysis: system prompt asks to analyze and recommend tools
+        if "Analyze the user's request" in system_text:
+            response = RESPONSES["tools_for_prompt"]
         # Phase 2 dispatch: request has tools array and no tool role messages yet
-        if not has_tool_role and payload.get("tools"):
+        elif not has_tool_role and payload.get("tools"):
             # First call in tool-calling loop — respond with tool_calls
             response = RESPONSES["tool_calls"]
         elif has_tool_role:

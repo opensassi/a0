@@ -131,6 +131,7 @@ void DashboardServer::xServeStatic(Res* res, const std::string& urlPath) {
     } else {
         res->writeHeader("Content-Type", xMimeType(path));
     }
+    res->writeHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res->end(content);
 }
 
@@ -239,6 +240,130 @@ void DashboardServer::xSetupRoutes(App* app) {
             }
         }
         res->writeStatus("404")->end("[]");
+    });
+
+    // GET /api/agent/:uuid/messages
+    app->template get("/api/agent/:uuid/messages", [this](auto* res, auto* req) {
+        std::string uuid(req->getParameter(0));
+
+        // Parse limit and before query params
+        std::string queryStr(req->getQuery());
+        int limit = 50;
+        int64_t before = 0;
+        auto qpos = queryStr.find("limit=");
+        if (qpos != std::string::npos) {
+            limit = std::stoi(queryStr.substr(qpos + 6));
+            auto amp = queryStr.find('&', qpos + 6);
+            if (amp != std::string::npos) limit = std::stoi(queryStr.substr(qpos + 6, amp - qpos - 6));
+        }
+        qpos = queryStr.find("before=");
+        if (qpos != std::string::npos) {
+            before = std::stoll(queryStr.substr(qpos + 7));
+            auto amp = queryStr.find('&', qpos + 7);
+            if (amp != std::string::npos) before = std::stoll(queryStr.substr(qpos + 7, amp - qpos - 7));
+        }
+
+        // Find the agent's b1 to get the DB path
+        auto b1s = m_registry->listB1s();
+        std::string dbPath;
+        for (const auto& b1 : b1s) {
+            for (const auto& ag : b1.agents) {
+                if (ag.sessionUuid == uuid) {
+                    dbPath = b1.workdir + "/.a0/db/sessions.db";
+                    break;
+                }
+            }
+            if (!dbPath.empty()) break;
+        }
+
+        if (dbPath.empty()) {
+            res->writeHeader("Content-Type", "application/json");
+            res->end("[]");
+            return;
+        }
+
+        // Read from SQLite directly
+        sqlite3* db = nullptr;
+        if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+            if (db) sqlite3_close(db);
+            res->writeHeader("Content-Type", "application/json");
+            res->end("[]");
+            return;
+        }
+
+        // Find session id by uuid
+        sqlite3_stmt* stmt;
+        int64_t sessionId = 0;
+        const char* sql = "SELECT id FROM session WHERE uuid = ?";
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, uuid.c_str(), -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                sessionId = sqlite3_column_int64(stmt, 0);
+            }
+            sqlite3_finalize(stmt);
+        }
+
+        nlohmann::json arr = nlohmann::json::array();
+        if (sessionId > 0) {
+            if (before > 0) {
+                sql = "SELECT id, session_id, COALESCE(sub_session_id,0), seq, role, content,"
+                      " tool_calls_json, COALESCE(tool_call_id,''), COALESCE(name,''),"
+                      " COALESCE(result_json,''), created_at"
+                      " FROM message WHERE session_id = ? AND id < ?"
+                      " ORDER BY id DESC LIMIT ?";
+                if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+                    sqlite3_bind_int64(stmt, 1, sessionId);
+                    sqlite3_bind_int64(stmt, 2, before);
+                    sqlite3_bind_int(stmt, 3, limit);
+                }
+            } else {
+                sql = "SELECT id, session_id, COALESCE(sub_session_id,0), seq, role, content,"
+                      " tool_calls_json, COALESCE(tool_call_id,''), COALESCE(name,''),"
+                      " COALESCE(result_json,''), created_at"
+                      " FROM message WHERE session_id = ?"
+                      " ORDER BY id DESC LIMIT ?";
+                if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+                    sqlite3_bind_int64(stmt, 1, sessionId);
+                    sqlite3_bind_int(stmt, 2, limit);
+                }
+            }
+            if (stmt && sqlite3_step(stmt) != SQLITE_DONE) {
+                // Collect in reverse order, then reverse for ascending output
+                std::vector<nlohmann::json> rows;
+                do {
+                    nlohmann::json m;
+                    m["id"] = sqlite3_column_int64(stmt, 0);
+                    m["session_id"] = sqlite3_column_int64(stmt, 1);
+                    m["sub_session_id"] = sqlite3_column_int64(stmt, 2);
+                    m["seq"] = sqlite3_column_int(stmt, 3);
+                    if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)))
+                        m["role"] = p;
+                    if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)))
+                        m["content"] = p;
+                    if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)))
+                        m["tool_calls_json"] = p;
+                    if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)))
+                        m["tool_call_id"] = p;
+                    if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)))
+                        m["name"] = p;
+                    if (auto* p = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)))
+                        m["result_json"] = p;
+                    m["created_at"] = sqlite3_column_int64(stmt, 10);
+                    rows.push_back(m);
+                } while (sqlite3_step(stmt) == SQLITE_ROW);
+                sqlite3_finalize(stmt);
+                // Reverse for ascending order
+                for (auto it = rows.rbegin(); it != rows.rend(); ++it) {
+                    arr.push_back(*it);
+                }
+            } else if (stmt) {
+                sqlite3_finalize(stmt);
+            }
+        }
+
+        sqlite3_close(db);
+        res->writeHeader("Content-Type", "application/json");
+        res->end(arr.dump(2));
     });
 
     // GET /api/agent/:uuid

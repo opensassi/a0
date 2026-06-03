@@ -65,6 +65,7 @@ private:
     int xSendToAgent(int agentFd, const ipc::Message& msg);
     int xFindAgentFdBySession(const std::string& sessionUuid) const;
     int xFindAgentFdByStream(int64_t streamId) const;
+    int xCheckExistingInstance();
     void xCleanupStaleSocket();
     int xWritePidFile();
 

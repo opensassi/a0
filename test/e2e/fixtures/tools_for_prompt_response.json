@@ -1,0 +1,10 @@
+{
+    "id": "mock-completion-analysis",
+    "choices": [{
+        "index": 0,
+        "message": {
+            "role": "assistant",
+            "content": "{\"intent\": \"list files in the current directory\",\"plan\": \"Use the bash tool to run ls -la in the current directory\",\"tools\": [{\"name\":\"bash\",\"schema\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The shell command to execute\"}},\"required\":[\"command\"]}}]}"
+        }
+    }]
+}

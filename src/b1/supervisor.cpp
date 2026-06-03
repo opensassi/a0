@@ -10,6 +10,7 @@ std::string g_b1LogFile;
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <fstream>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
@@ -35,9 +36,12 @@ Supervisor::~Supervisor() {
 }
 
 int Supervisor::init() {
+    int rc = xCheckExistingInstance();
+    if (rc < 0) return -3;
+
     xCleanupStaleSocket();
 
-    int rc = xWritePidFile();
+    rc = xWritePidFile();
     if (rc < 0) return -2;
 
     rc = m_listenSocket.bindAndListen(m_socketPath);
@@ -513,6 +517,25 @@ int Supervisor::xLaunchC2IfNeeded() {
         }
     }
     return -1;
+}
+
+int Supervisor::xCheckExistingInstance() {
+    std::ifstream f(m_pidPath);
+    if (!f) return 0;  // no PID file → fresh start
+
+    int existingPid = 0;
+    f >> existingPid;
+    if (existingPid <= 0) return 0;
+
+    // If the process is alive, another b1 is already running for this workdir
+    if (::kill(static_cast<pid_t>(existingPid), 0) == 0) {
+        std::cerr << "b1: another instance already running (pid="
+                  << existingPid << ") for workdir=" << m_workdir << "\n";
+        return -1;
+    }
+
+    // Stale PID file — will be overwritten by xWritePidFile
+    return 0;
 }
 
 void Supervisor::xCleanupStaleSocket() {

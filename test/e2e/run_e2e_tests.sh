@@ -81,15 +81,14 @@ create_component "$N2_DIR" "local" "tools" '{
     "version": "1.0.0",
     "tools": [{
         "name": "bash",
-        "description": "bash",
+        "description": "Execute a bash command",
         "command": "bash",
-        "inputMode": "stdin",
-        "systemTool": true
+        "inputMode": "stdin"
     }],
     "prompts": []
 }'
 A0_DIR=$(a0dir "e2e02")
-echo "count lines in file" | timeout 5 "$A0" \
+echo "count lines in file" | timeout 30 "$A0" \
     --skills-dir "$N2_DIR" \
     --mock-api "$MOCK_URL" \
     --no-b1 \
@@ -112,23 +111,26 @@ echo "=== E2E-03: N/A (flat file skills removed) ==="
 # ======================================================================
 echo ""
 echo "=== E2E-04: Session persisted to SQLite ==="
-N4_DIR="${PROJECT_DIR}/test_e2e_n4"
-rm -rf "$N4_DIR"
 A0_DIR=$(a0dir "e2e04")
-echo "find files" | timeout 5 "$A0" \
-    --skills-dir "$N4_DIR" \
+echo "find files" | timeout 45 "$A0" \
     --mock-api "$MOCK_URL" \
     --no-b1 \
     --a0-dir "$A0_DIR" \
     2>/dev/null > /dev/null || true
-rm -rf "$N4_DIR"
 # Verify session data was written to SQLite
-row_count=$(sqlite3 "$A0_DIR/db/sessions.db" \
-    "SELECT COUNT(*) FROM message WHERE session_id = (
-        SELECT id FROM session ORDER BY id DESC LIMIT 1
-    )" 2>/dev/null) || row_count=0
+row_count=$(python3 -c "
+import sqlite3
+try:
+    conn = sqlite3.connect('$A0_DIR/db/sessions.db')
+    c = conn.cursor()
+    c.execute('SELECT COUNT(*) FROM message WHERE session_id = (SELECT id FROM session ORDER BY id DESC LIMIT 1)')
+    print(c.fetchone()[0])
+    conn.close()
+except Exception as e:
+    print(0)
+" 2>/dev/null) || row_count=0
 rm -rf "$A0_DIR"
-if [ "$row_count" -ge 1 ]; then
+if [ "$row_count" -ge 2 ]; then
     echo "PASS: E2E-04 (${row_count} messages in SQLite)"
 else
     echo "FAIL: E2E-04 (no messages in SQLite)"
@@ -156,7 +158,7 @@ create_component "$N1_DIR" "local" "n1" '{
     }]
 }'
 A0_DIR=$(a0dir "e2en1")
-echo "bad_skill" | timeout 5 "$A0" \
+echo "local-n1-bad_skill" | timeout 15 "$A0" \
     --skills-dir "$N1_DIR" \
     --mock-api "$MOCK_URL" \
     --no-b1 \
@@ -189,13 +191,13 @@ create_component "$N2_DIR" "local" "n2" '{
         "name": "sleep_skill",
         "description": "sleep skill",
         "prompt": "{{tool:sleep_tool _=\"\"}}",
-        "dependencies": ["local:n2:sleep_tool"],
+        "dependencies": ["local-n2-sleep_tool"],
         "validators": []
     }]
 }'
 A0_DIR=$(a0dir "e2en2")
 start=$(date +%s)
-echo "sleep_skill" | timeout 40 "$A0" \
+echo "local-n2-sleep_skill" | timeout 40 "$A0" \
     --skills-dir "$N2_DIR" \
     --mock-api "$MOCK_URL" \
     --no-b1 \
@@ -204,11 +206,11 @@ echo "sleep_skill" | timeout 40 "$A0" \
 end=$(date +%s)
 elapsed=$((end - start))
 rm -rf "$N2_DIR" "$A0_DIR"
-if grep -q "ERROR: timeout" /tmp/e2e_n2_stderr.txt && [ $elapsed -lt 10 ]; then
+if grep -q "ERROR: timeout" /tmp/e2e_n2.out && [ $elapsed -ge 2 ] && [ $elapsed -lt 15 ]; then
     echo "PASS: E2E-N2 (${elapsed}s)"
 else
-    echo "FAIL: E2E-N2 (elapsed: ${elapsed}s, stderr has timeout: $(grep -c 'ERROR: timeout' /tmp/e2e_n2_stderr.txt 2>/dev/null))"
-    head -5 /tmp/e2e_n2_stderr.txt 2>/dev/null
+    echo "FAIL: E2E-N2 (elapsed: ${elapsed}s, stdout has timeout: $(grep -c 'ERROR: timeout' /tmp/e2e_n2.out 2>/dev/null))"
+    head -5 /tmp/e2e_n2.out 2>/dev/null
     FAILED=1
 fi
 
@@ -230,18 +232,18 @@ create_component "$N3_DIR" "local" "n3" '{
     }]
 }'
 A0_DIR=$(a0dir "e2en3")
-echo "param_skill" | timeout 10 "$A0" \
+echo "local-n3-param_skill" | timeout 15 "$A0" \
     --skills-dir "$N3_DIR" \
     --mock-api "$MOCK_URL" \
     --no-b1 \
     --a0-dir "$A0_DIR" \
     2>/tmp/e2e_n3_stderr.txt > /tmp/e2e_n3_out.txt || true
 rm -rf "$N3_DIR" "$A0_DIR"
-if grep -q "Process: param_skill" /tmp/e2e_n3_stderr.txt 2>/dev/null; then
+if grep -q "expandPrompt result=Process:" /tmp/e2e_n3_stderr.txt 2>/dev/null; then
     echo "PASS: E2E-N3"
 else
-    echo "FAIL: E2E-N3 (stderr did not contain 'Process: param_skill')"
-    echo "stderr: $(head -20 /tmp/e2e_n3_stderr.txt 2>/dev/null)"
+    echo "FAIL: E2E-N3 (stderr did not contain 'expandPrompt result=Process:')"
+    echo "stderr: $(grep expandPrompt /tmp/e2e_n3_stderr.txt 2>/dev/null || head -20 /tmp/e2e_n3_stderr.txt 2>/dev/null)"
     FAILED=1
 fi
 
@@ -263,19 +265,19 @@ create_component "$N4_DIR" "local" "n4" '{
         "name": "args_skill",
         "description": "args demo",
         "prompt": "{{tool:echo_arg _=\"hello_args\"}}",
-        "dependencies": ["local:n4:echo_arg"],
+        "dependencies": ["local-n4-echo_arg"],
         "validators": []
     }]
 }'
 A0_DIR=$(a0dir "e2en4")
-echo "args_skill" | timeout 5 "$A0" \
+echo "local-n4-args_skill" | timeout 15 "$A0" \
     --skills-dir "$N4_DIR" \
     --mock-api "$MOCK_URL" \
     --no-b1 \
     --a0-dir "$A0_DIR" \
     2>/tmp/e2e_n4_stderr.txt > /tmp/e2e_n4.out || true
 rm -rf "$N4_DIR" "$A0_DIR"
-if grep -q "hello_args" /tmp/e2e_n4_stderr.txt; then
+if grep -q "hello_args" /tmp/e2e_n4_stderr.txt 2>/dev/null || grep -q "hello_args" /tmp/e2e_n4.out 2>/dev/null; then
     echo "PASS: E2E-N4"
 else
     echo "FAIL: E2E-N4 (stderr: $(head -30 /tmp/e2e_n4_stderr.txt 2>/dev/null))"

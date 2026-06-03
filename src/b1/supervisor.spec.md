@@ -61,6 +61,7 @@ private:
     int xSendToC2(const ipc::Message& msg);
     int xSendToAgent(int agentFd, const ipc::Message& msg);
     int xFindAgentFdBySession(const std::string& sessionUuid) const;
+    int xCheckExistingInstance();  // return -1 if another b1 is alive for this workdir
     void xCleanupStaleSocket();
     int xWritePidFile();
 };
@@ -161,6 +162,7 @@ Critical relay points include TRACE_LOG calls (enabled via `-DENABLE_TRACE=ON`):
 
 | Scenario | Behaviour |
 |----------|-----------|
+| Another b1 already running for workdir | `xCheckExistingInstance` → `init` returns -3 |
 | Socket path already in use | `xCleanupStaleSocket` unlinks before bind |
 | PID file write fails | `init` returns -2 |
 | poll() returns error | `run` continues (logs error) |

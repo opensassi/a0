@@ -69,7 +69,8 @@ graph TB
         B1[GET /api/b1/:pid]
         B1AGENTS[GET /api/b1/:pid/agents]
         AGENT[GET /api/agent/:uuid]
-        MSGS[POST /api/agent/:uuid/messages]
+        MSGS_GET[GET /api/agent/:uuid/messages]
+        MSGS_POST[POST /api/agent/:uuid/messages]
         DISMISS[DELETE /api/agent/:uuid/prompt/:toolCallId]
         PING[POST /api/ping]
         STATIC_FILES[GET /*]
@@ -90,7 +91,8 @@ graph TB
     BROWSER --> B1
     BROWSER --> B1AGENTS
     BROWSER --> AGENT
-    BROWSER --> MSGS
+    BROWSER --> MSGS_GET
+    BROWSER --> MSGS_POST
     BROWSER --> DISMISS
     BROWSER --> PING
     BROWSER --> STATIC_FILES
@@ -102,8 +104,9 @@ graph TB
     AGENT --> REG
     SSE --> SSE_MGR
     PENDING --> EVENTS
-    MSGS --> EVENTS
-    MSGS --> LISTENER
+    MSGS_GET --> REG
+    MSGS_POST --> EVENTS
+    MSGS_POST --> LISTENER
     DISMISS --> EVENTS
     STATIC_FILES --> FS
     PING --> SSE_MGR
@@ -177,6 +180,7 @@ sequenceDiagram
 | GET | `/api/b1/:pid` | Registry lookup | Single b1 details |
 | GET | `/api/b1/:pid/agents` | Registry lookup | Agents under b1 |
 | GET | `/api/agent/:uuid` | Registry scan | Agent session info |
+| GET | `/api/agent/:uuid/messages` | SQLite read | Load messages for an agent session (supports `?limit=N&before=M` cursor pagination) |
 | POST | `/api/agent/:uuid/messages` | Append message; resolves prompt if tool role | User input or tool response |
 | DELETE | `/api/agent/:uuid/prompt/:toolCallId` | Dismiss prompt | Cancel without answer |
 | POST | `/api/ping` | Sends pong via SSE; registers `onAborted` handler | Client keepalive |
@@ -190,6 +194,8 @@ sequenceDiagram
 ## 6. Static File Serving
 
 Files are served from the path specified by `--web-root` (default: `<cwd>/.a0/git/opensassi/a0/c2/web`). MIME types are determined by file extension. For paths without a recognized extension or when the file doesn't exist, `index.html` is served (SPA fallthrough).
+
+All static responses include `Cache-Control: no-cache, no-store, must-revalidate` to prevent stale ES module caching during development.
 
 MIME mapping: `.html` → `text/html`, `.js` → `text/javascript`, `.css` → `text/css`, `.svg` → `image/svg+xml`, `.png` → `image/png`, `.ico` → `image/x-icon`.
 

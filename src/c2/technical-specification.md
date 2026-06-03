@@ -280,6 +280,7 @@ Replaces inline HTML with static file serving from `webRoot`. Uses a template-ba
 | GET | `/api/b1/:pid` | Single b1 details |
 | GET | `/api/b1/:pid/agents` | Agents under b1 |
 | GET | `/api/agent/:uuid` | Agent session info |
+| GET | `/api/agent/:uuid/messages` | Load messages for an agent session (`?limit=N&before=M` for cursor pagination) |
 | POST | `/api/agent/:uuid/messages` | Append message + resolve prompt if tool role |
 | DELETE | `/api/agent/:uuid/prompt/:toolCallId` | Dismiss prompt |
 | POST | `/api/ping` | Triggers pong on SSE |

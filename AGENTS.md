@@ -31,7 +31,7 @@ All skills, scripts, and tooling are delivered via the npm package.
 
 - No commits during development — all changes staged at finish-session time
 - Single atomic commit per session
-- Full test suite after every rebase
+- Full test suite after every rebase — run `bash test/e2e/run_all_tests.sh` (see §11.8 in technical-specification.md)
 - Session evaluation is read-only (generate) / write-once (export)
 - All skills, scripts, and AGENTS.md live in the npm package, not in the project
 

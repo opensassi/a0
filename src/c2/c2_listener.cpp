@@ -70,21 +70,33 @@ int C2Listener::run() {
             }
         }
 
-        // Handle b1 messages
+        // Helper lambda: clean up a disconnected peer fd, removing from m_b1PidToFd
+        // and B1Registry so stale entries don't accumulate.
+        auto xCleanupPeer = [this](int fd) {
+            int b1Pid = 0;
+            {
+                std::lock_guard<std::mutex> lock(m_b1Mutex);
+                for (auto it = m_b1PidToFd.begin(); it != m_b1PidToFd.end(); ) {
+                    if (it->second == fd) {
+                        b1Pid = it->first;
+                        it = m_b1PidToFd.erase(it);
+                    } else ++it;
+                }
+            }
+            if (b1Pid > 0) {
+                TRACE_LOG("c2: removing stale b1 pid=" << b1Pid);
+                m_registry->removeB1(b1Pid);
+            }
+            auto it = std::find(peerFds.begin(), peerFds.end(), fd);
+            if (it != peerFds.end()) peerFds.erase(it);
+        };
+
         for (size_t i = 1; i < pollFds.size(); ++i) {
             int fd = pollFds[i].fd;
             if (pollFds[i].revents & (POLLHUP | POLLERR)) {
                 TRACE_LOG("c2: b1 disconnected fd=" << fd);
                 ::close(fd);
-                {
-                    std::lock_guard<std::mutex> lock(m_b1Mutex);
-                    for (auto it = m_b1PidToFd.begin(); it != m_b1PidToFd.end(); ) {
-                        if (it->second == fd) it = m_b1PidToFd.erase(it);
-                        else ++it;
-                    }
-                }
-                auto it = std::find(peerFds.begin(), peerFds.end(), fd);
-                if (it != peerFds.end()) peerFds.erase(it);
+                xCleanupPeer(fd);
                 continue;
             }
 
@@ -96,15 +108,7 @@ int C2Listener::run() {
                     xHandleMessage(nlohmann::json::parse(ipc::serialize(msg)), fd);
                 } else {
                     ::close(fd);
-                    {
-                        std::lock_guard<std::mutex> lock(m_b1Mutex);
-                        for (auto it = m_b1PidToFd.begin(); it != m_b1PidToFd.end(); ) {
-                            if (it->second == fd) it = m_b1PidToFd.erase(it);
-                            else ++it;
-                        }
-                    }
-                    auto it = std::find(peerFds.begin(), peerFds.end(), fd);
-                    if (it != peerFds.end()) peerFds.erase(it);
+                    xCleanupPeer(fd);
                 }
                 sock.release();
             }

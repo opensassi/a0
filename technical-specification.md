@@ -859,9 +859,15 @@ project/
 │   ├── e2e/
 │   │   ├── mock_deepseek_server.py
 │   │   ├── fixtures/
+│   │   │   ├── find_related_files_response.json
+│   │   │   ├── infer_skill_response.json
+│   │   │   ├── infer_tool_response.json
+│   │   │   ├── tool_calls_response.json
+│   │   │   └── tools_for_prompt_response.json
 │   │   ├── run_e2e_tests.sh
 │   │   ├── test_playwright_e2e.sh       # 14 Playwright browser E2E tests
-│   │   └── test_c2_dashboard_e2e.sh     # 29-assertion c2 dashboard E2E test (headed browser)
+│   │   ├── test_c2_dashboard_e2e.sh     # 29-assertion c2 dashboard E2E test (headed browser)
+│   │   └── test_c2_agent_interact.sh    # 25-assertion agent interaction page E2E test
 ├── skills/                          # three-tier namespace
 │   ├── schema.json                  # Draft-07 JSON Schema for skill.json validation
 │   ├── README.md                    # Developer guide (661 lines)
@@ -929,7 +935,9 @@ project/
 
 E2E tests use the **Playwright bridge** (`scripts/playwright-bridge.js`) running on port 3100, controlled via curl or the `selectById` bridge action. Tests open a headed Chromium window for visual debugging and navigate the c2 web dashboard.
 
-**Test script**: `test/e2e/test_c2_dashboard_e2e.sh`
+**Test scripts**: 
+- `test/e2e/test_c2_dashboard_e2e.sh` — 29-assertion dashboard E2E test (navigation, terminal, screenshots)
+- `test/e2e/test_c2_agent_interact.sh` — 25-assertion agent interaction page E2E test (message viewer, agent info, input panel)
 
 ### 11.2 Running Tests
 
@@ -939,9 +947,11 @@ cmake -B build -DENABLE_TRACE=ON && cmake --build build -j$(nproc)
 
 # Run E2E test (headed browser)
 bash test/e2e/test_c2_dashboard_e2e.sh
+bash test/e2e/test_c2_agent_interact.sh
 
 # Keep daemons running after test for interactive inspection
 bash test/e2e/test_c2_dashboard_e2e.sh --no-cleanup
+bash test/e2e/test_c2_agent_interact.sh --no-cleanup
 ```
 
 ### 11.3 Log Files
@@ -1005,7 +1015,10 @@ c2/web/js/components/
   dashboard-page/
     index.js
     component.json
-  ...16 components total
+  interact-page/
+    index.js          # Agent interaction page with conversation view + message input
+    component.json
+  ...17 components total
 ```
 
 The `component.json` manifest lists every element ID, its type, action, and whether it's static or dynamically generated:
@@ -1037,8 +1050,43 @@ The test runs 29 assertions covering:
 | Navigation | 6 | Click Dashboard/Hosts/Projects/Settings links |
 | API | 2 | `/api/status`, `/api/stats` return valid JSON |
 | Terminal | 4 | Navigate, status, console errors, screenshot |
-| Logs | 2 | `terminal_open` and `sse broadcast` appear in c2 log |
+
+The agent interaction E2E test (`test_c2_agent_interact.sh`) runs 25 assertions:
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| Prerequisites | 5 | Binaries exist, ports free, playwright available |
+| Seed DB | 1 | SQLite database created with 5 messages |
+| c2 startup | 2 | c2 starts, API ready |
+| b1 registration | 2 | Mock b1 registers, c2 confirms agent |
+| Bridge | 2 | Bridge starts, ready |
+| Agent title | 1 | "Agent Monitor: ..." heading |
+| Messages | 2 | All 5 messages load, conversation status shows count |
+| Input area | 1 | Message textarea exists |
+| Buttons | 2 | "Send (next turn)" and "Send & Interrupt" found |
+| Agent details | 1 | Shows session UUID, PID, state, host, project |
+| Agent API | 1 | Returns pid\|state\|hostname\|project |
+| Screenshot | 1 | Screenshot saved |
+| Browser close | 1 | Browser closes cleanly |
 | Cleanup | 2 | Browser closes, processes cleaned |
+
+### 11.8 Running the Full Test Suite
+
+Run all three test layers before every commit to verify no regressions. Expected time: ~2 minutes (unit) + ~20 seconds (agent E2E) + ~60 seconds (c2 E2E).
+
+```bash
+# 1. Unit tests (34 suites, Google Test, C++)
+ctest --test-dir build --output-on-failure
+
+# 2. Agent E2E tests (6 tests, mock DeepSeek API, no browser)
+bash test/e2e/run_e2e_tests.sh
+
+# 3. c2 dashboard E2E tests (headed browser, Playwright)
+bash test/e2e/test_c2_dashboard_e2e.sh
+bash test/e2e/test_c2_agent_interact.sh
+```
+
+A convenience runner is available at `test/e2e/run_all_tests.sh` that executes all three layers sequentially.
 
 ---
 
