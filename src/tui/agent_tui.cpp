@@ -14,6 +14,7 @@
 #include "ftxui/component/event.hpp"
 #include "ftxui/dom/elements.hpp"
 #include <ctime>
+#include <iostream>
 #include <utility>
 
 namespace a0::tui {
@@ -40,25 +41,42 @@ AgentTui::AgentTui(::AgentCore* core,
 
 AgentTui::~AgentTui() = default;
 
-int AgentTui::run(bool testMode) {
-    auto screen = testMode
-        ? ftxui::ScreenInteractive::FixedSize(80, 24)
-        : ftxui::ScreenInteractive::Fullscreen();
-    m_screen = &screen;
+void AgentTui::setScreen(ftxui::ScreenInteractive* screen) {
+    m_screen = screen;
+}
 
-    // Set initial focus to the input panel before starting the loop.
-    // TakeFocus on the root component recursively activates the first
-    // focusable child (Input inside CatchEvent inside Container inside Modal).
-    m_mainComponent->TakeFocus();
-
-    auto loop = ftxui::Loop(&screen, m_mainComponent);
-    loop.Run();
-
+void AgentTui::clearScreen() {
     if (!m_sessionUuid.empty()) {
         m_sessionMgr->endCurrent();
     }
-
     m_screen = nullptr;
+}
+
+int AgentTui::run(bool testMode) {
+    // OwnedScreen must outlive the Loop — declared here at function scope.
+    ftxui::ScreenInteractive ownedScreen =
+        testMode
+            ? ftxui::ScreenInteractive::FixedSize(80, 24)
+            : ftxui::ScreenInteractive::Fullscreen();
+    if (!m_screen) {
+        m_screen = &ownedScreen;
+    }
+
+    // Enable bracketed paste mode so pasted text with newlines arrives
+    // wrapped in \x1b[200~ ... \x1b[201~ markers.
+    std::cout << "\x1b[?2004h";
+    std::flush(std::cout);
+
+    m_inputPanel->component()->TakeFocus();
+
+    auto loop = ftxui::Loop(m_screen, m_mainComponent);
+    loop.Run();
+
+    // Disable bracketed paste on exit.
+    std::cout << "\x1b[?2004l";
+    std::flush(std::cout);
+
+    clearScreen();
     return 0;
 }
 
@@ -101,12 +119,58 @@ void AgentTui::xBuildLayout() {
         xHandleInterrupt();
     });
 
+    m_inputPanel->setOnChange([this](const std::string& content) {
+        // Prune stale paste entries: if a marker was deleted/modified by the
+        // user, remove its content so it won't be expanded on submit.
+        if (m_pastedContents.empty()) return;
+        std::unordered_map<int, std::string> valid;
+        for (auto& [id, stored] : m_pastedContents) {
+            std::string marker = "[ PASTED #" + std::to_string(id) + " ]";
+            if (content.find(marker) != std::string::npos) {
+                valid[id] = stored;
+            }
+        }
+        m_pastedContents = std::move(valid);
+    });
+
     m_dialogMgr->setMainComponent(mainContainer);
     auto wrapped = m_dialogMgr->component();
 
-    // Wrap with mouse selection handler for copy-on-select.
-    // Does NOT consume mouse events — child components still receive them.
+    // Routes all Character events to the Input (so paste/keyboard always
+    // reaches the input box regardless of focus).
+    // Detects bracketed paste markers (\x1b[200~ / \x1b[201~) to capture
+    // multi-line paste content and collapse large pastes into placeholders.
+    // Tracks mouse drag for copy-on-select via FTXUI's GetSelection().
     m_mainComponent = ftxui::CatchEvent(wrapped, [this](ftxui::Event event) -> bool {
+        auto& input = event.input();
+
+        // Bracketed paste start marker.
+        if (input == "\x1b[200~") {
+            m_pasteActive = true;
+            m_pasteBuffer.clear();
+            return true;
+        }
+
+        // Bracketed paste end marker.
+        if (input == "\x1b[201~") {
+            m_pasteActive = false;
+            xProcessPasteBuffer();
+            return true;
+        }
+
+        // While a paste is in progress, accumulate and block children.
+        if (m_pasteActive) {
+            m_pasteBuffer += input;
+            return true;
+        }
+
+        // Normal Character events — route to Input directly.
+        if (event.is_character()) {
+            m_inputPanel->component()->OnEvent(event);
+            return true;
+        }
+
+        // Mouse events: track drag for copy-on-select.
         if (event.is_mouse()) {
             auto& mouse = event.mouse();
             if (mouse.button == ftxui::Mouse::Left) {
@@ -117,25 +181,16 @@ void AgentTui::xBuildLayout() {
                     m_mouseMoved = true;
                 } else if (mouse.motion == ftxui::Mouse::Released && m_mouseDown) {
                     m_mouseDown = false;
-                    if (m_mouseMoved) {
-                        // Read PRIMARY selection (set by terminal text selection)
-                        // and copy to clipboard via OSC 52 + xclip fallback
-                        std::string selected;
-                        FILE* pipe = ::popen("xclip -o -selection primary 2>/dev/null", "r");
-                        if (pipe) {
-                            char buf[4096];
-                            size_t n;
-                            while ((n = ::fread(buf, 1, sizeof(buf), pipe)) > 0)
-                                selected.append(buf, n);
-                            ::pclose(pipe);
-                        }
-                        if (!selected.empty())
+                    if (m_mouseMoved && m_screen) {
+                        auto selected = m_screen->GetSelection();
+                        if (!selected.empty()) {
                             copyToClipboard(selected);
+                        }
                     }
                 }
             }
         }
-        return false;  // don't consume — let children handle the event
+        return false;  // don't consume — let children handle
     });
 }
 
@@ -147,12 +202,55 @@ ftxui::Component AgentTui::xBuildMainContainer() {
     });
 }
 
+void AgentTui::submitInput(const std::string& input) {
+    xHandleSubmit(input);
+}
+
+std::string AgentTui::xExpandPastePlaceholders(const std::string& input) {
+    if (m_pastedContents.empty() || input.find("[ PASTED #") == std::string::npos) {
+        return input;
+    }
+    std::string result = input;
+    for (auto& [id, content] : m_pastedContents) {
+        std::string marker = "[ PASTED #" + std::to_string(id) + " ]";
+        size_t pos = 0;
+        while ((pos = result.find(marker, pos)) != std::string::npos) {
+            result.replace(pos, marker.size(), content);
+            pos += content.size();
+        }
+    }
+    return result;
+}
+
+void AgentTui::xProcessPasteBuffer() {
+    if (m_pasteBuffer.empty()) return;
+
+    // Trim trailing newlines from the pasted text
+    while (!m_pasteBuffer.empty() &&
+           (m_pasteBuffer.back() == '\n' || m_pasteBuffer.back() == '\r')) {
+        m_pasteBuffer.pop_back();
+    }
+
+    if (m_pasteBuffer.size() <= 20) {
+        // Small paste: insert raw text into the input
+        m_inputPanel->insertText(m_pasteBuffer);
+    } else {
+        // Large paste: create a numbered placeholder
+        int id = ++m_pasteCounter;
+        m_pastedContents[id] = m_pasteBuffer;
+        m_inputPanel->insertText("[ PASTED #" + std::to_string(id) + " ]");
+    }
+    m_pasteBuffer.clear();
+}
+
 int AgentTui::xHandleSubmit(const std::string& input) {
     if (input.empty()) return 0;
-    if (input[0] == '/') {
-        return xHandleCommand(input);
+    std::string expanded = xExpandPastePlaceholders(input);
+    if (expanded.empty()) return 0;
+    if (expanded[0] == '/') {
+        return xHandleCommand(expanded);
     }
-    return xProcessGoal(input);
+    return xProcessGoal(expanded);
 }
 
 int AgentTui::xHandleInterrupt() {

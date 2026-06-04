@@ -1,0 +1,5 @@
+#!/bin/bash
+# Mock wl-copy for E2E testing — logs calls
+LOG="/tmp/a0-e2e-clipboard.log"
+echo "[$(date +%s%N)] wl-copy $@" >> "$LOG"
+cat >> /tmp/a0-e2e-clipboard-contents.txt

@@ -5,6 +5,7 @@
 #include "mock/mock_persistence_store.h"
 #include "mock/mock_agent_core.h"
 #include <gtest/gtest.h>
+#include <memory>
 #include <thread>
 #include <chrono>
 
@@ -101,40 +102,81 @@ TEST_F(TuiIntegrationTest, ShutdownWhileIdle) {
 }
 
 // ============================================================================
-// AgentTui — Interactive tests (use run() on background thread)
+// AgentTui — Interactive tests (drive via TestScreen event injection)
 // ============================================================================
 
-static void testInteractive(std::function<void(AgentTui&)> interactFn) {
-    MockPersistenceStore persistence;
-    MockAgentCore core;
-    AgentTui tui(&core, &persistence, nullptr, nullptr, true);
+static void testInteractive(
+    std::function<void(AgentTui&, TestScreen&)> interactFn,
+    MockAgentCore::Scenario scenario = {})
+{
+    auto persistence = std::make_unique<MockPersistenceStore>();
+    auto core = std::make_unique<MockAgentCore>();
+    if (!scenario.tokens.empty() || !scenario.finalOutput.empty()) {
+        core->setScenario(scenario);
+    }
+    AgentTui tui(core.get(), persistence.get(), nullptr, nullptr, true);
 
-    // Run TUI in background thread (test mode = FixedSize)
-    std::thread tuiThread([&] {
-        tui.run(true);
+    TestScreen testScreen(80, 24);
+    tui.setScreen(testScreen.screenPtr());
+    // Register focus task after loop is running, on the loop thread.
+    testScreen.postTask([component = tui.component()]() {
+        component->TakeFocus();
     });
+    testScreen.start(tui.component());
 
-    // Give it time to initialize
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    interactFn(tui);
+    interactFn(tui, testScreen);
 
-    tui.shutdown();
-    if (tuiThread.joinable()) tuiThread.join();
+    testScreen.stop();
+    tui.clearScreen();
 }
 
-TEST_F(TuiIntegrationTest, DISABLED_SubmitGoalAndSeeResponse) {
-    testInteractive([](AgentTui& /*tui*/) {
-        // Would interact via screen events
+TEST_F(TuiIntegrationTest, SubmitGoalAndSeeResponse) {
+    testInteractive([](AgentTui& tui, TestScreen& screen) {
+        tui.submitInput("hello");
+
+        bool found = screen.waitFor([](const std::string& text) {
+            return text.find("Processing: hello") != std::string::npos;
+        }, 5000);
+        EXPECT_TRUE(found) << "Expected 'Processing: hello'. Got: "
+                           << screen.captureText();
     });
 }
 
-TEST_F(TuiIntegrationTest, DISABLED_SessionsCommandShowsDialog) {
-    testInteractive([](AgentTui& /*tui*/) {});
+TEST_F(TuiIntegrationTest, SessionsCommandShowsDialog) {
+    testInteractive([](AgentTui& tui, TestScreen& screen) {
+        tui.submitInput("/sessions");
+
+        bool found = screen.waitFor([](const std::string& text) {
+            return text.find("Sessions") != std::string::npos;
+        }, 3000);
+        EXPECT_TRUE(found) << "Expected session dialog. Got: "
+                           << screen.captureText();
+    });
 }
 
-TEST_F(TuiIntegrationTest, DISABLED_MultipleMessagesStack) {
-    testInteractive([](AgentTui& /*tui*/) {});
+TEST_F(TuiIntegrationTest, MultipleMessagesStack) {
+    testInteractive([](AgentTui& tui, TestScreen& screen) {
+        tui.submitInput("first");
+        bool found1 = screen.waitFor([](const std::string& text) {
+            return text.find("Processing: first") != std::string::npos;
+        }, 5000);
+        EXPECT_TRUE(found1) << "First message not seen. Got: "
+                            << screen.captureText();
+
+        tui.submitInput("second");
+        bool found2 = screen.waitFor([](const std::string& text) {
+            return text.find("Processing: second") != std::string::npos;
+        }, 5000);
+        EXPECT_TRUE(found2) << "Second message not seen. Got: "
+                            << screen.captureText();
+
+        // Both messages should be visible
+        auto text = screen.captureText();
+        EXPECT_TRUE(text.find("first") != std::string::npos);
+        EXPECT_TRUE(text.find("second") != std::string::npos);
+    });
 }
 
 // ============================================================================

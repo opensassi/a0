@@ -1,0 +1,17 @@
+{
+    "name": "simple_tool_call",
+    "description": "User asks to list files, agent calls bash tool, returns result",
+    "turns": [
+        {
+            "tool_calls": [
+                {
+                    "name": "bash",
+                    "arguments": {"command": "ls -la /tmp 2>/dev/null || echo 'no files'"}
+                }
+            ]
+        },
+        {
+            "content": "I found the following files in /tmp:\n- file1.txt\n- file2.log\n- data.csv"
+        }
+    ]
+}

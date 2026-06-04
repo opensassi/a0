@@ -1,0 +1,10 @@
+#!/bin/bash
+# Mock xclip for E2E testing — logs calls to /tmp/a0-e2e-clipboard.log
+LOG="/tmp/a0-e2e-clipboard.log"
+echo "[$(date +%s%N)] xclip $@" >> "$LOG"
+if [ "$1" = "-o" ] && [ "$2" = "-selection" ] && [ "$3" = "primary" ]; then
+    cat /tmp/a0-e2e-clipboard-selection.txt 2>/dev/null || true
+fi
+if [ "$1" = "-selection" ] && [ "$2" = "clipboard" ]; then
+    cat >> /tmp/a0-e2e-clipboard-contents.txt
+fi

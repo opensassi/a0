@@ -17,6 +17,8 @@ public:
 
     void setOnSubmit(std::function<void(const std::string&)> cb);
     void setOnInterrupt(std::function<void()> cb);
+    void setOnChange(std::function<void(const std::string&)> cb);
+    void insertText(const std::string& text);
     void setEnabled(bool enabled);
     void setPlaceholder(const std::string& text);
     void clear();

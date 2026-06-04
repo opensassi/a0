@@ -12,7 +12,7 @@ test_agent_logs/
 test_e2e_components/
 test_e2e_logs/
 test_e2e_logs_check/
-test/e2e/__pycache__/
+**/__pycache__/
 *.gcda
 *.gcno
 *.gcov

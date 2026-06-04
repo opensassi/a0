@@ -12,6 +12,7 @@ public:
     ftxui::Component input;
     std::function<void(const std::string&)> onSubmit;
     std::function<void()> onInterrupt;
+    std::function<void(const std::string&)> onChange;
     std::vector<std::string> history;
     size_t historyPos = 0;
     bool enabled = true;
@@ -23,14 +24,22 @@ InputPanel::InputPanel()
     : m_impl(std::make_unique<Impl>()) {
     m_impl->contentBuf.clear();
 
-    auto rawInput = ftxui::Input(&m_impl->contentBuf, "");
+    // Enable multiline so pasted text with newlines renders correctly.
+    // Only bare Enter (Event::Return) submits — \r/\n character events
+    // from paste are blocked by the outer CatchEvent and never reach here.
+    ftxui::InputOption option;
+    option.multiline = true;
+    option.on_change = [this] {
+        if (m_impl->onChange) {
+            m_impl->onChange(m_impl->contentBuf);
+        }
+    };
 
-    // CatchEvent to handle Enter submit after Input processes the key
+    auto rawInput = ftxui::Input(&m_impl->contentBuf, "", option);
+
+    // CatchEvent to handle Enter submit after Input processes the key.
     auto eventCb = [this](ftxui::Event event) -> bool {
-        // Terminals send \r (CR) on Enter; Event::Return is \n (LF).
-        if (event == ftxui::Event::Return
-            || (event.is_character() && !event.character().empty()
-                && (event.character()[0] == '\r' || event.character()[0] == '\n'))) {
+        if (event == ftxui::Event::Return) {
             auto text = m_impl->contentBuf;
             if (!text.empty()) {
                 addHistory(text);
@@ -50,9 +59,6 @@ InputPanel::InputPanel()
         return false;
     };
 
-    // Try with an explicit function pointer approach
-    // Use the ComponentDecorator overload: CatchEvent(lambda) returns a ComponentDecorator
-    // Then apply it: rawInput | CatchEvent(lambda)
     m_impl->input = rawInput | ftxui::CatchEvent(eventCb);
 }
 
@@ -68,6 +74,17 @@ void InputPanel::setOnSubmit(std::function<void(const std::string&)> cb) {
 
 void InputPanel::setOnInterrupt(std::function<void()> cb) {
     m_impl->onInterrupt = std::move(cb);
+}
+
+void InputPanel::setOnChange(std::function<void(const std::string&)> cb) {
+    m_impl->onChange = std::move(cb);
+}
+
+void InputPanel::insertText(const std::string& text) {
+    m_impl->contentBuf += text;
+    if (m_impl->onChange) {
+        m_impl->onChange(m_impl->contentBuf);
+    }
 }
 
 void InputPanel::setEnabled(bool enabled) {

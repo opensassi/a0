@@ -1,0 +1,25 @@
+{
+    "name": "multi_turn_workflow",
+    "description": "Agent calls bash twice in sequence: find files, then grep a specific one",
+    "turns": [
+        {
+            "tool_calls": [
+                {
+                    "name": "bash",
+                    "arguments": {"command": "find /var/log -name '*.log' -type f 2>/dev/null | head -5"}
+                }
+            ]
+        },
+        {
+            "tool_calls": [
+                {
+                    "name": "bash",
+                    "arguments": {"command": "grep -l 'error' /var/log/syslog 2>/dev/null || echo 'no matches'"}
+                }
+            ]
+        },
+        {
+            "content": "I found 5 log files. After searching for errors in /var/log/syslog, here are the results:\n- syslog contains error messages\n- auth.log does not"
+        }
+    ]
+}

@@ -4,6 +4,7 @@
 #include <memory>
 #include <functional>
 #include <cstdint>
+#include <unordered_map>
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/screen_interactive.hpp"
 #include <ctime>
@@ -36,8 +37,14 @@ public:
 
     ftxui::Component component() const { return m_mainComponent; }
 
+    void setScreen(ftxui::ScreenInteractive* screen);
+    void clearScreen();
+    ftxui::ScreenInteractive* screenPtr() const { return m_screen; }
+
     int resumeSession(const std::string& uuid);
     std::string currentSessionId() const;
+
+    void submitInput(const std::string& input);
 
 private:
     ::AgentCore* m_core;
@@ -62,9 +69,18 @@ private:
     ftxui::ScreenInteractive* m_screen = nullptr;
     ftxui::Component m_mainComponent;
 
-    // Mouse selection tracking for copy-on-select
+    // Mouse drag tracking for copy-on-select (mouse-up in CatchEvent)
     bool m_mouseDown = false;
     bool m_mouseMoved = false;
+
+    // Bracketed paste handling
+    bool m_pasteActive = false;
+    std::string m_pasteBuffer;
+    int m_pasteCounter = 0;
+    std::unordered_map<int, std::string> m_pastedContents;
+
+    std::string xExpandPastePlaceholders(const std::string& input);
+    void xProcessPasteBuffer();
 
     void xBuildLayout();
     ftxui::Component xBuildMainContainer();

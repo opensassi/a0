@@ -57,6 +57,10 @@ TestScreen::~TestScreen() {
     stop();
 }
 
+void TestScreen::postTask(ftxui::Task task) {
+    m_impl->screen.Post(std::move(task));
+}
+
 void TestScreen::start(ftxui::Component component) {
     if (m_impl->running) return;
 
@@ -131,6 +135,10 @@ std::string TestScreen::captureText() {
         }
     }
     return result;
+}
+
+ftxui::ScreenInteractive* TestScreen::screenPtr() {
+    return &m_impl->screen;
 }
 
 bool TestScreen::waitFor(std::function<bool(const std::string&)> predicate,

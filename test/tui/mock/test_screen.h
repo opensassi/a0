@@ -17,6 +17,7 @@ public:
 
     void start(ftxui::Component component);
     void stop();
+    void postTask(ftxui::Task task);
 
     void sendKey(const std::string& key);
     void sendChar(char c);
@@ -27,6 +28,8 @@ public:
 
     bool waitFor(std::function<bool(const std::string&)> predicate,
                  int timeoutMs = 3000);
+
+    ftxui::ScreenInteractive* screenPtr();
 
 private:
     class Impl;

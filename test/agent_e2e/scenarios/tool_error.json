@@ -1,0 +1,17 @@
+{
+    "name": "tool_error",
+    "description": "Tool fails (returns ERROR), agent reports the failure",
+    "turns": [
+        {
+            "tool_calls": [
+                {
+                    "name": "bash",
+                    "arguments": {"command": "cat /nonexistent/file.txt 2>&1 || echo 'ERROR: file not found'"}
+                }
+            ]
+        },
+        {
+            "content": "The tool reported an error: the file /nonexistent/file.txt does not exist."
+        }
+    ]
+}

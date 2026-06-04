@@ -3,7 +3,6 @@
 #include "ftxui/component/component_base.hpp"
 #include "ftxui/dom/elements.hpp"
 #include <sstream>
-#include <thread>
 #include <chrono>
 
 namespace a0::tui {
@@ -15,8 +14,15 @@ public:
     bool b1Connected = false;
     size_t messageCount = 0;
     std::string flashMessage;
-    int flashTimeout = 0;
+    int flashTimeoutSecs = 3;
     bool showingFlash = false;
+    std::chrono::steady_clock::time_point flashStart;
+
+    bool isFlashExpired() const {
+        if (!showingFlash) return true;
+        return std::chrono::steady_clock::now() - flashStart >
+               std::chrono::seconds(flashTimeoutSecs);
+    }
 
     ftxui::Component renderer;
 
@@ -45,6 +51,19 @@ StatusBar::StatusBar()
     : m_impl(std::make_unique<Impl>()) {
     m_impl->renderer = ftxui::Renderer([this] {
         auto& d = *m_impl;
+
+        if (d.isFlashExpired()) {
+            d.showingFlash = false;
+        }
+
+        if (d.showingFlash && !d.flashMessage.empty()) {
+            ftxui::Elements flashElems;
+            flashElems.push_back(ftxui::text(d.flashMessage)
+                | ftxui::color(ftxui::Color::Green)
+                | ftxui::bold);
+            return ftxui::hbox(std::move(flashElems));
+        }
+
         ftxui::Elements elems;
 
         if (!d.sessionId.empty()) {
@@ -74,14 +93,6 @@ StatusBar::StatusBar()
         oss << d.messageCount << " msgs";
         elems.push_back(ftxui::text(oss.str()) | ftxui::color(ftxui::Color::GrayDark));
 
-        if (d.showingFlash && !d.flashMessage.empty()) {
-            ftxui::Elements flashElems;
-            flashElems.push_back(ftxui::text(d.flashMessage)
-                | ftxui::color(ftxui::Color::Green)
-                | ftxui::bold);
-            return ftxui::hbox(std::move(flashElems));
-        }
-
         return ftxui::hbox(std::move(elems));
     });
 }
@@ -110,12 +121,9 @@ void StatusBar::setMessageCount(size_t count) {
 
 void StatusBar::showStatus(const std::string& msg, int timeoutSecs) {
     m_impl->flashMessage = msg;
+    m_impl->flashTimeoutSecs = timeoutSecs;
+    m_impl->flashStart = std::chrono::steady_clock::now();
     m_impl->showingFlash = true;
-    m_impl->flashTimeout = timeoutSecs;
-    std::thread([this, timeoutSecs] {
-        std::this_thread::sleep_for(std::chrono::seconds(timeoutSecs));
-        m_impl->showingFlash = false;
-    }).detach();
 }
 
 } // namespace a0::tui
