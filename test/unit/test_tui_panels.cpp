@@ -100,6 +100,119 @@ TEST(TuiMessagePanelTest, ScrollToBottom) {
     SUCCEED();
 }
 
+TEST(TuiMessagePanelTest, ScrollDownMovesScrollTop) {
+    MessagePanel panel;
+    for (int i = 0; i < 12; ++i) {
+        MessageEntry e;
+        e.role = MessageRole::User;
+        e.content = "msg " + std::to_string(i);
+        panel.append(e);
+    }
+    EXPECT_TRUE(panel.isAtBottom());
+    int prev = panel.scrollTop();
+    panel.scrollDown(3);
+    EXPECT_GE(panel.scrollTop(), prev);
+}
+
+TEST(TuiMessagePanelTest, ScrollUpMovesScrollTop) {
+    MessagePanel panel;
+    for (int i = 0; i < 12; ++i) {
+        MessageEntry e;
+        e.role = MessageRole::User;
+        e.content = "msg " + std::to_string(i);
+        panel.append(e);
+    }
+    panel.scrollUp(3);
+    EXPECT_LT(panel.scrollTop(), 12 - 8);
+    EXPECT_FALSE(panel.isAtBottom());
+}
+
+TEST(TuiMessagePanelTest, ScrollUpClampsAtZero) {
+    MessagePanel panel;
+    MessageEntry e;
+    e.role = MessageRole::User;
+    e.content = "test";
+    for (int i = 0; i < 5; ++i) panel.append(e);
+    panel.scrollUp(99);
+    EXPECT_EQ(panel.scrollTop(), 0);
+}
+
+TEST(TuiMessagePanelTest, ScrollDownFromTopReturnsToBottom) {
+    MessagePanel panel;
+    for (int i = 0; i < 12; ++i) {
+        MessageEntry e;
+        e.role = MessageRole::User;
+        e.content = "msg";
+        panel.append(e);
+    }
+    panel.scrollUp(3);
+    EXPECT_FALSE(panel.isAtBottom());
+    panel.scrollDown(99);
+    EXPECT_TRUE(panel.isAtBottom());
+}
+
+TEST(TuiMessagePanelTest, ScrollToTopSetsScrollTopZero) {
+    MessagePanel panel;
+    for (int i = 0; i < 12; ++i) {
+        MessageEntry e;
+        e.role = MessageRole::User;
+        e.content = "msg";
+        panel.append(e);
+    }
+    panel.scrollToTop();
+    EXPECT_EQ(panel.scrollTop(), 0);
+    EXPECT_FALSE(panel.isAtBottom());
+}
+
+TEST(TuiMessagePanelTest, ScrollToBottomResetsAutoScroll) {
+    MessagePanel panel;
+    for (int i = 0; i < 12; ++i) {
+        MessageEntry e;
+        e.role = MessageRole::User;
+        e.content = "msg";
+        panel.append(e);
+    }
+    panel.scrollUp(3);
+    EXPECT_FALSE(panel.isAtBottom());
+    panel.scrollToBottom();
+    EXPECT_TRUE(panel.isAtBottom());
+}
+
+TEST(TuiMessagePanelTest, StaysScrolledUpAfterNewAppend) {
+    MessagePanel panel;
+    for (int i = 0; i < 15; ++i) {
+        MessageEntry e;
+        e.role = MessageRole::User;
+        e.content = "msg";
+        panel.append(e);
+    }
+    EXPECT_TRUE(panel.isAtBottom());
+    panel.scrollUp(2);
+    EXPECT_FALSE(panel.isAtBottom());
+    MessageEntry e;
+    e.role = MessageRole::User;
+    e.content = "new";
+    panel.append(e);
+    // When user has scrolled up, new content does not jump the view
+    EXPECT_FALSE(panel.isAtBottom());
+    panel.scrollToBottom();
+    EXPECT_TRUE(panel.isAtBottom());
+}
+
+TEST(TuiMessagePanelTest, ClearResetsScrollState) {
+    MessagePanel panel;
+    for (int i = 0; i < 10; ++i) {
+        MessageEntry e;
+        e.role = MessageRole::User;
+        e.content = "msg";
+        panel.append(e);
+    }
+    panel.scrollUp(2);
+    panel.clear();
+    EXPECT_EQ(panel.scrollTop(), 0);
+    EXPECT_TRUE(panel.isAtBottom());
+}
+
 TEST(TuiMessagePanelTest, LoadHistory) {
     MessagePanel panel;
     std::vector<a0::persistence::Message> msgs;
@@ -129,6 +242,54 @@ TEST(TuiInputPanelTest, SubmitCallbackFires) {
     panel.setOnSubmit([&](const std::string& text) {
         captured = text;
     });
+}
+
+TEST(TuiInputPanelTest, IsEnabledReturnsTrueInitially) {
+    InputPanel panel;
+    EXPECT_TRUE(panel.isEnabled());
+}
+
+TEST(TuiInputPanelTest, SetEnabledFalse) {
+    InputPanel panel;
+    panel.setEnabled(false);
+    EXPECT_FALSE(panel.isEnabled());
+}
+
+TEST(TuiInputPanelTest, SetEnabledTrueRestores) {
+    InputPanel panel;
+    panel.setEnabled(false);
+    EXPECT_FALSE(panel.isEnabled());
+    panel.setEnabled(true);
+    EXPECT_TRUE(panel.isEnabled());
+}
+
+TEST(TuiInputPanelTest, ComponentAfterDisableIsDifferent) {
+    InputPanel panel;
+    auto compEnabled = panel.component();
+    panel.setEnabled(false);
+    auto compDisabled = panel.component();
+    EXPECT_NE(compEnabled.get(), compDisabled.get());
+}
+
+TEST(TuiInputPanelTest, ComponentAfterReenableIsInput) {
+    InputPanel panel;
+    auto compEnabled = panel.component();
+    panel.setEnabled(false);
+    panel.setEnabled(true);
+    EXPECT_EQ(panel.component().get(), compEnabled.get());
+}
+
+TEST(TuiInputPanelTest, FocusNoOpWhenDisabled) {
+    InputPanel panel;
+    panel.setEnabled(false);
+    panel.focus();  // should not crash
+    SUCCEED();
+}
+
+TEST(TuiInputPanelTest, FocusWorksWhenEnabled) {
+    InputPanel panel;
+    panel.focus();  // should not crash
+    SUCCEED();
 }
 
 TEST(TuiInputPanelTest, AddHistory) {

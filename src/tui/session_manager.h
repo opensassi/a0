@@ -19,7 +19,7 @@ public:
     explicit SessionManager(::a0::persistence::PersistenceStore* persistence);
     virtual ~SessionManager();
 
-    int64_t create(const std::string& uuid);
+    int64_t create(const std::string& uuid, int64_t agentId = 0);
     std::vector<SessionInfo> list(int limit = 20) const;
     int resume(const std::string& uuid, int64_t& outDbId);
 

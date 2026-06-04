@@ -16,7 +16,7 @@ protected:
 };
 
 TEST_F(SessionManagerTest, CreateNewSession) {
-    int64_t dbId = mgr.create("test-uuid-1");
+    int64_t dbId = mgr.create("test-uuid-1", 1);
     EXPECT_GT(dbId, 0);
     EXPECT_EQ(mgr.currentUuid(), "test-uuid-1");
     EXPECT_EQ(mgr.currentDbId(), dbId);
@@ -24,12 +24,12 @@ TEST_F(SessionManagerTest, CreateNewSession) {
 
 TEST_F(SessionManagerTest, CreateReturnsNegativeOnNullStore) {
     SessionManager nullMgr(nullptr);
-    int64_t dbId = nullMgr.create("test-uuid");
+    int64_t dbId = nullMgr.create("test-uuid", 1);
     EXPECT_EQ(dbId, -1);
 }
 
 TEST_F(SessionManagerTest, ResumeExistingSession) {
-    int64_t createdDbId = mgr.create("test-uuid-resume");
+    int64_t createdDbId = mgr.create("test-uuid-resume", 1);
     ASSERT_GT(createdDbId, 0);
 
     int64_t outDbId = 0;
@@ -52,12 +52,12 @@ TEST_F(SessionManagerTest, CurrentUuidBeforeCreate) {
 }
 
 TEST_F(SessionManagerTest, CurrentUuidAfterCreate) {
-    mgr.create("my-uuid");
+    mgr.create("my-uuid", 1);
     EXPECT_EQ(mgr.currentUuid(), "my-uuid");
 }
 
 TEST_F(SessionManagerTest, EndCurrentSession) {
-    mgr.create("end-test");
+    mgr.create("end-test", 1);
     ASSERT_EQ(mgr.currentUuid(), "end-test");
     mgr.endCurrent();
     EXPECT_EQ(mgr.currentUuid(), "");

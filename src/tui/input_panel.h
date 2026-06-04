@@ -19,6 +19,7 @@ public:
     void setOnInterrupt(std::function<void()> cb);
     void setOnChange(std::function<void(const std::string&)> cb);
     void insertText(const std::string& text);
+    bool isEnabled() const { return m_enabled; }
     void setEnabled(bool enabled);
     void setPlaceholder(const std::string& text);
     void clear();
@@ -31,6 +32,7 @@ public:
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
+    bool m_enabled = true;
 
     static constexpr size_t MAX_HISTORY = 50;
 };

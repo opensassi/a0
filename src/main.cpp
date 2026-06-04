@@ -156,6 +156,46 @@ static std::string xMakeLogPath(const std::string& sessionId, pid_t pid,
          + std::to_string(pid) + suffix + ".log";
 }
 
+/// Redirect a0's own stderr to a log file. Uses O_EXCL so concurrent/serial
+/// runs with the same sessionId+pid never collide — appends .1, .2, ... .99.
+static bool xRedirectStderr(const std::string& sessionId, pid_t pid) {
+    if (!g_a0LogFile.empty()) {
+        int fd = ::open(g_a0LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd < 0) return false;
+        ::dup2(fd, STDERR_FILENO); ::close(fd);
+        return true;
+    }
+    if (g_a0LogDir.empty() || sessionId.empty()) return false;
+
+    std::string base = xMakeLogPath(sessionId, pid, "");
+    int fd = ::open(base.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    if (fd >= 0) {
+        ::dup2(fd, STDERR_FILENO); ::close(fd);
+        return true;
+    }
+
+    if (errno == EEXIST) {
+        for (int n = 1; n <= 99; ++n) {
+            std::string p = base + "." + std::to_string(n);
+            fd = ::open(p.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+            if (fd >= 0) {
+                ::dup2(fd, STDERR_FILENO); ::close(fd);
+                return true;
+            }
+            if (errno != EEXIST) break;
+        }
+    }
+    return false;
+}
+
+/// Export log-relevant env vars so supervisor children derive correct paths.
+static void xExportLogEnv(const std::string& sessionId) {
+    if (!g_a0LogDir.empty())
+        ::setenv("A0_LOG_DIR", g_a0LogDir.c_str(), 1);
+    if (!sessionId.empty())
+        ::setenv("A0_SESSION_ID", sessionId.c_str(), 1);
+}
+
 /// Redirect child stdout+stderr. Called after fork(), before exec().
 /// If path is empty, redirects to /dev/null.
 static void xChildRedirectStdio(const std::string& path) {
@@ -493,8 +533,28 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
                      idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
     stack.core->setSkillArgs(skillArgs);
 
+    // Establish session ID early (before init) so log redirect captures
+    // TRACE and cloning output that happens during init().
     if (!resumeSessionId.empty())
         stack.core->resumeSession(resumeSessionId);
+    std::string sid = stack.core->currentSessionId();
+    if (sid.empty()) {
+        sid = generateHexSessionId();
+        stack.core->setSessionId(sid);
+    }
+
+    // Redirect stderr now — all subsequent output (TRACE logs, clone messages)
+    // goes to the log file. Uses O_EXCL + .N suffix to handle PID reuse.
+    // Only fails when --log-file/--log-dir was requested but the file can't be opened.
+    if (!g_a0LogFile.empty() || !g_a0LogDir.empty()) {
+        if (!xRedirectStderr(sid, getpid())) {
+            std::cerr << "FATAL: "
+                      << (g_a0LogFile.empty() ? "--log-dir" : "--log-file")
+                      << "=" << (g_a0LogFile.empty() ? g_a0LogDir : g_a0LogFile)
+                      << " unusable" << std::endl;
+            return 1;
+        }
+    }
 
     if (!stack.core->init(skillsDir, a0Dir)) {
         std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
@@ -522,23 +582,6 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
             sessionCtx->restore(&stack.skillMgr);
         }
     }
-
-    // Resolve session ID for log naming
-    std::string sid = resumeSessionId.empty()
-        ? stack.core->currentSessionId()
-        : resumeSessionId;
-    if (!g_a0LogFile.empty()) {
-        int fd = ::open(g_a0LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd >= 0) { ::dup2(fd, STDERR_FILENO); ::close(fd); }
-    } else if (!g_a0LogDir.empty() && !sid.empty()) {
-        std::string logPath = xMakeLogPath(sid, getpid(), "");
-        int fd = ::open(logPath.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd >= 0) { ::dup2(fd, STDERR_FILENO); ::close(fd); }
-    }
-    if (!g_a0LogDir.empty())
-        ::setenv("A0_LOG_DIR", g_a0LogDir.c_str(), 1);
-    if (!sid.empty())
-        ::setenv("A0_SESSION_ID", sid.c_str(), 1);
 
     json params;
     try { params = json::parse(runParamsStr); } catch (...) { params = json::object(); }
@@ -581,8 +624,28 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
                      idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
     stack.core->setSkillArgs(skillArgs);
 
+    // Establish session ID early (before init) so log redirect captures
+    // TRACE and cloning output that happens during init().
     if (!resumeSessionId.empty())
         stack.core->resumeSession(resumeSessionId);
+    std::string sid = stack.core->currentSessionId();
+    if (sid.empty()) {
+        sid = generateHexSessionId();
+        stack.core->setSessionId(sid);
+    }
+
+    // Redirect stderr now — all subsequent output (TRACE logs, clone messages)
+    // goes to the log file. Uses O_EXCL + .N suffix to handle PID reuse.
+    if (!g_a0LogFile.empty() || !g_a0LogDir.empty()) {
+        if (!xRedirectStderr(sid, getpid())) {
+            std::cerr << "FATAL: "
+                      << (g_a0LogFile.empty() ? "--log-dir" : "--log-file")
+                      << "=" << (g_a0LogFile.empty() ? g_a0LogDir : g_a0LogFile)
+                      << " unusable" << std::endl;
+            return 1;
+        }
+        xExportLogEnv(sid);
+    }
 
     if (!stack.core->init(skillsDir, a0Dir)) {
         std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
@@ -626,27 +689,6 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
             }
         }
     }
-
-    // Resolve session ID for log naming
-    std::string sid = resumeSessionId.empty()
-        ? stack.core->currentSessionId()
-        : resumeSessionId;
-
-    // Redirect a0's own stderr now that we have the session ID
-    if (!g_a0LogFile.empty()) {
-        int fd = ::open(g_a0LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd >= 0) { ::dup2(fd, STDERR_FILENO); ::close(fd); }
-    } else if (!g_a0LogDir.empty() && !sid.empty()) {
-        std::string logPath = xMakeLogPath(sid, getpid(), "");
-        int fd = ::open(logPath.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd >= 0) { ::dup2(fd, STDERR_FILENO); ::close(fd); }
-    }
-
-    // Export log dir so supervisor can derive child log paths
-    if (!g_a0LogDir.empty())
-        ::setenv("A0_LOG_DIR", g_a0LogDir.c_str(), 1);
-    if (!sid.empty())
-        ::setenv("A0_SESSION_ID", sid.c_str(), 1);
 
     bool needsB1 = !noB1;
     int b1Fd = -1;
@@ -1040,6 +1082,9 @@ int main(int argc, char* argv[]) {
     g_a0LogDir = logDir;
     if (!g_a0LogDir.empty()) {
         g_a0LogDir = xAbsPath(g_a0LogDir);
+        ::mkdir(g_a0LogDir.c_str(), 0755);
+    } else if (g_a0LogFile.empty()) {
+        g_a0LogDir = a0Dir + "/logs";
         ::mkdir(g_a0LogDir.c_str(), 0755);
     }
 

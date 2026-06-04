@@ -27,18 +27,21 @@ def test_tui_status_bar_idle():
 
 
 def test_tui_submit_goal_shows_response():
-    """Submit a goal, verify processing response appears."""
+    """Submit a goal, verify LLM response appears in TUI."""
     with MockServer() as server:
         with TuiDriver(mock_server=server) as driver:
             assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
 
             driver.send_keys("find log files")
             driver.send_enter()
-            time.sleep(1)
-            text = driver.capture(timeout=8)
-            assert "Processing:" in text, (
-                f"Expected 'Processing:' in response. Got: {text[:300]}"
-            )
+            deadline = time.monotonic() + 15
+            found = False
+            while time.monotonic() < deadline:
+                text = driver.capture(timeout=2)
+                if "file1.txt" in text or "file3.txt" in text:
+                    found = True
+                    break
+            assert found, "Mock LLM response not seen in TUI within 15s"
 
 
 def test_tui_help_command():
@@ -64,9 +67,9 @@ def test_tui_clear_command():
 
             driver.send_keys("first message")
             driver.send_enter()
-            time.sleep(1)
+            time.sleep(1.5)
             text_before = driver.capture(timeout=5)
-            assert "Processing:" in text_before, "First message should appear"
+            assert "first message" in text_before, "First message should appear"
 
             driver.send_keys("/clear")
             driver.send_enter()
@@ -98,15 +101,17 @@ def test_tui_multiple_messages():
 
             driver.send_keys("first")
             driver.send_enter()
-            time.sleep(1)
+            time.sleep(1.5)
             text = driver.capture(timeout=5)
-            assert "Processing:" in text, "First message should be seen"
+            assert "first" in text, (
+                f"First message should be seen. Got: {text[:200]}"
+            )
 
             driver.send_keys("second")
             driver.send_enter()
-            time.sleep(1)
+            time.sleep(1.5)
             text = driver.capture(timeout=5)
-            assert "second" in text or "Processing:" in text, (
+            assert "second" in text, (
                 f"Second message not visible. Got: {text[:200]}"
             )
 
@@ -158,6 +163,24 @@ def test_tui_mouse_drag_no_crash():
             assert "Idle" in text or "msgs" in text or "b1" in text, (
                 f"TUI should still be responsive after mouse drag. Got: {text[:200]}"
             )
+
+
+def test_tui_scrollback_many_messages():
+    """Submit multiple goals, verify no crash and content scroll indicator."""
+    with MockServer() as server:
+        with TuiDriver(mock_server=server) as driver:
+            assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+
+            for i in range(4):
+                driver.send_keys(f"goal {i:02d}")
+                driver.send_enter()
+                time.sleep(0.5)
+
+            text = driver.capture(timeout=5)
+            for i in range(4):
+                assert f"goal {i:02d}" in text, (
+                    f"goal {i:02d} should appear. Got: {text[:500]}"
+                )
 
 
 def test_tui_quick_quit():

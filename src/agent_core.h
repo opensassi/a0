@@ -23,6 +23,7 @@ public:
     bool init(const std::string& skillsDir, const std::string& a0Dir);
     void setExternalRepo(const std::string& url) { m_externalRepoUrl = url; }
     void setSkillArgs(const std::unordered_map<std::string, std::string>& args) { m_skillArgs = args; }
+    void setSessionId(const std::string& sessionId) { m_sessionId = sessionId; }
     json processGoal(const std::string& goal) override;
     json processGoal(const std::string& goal, const json& params);
     json runSkill(const std::string& skillName, const json& params);

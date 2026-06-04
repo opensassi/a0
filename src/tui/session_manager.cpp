@@ -9,9 +9,9 @@ SessionManager::SessionManager(::a0::persistence::PersistenceStore* persistence)
 
 SessionManager::~SessionManager() = default;
 
-int64_t SessionManager::create(const std::string& uuid) {
+int64_t SessionManager::create(const std::string& uuid, int64_t agentId) {
     if (!m_persistence) return -1;
-    int64_t dbId = m_persistence->createSession(uuid, 0, 0, 0);
+    int64_t dbId = m_persistence->createSession(uuid, 0, 0, static_cast<int>(agentId));
     if (dbId > 0) {
         m_currentUuid = uuid;
         m_currentDbId = dbId;

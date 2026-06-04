@@ -47,6 +47,11 @@ public:
     int loadHistory(const std::vector<::a0::persistence::Message>& messages);
 
     size_t count() const;
+    void scrollUp(int n = 1);
+    void scrollDown(int n = 1);
+    void scrollToTop();
+    int scrollTop() const;
+    bool isAtBottom() const;
 
 private:
     class Impl;
@@ -56,6 +61,8 @@ private:
     ftxui::Element xRenderToolBlock(const MessageEntry& entry) const;
     ftxui::Element xRenderStreamingPlaceholder(const MessageEntry& entry) const;
     ftxui::Element xRenderCollapsedToggle(const MessageEntry& entry) const;
+
+    static constexpr int VISIBLE_ENTRIES = 8;
 };
 
 } // namespace a0::tui

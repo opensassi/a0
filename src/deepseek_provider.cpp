@@ -58,6 +58,7 @@ std::string DeepSeekProvider::complete(const std::string& systemPrompt,
 
     CURLcode res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
+        TRACE_LOG("curl error: " << curl_easy_strerror(res));
         curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
         return {};

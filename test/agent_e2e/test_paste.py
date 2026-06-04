@@ -103,6 +103,33 @@ def test_paste_manual_reference():
             )
 
 
+def test_paste_cursor_after_placeholder():
+    """Cursor should be positioned after the [ PASTED #N ] marker after paste.
+    Typing text immediately after paste should appear after the expanded content,
+    not before it or in the middle."""
+    with MockServer() as server:
+        with TuiDriver(mock_server=server) as driver:
+            assert _wait_for_tui_ready(driver), "TUI failed to start"
+
+            # Paste a 21-char string (exceeds 20-char threshold → placeholder)
+            driver.send_paste("ABCDEFGHIJKLMNOPQRSTU")
+            time.sleep(0.5)
+
+            # Type a distinct tail marker — should appear AFTER the pasted
+            # content when cursor is correctly positioned.
+            driver.send_keys("XYZTAIL")
+            time.sleep(0.3)
+            driver.send_enter()
+
+            # Wait for response, then capture all at once
+            time.sleep(3)
+            text = driver.capture(timeout=5)
+            assert "STU XYZTAIL" in text, (
+                f"XYZTAIL should appear after paste content with a space. "
+                f"Got: {text[:600]}"
+            )
+
+
 def test_paste_newlines_dont_submit():
     """Newlines in pasted text should not trigger submit during paste."""
     with MockServer() as server:

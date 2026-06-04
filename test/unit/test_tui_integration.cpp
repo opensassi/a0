@@ -111,9 +111,7 @@ static void testInteractive(
 {
     auto persistence = std::make_unique<MockPersistenceStore>();
     auto core = std::make_unique<MockAgentCore>();
-    if (!scenario.tokens.empty() || !scenario.finalOutput.empty()) {
-        core->setScenario(scenario);
-    }
+    core->setScenario(scenario);
     AgentTui tui(core.get(), persistence.get(), nullptr, nullptr, true);
 
     TestScreen testScreen(80, 24);
@@ -137,9 +135,9 @@ TEST_F(TuiIntegrationTest, SubmitGoalAndSeeResponse) {
         tui.submitInput("hello");
 
         bool found = screen.waitFor([](const std::string& text) {
-            return text.find("Processing: hello") != std::string::npos;
+            return text.find("Hello from mock!") != std::string::npos;
         }, 5000);
-        EXPECT_TRUE(found) << "Expected 'Processing: hello'. Got: "
+        EXPECT_TRUE(found) << "Expected mock response 'Hello from mock!'. Got: "
                            << screen.captureText();
     });
 }
@@ -160,19 +158,19 @@ TEST_F(TuiIntegrationTest, MultipleMessagesStack) {
     testInteractive([](AgentTui& tui, TestScreen& screen) {
         tui.submitInput("first");
         bool found1 = screen.waitFor([](const std::string& text) {
-            return text.find("Processing: first") != std::string::npos;
+            return text.find("Hello from mock!") != std::string::npos;
         }, 5000);
-        EXPECT_TRUE(found1) << "First message not seen. Got: "
+        EXPECT_TRUE(found1) << "First response not seen. Got: "
                             << screen.captureText();
 
         tui.submitInput("second");
         bool found2 = screen.waitFor([](const std::string& text) {
-            return text.find("Processing: second") != std::string::npos;
+            return text.find("Hello from mock!") != std::string::npos;
         }, 5000);
-        EXPECT_TRUE(found2) << "Second message not seen. Got: "
+        EXPECT_TRUE(found2) << "Second response not seen. Got: "
                             << screen.captureText();
 
-        // Both messages should be visible
+        // Both user messages should be visible
         auto text = screen.captureText();
         EXPECT_TRUE(text.find("first") != std::string::npos);
         EXPECT_TRUE(text.find("second") != std::string::npos);

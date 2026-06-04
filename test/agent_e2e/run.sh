@@ -85,6 +85,7 @@ run_test "Interrupt streaming" "test/agent_e2e/test_tui_rendering.py" "test_tui_
 run_test "Status bar updates" "test/agent_e2e/test_tui_rendering.py" "test_tui_status_bar_updates"
 run_test "Mouse drag" "test/agent_e2e/test_tui_rendering.py" "test_tui_mouse_drag_no_crash"
 run_test "Quick quit" "test/agent_e2e/test_tui_rendering.py" "test_tui_quick_quit"
+run_test "Scrollback many messages" "test/agent_e2e/test_tui_rendering.py" "test_tui_scrollback_many_messages"
 
 echo ""
 echo "=== Clipboard Tests ==="

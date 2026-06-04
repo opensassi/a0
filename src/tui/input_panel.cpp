@@ -9,13 +9,15 @@ namespace a0::tui {
 
 class InputPanel::Impl {
 public:
-    ftxui::Component input;
+    ftxui::Component realInput;     // the live input (rawInput | CatchEvent)
+    ftxui::Component disabledInput; // Renderer placeholder when disabled
+    ftxui::Component current;       // points to realInput or disabledInput
+
     std::function<void(const std::string&)> onSubmit;
     std::function<void()> onInterrupt;
     std::function<void(const std::string&)> onChange;
     std::vector<std::string> history;
     size_t historyPos = 0;
-    bool enabled = true;
     std::string placeholder;
     std::string contentBuf;
 };
@@ -23,6 +25,7 @@ public:
 InputPanel::InputPanel()
     : m_impl(std::make_unique<Impl>()) {
     m_impl->contentBuf.clear();
+    m_enabled = true;
 
     // Enable multiline so pasted text with newlines renders correctly.
     // Only bare Enter (Event::Return) submits — \r/\n character events
@@ -59,13 +62,20 @@ InputPanel::InputPanel()
         return false;
     };
 
-    m_impl->input = rawInput | ftxui::CatchEvent(eventCb);
+    m_impl->realInput = rawInput | ftxui::CatchEvent(eventCb);
+
+    // Disabled renderer — shows "Waiting..." placeholder, ignores all input.
+    m_impl->disabledInput = ftxui::Renderer([] {
+        return ftxui::text(" Waiting for response...") | ftxui::dim;
+    });
+
+    m_impl->current = m_impl->realInput;
 }
 
 InputPanel::~InputPanel() = default;
 
 ftxui::Component InputPanel::component() const {
-    return m_impl->input;
+    return m_impl->current;
 }
 
 void InputPanel::setOnSubmit(std::function<void(const std::string&)> cb) {
@@ -82,13 +92,23 @@ void InputPanel::setOnChange(std::function<void(const std::string&)> cb) {
 
 void InputPanel::insertText(const std::string& text) {
     m_impl->contentBuf += text;
+    // Move cursor to end of content so further typing appears after
+    // the inserted text, not before it or in the middle.
+    if (m_impl->realInput) {
+        m_impl->realInput->OnEvent(ftxui::Event::End);
+    }
     if (m_impl->onChange) {
         m_impl->onChange(m_impl->contentBuf);
     }
 }
 
 void InputPanel::setEnabled(bool enabled) {
-    m_impl->enabled = enabled;
+    m_enabled = enabled;
+    if (enabled) {
+        m_impl->current = m_impl->realInput;
+    } else {
+        m_impl->current = m_impl->disabledInput;
+    }
 }
 
 void InputPanel::setPlaceholder(const std::string& text) {
@@ -100,8 +120,8 @@ void InputPanel::clear() {
 }
 
 void InputPanel::focus() {
-    if (m_impl->input) {
-        m_impl->input->TakeFocus();
+    if (m_enabled && m_impl->realInput) {
+        m_impl->realInput->TakeFocus();
     }
 }
 

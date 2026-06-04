@@ -297,6 +297,7 @@ a0::StreamHandle DefaultSkillRunner::executeStreaming(
     TRACE_LOG("executeStreaming(" << prompt.name << ")");
     auto missing = m_depResolver->missingDependencies(prompt);
     if (!missing.empty()) {
+        TRACE_LOG("executeStreaming: missing dependencies, returning empty handle");
         a0::StreamHandle h;
         return h;
     }
@@ -330,14 +331,37 @@ a0::StreamHandle DefaultSkillRunner::executeStreaming(
         }
     }
 
-    // Check if this is a valid prompt with streaming-capable tools via eager expansion
-    if (prompt.prompt.find("{{tool:") != std::string::npos) {
-        // Fall through to sync execute for eager tool expansion (not streaming)
-        a0::StreamHandle h;
-        return h;
+    // Expand prompt and build system prompt (mirrors sync execute())
+    std::string expanded = expandPrompt(prompt, params);
+    if (m_basePrompt.empty()) xRebuildBasePrompt();
+
+    std::string fullSystemPrompt = m_basePrompt;
+    if (!prompt.description.empty()) {
+        if (!fullSystemPrompt.empty()) fullSystemPrompt += "\n\n";
+        fullSystemPrompt += prompt.description;
     }
 
+    // Create handle: call LLM on a background thread, fire result via onChunk
     a0::StreamHandle h;
+    auto state = std::make_shared<a0::StreamHandle::State>();
+    h.m_state = state;
+    state->thread = std::thread([this, prompt, fullSystemPrompt, expanded, onChunk, state]() {
+        std::string llmResult = m_provider->complete(fullSystemPrompt, expanded);
+        json finalResult = runValidators(prompt, llmResult);
+        std::string output = finalResult.is_string()
+            ? finalResult.get<std::string>()
+            : finalResult.dump();
+        if (onChunk) onChunk(output, "stdout");
+
+        // Stop compose if needed (skip if this stack is persistent)
+        if (!prompt.composeFile.empty() && m_composeMgr &&
+            !m_composeMgr->isPersistent(prompt.name)) {
+            m_composeMgr->stopEnvironment(prompt);
+        }
+
+        state->exitCode = 0;
+        state->done = true;
+    });
     return h;
 }
 

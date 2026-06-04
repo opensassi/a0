@@ -164,9 +164,11 @@ void AgentTui::xBuildLayout() {
             return true;
         }
 
-        // Normal Character events — route to Input directly.
+        // Normal Character events — route to Input directly (only if enabled).
         if (event.is_character()) {
-            m_inputPanel->component()->OnEvent(event);
+            if (m_inputPanel->isEnabled()) {
+                m_inputPanel->component()->OnEvent(event);
+            }
             return true;
         }
 
@@ -238,7 +240,7 @@ void AgentTui::xProcessPasteBuffer() {
         // Large paste: create a numbered placeholder
         int id = ++m_pasteCounter;
         m_pastedContents[id] = m_pasteBuffer;
-        m_inputPanel->insertText("[ PASTED #" + std::to_string(id) + " ]");
+        m_inputPanel->insertText("[ PASTED #" + std::to_string(id) + " ] ");
     }
     m_pasteBuffer.clear();
 }
@@ -255,6 +257,7 @@ int AgentTui::xHandleSubmit(const std::string& input) {
 
 int AgentTui::xHandleInterrupt() {
     if (!m_streaming || !m_screen) return 0;
+    m_streamingHandle.cancel();
     m_screen->Post([this] { xOnInterrupted(); });
     return 0;
 }
@@ -290,31 +293,60 @@ int AgentTui::xProcessGoal(const std::string& goal) {
     userEntry.role = MessageRole::User;
     userEntry.content = goal;
     userEntry.timestamp = std::time(nullptr);
-    int userIdx = m_messagePanel->append(userEntry);
+    m_messagePanel->append(userEntry);
 
     m_streamingEntryIndex = m_messagePanel->beginStreaming(MessageRole::Assistant);
     m_streaming = true;
+
+    auto accumulated = std::make_shared<std::string>();
 
     m_statusBar->setMessageCount(m_messagePanel->count());
     m_inputPanel->setEnabled(false);
     m_inputPanel->clear();
 
-    // Defer completion to event loop to avoid nested mutation
-    std::string response = "Processing: " + goal;
-    m_screen->Post([this, response, userIdx] {
-        (void)userIdx;
-        if (m_streamingEntryIndex >= 0) {
-            m_messagePanel->streamUpdate(m_streamingEntryIndex, response);
-            m_messagePanel->endStream(m_streamingEntryIndex);
+    // Bridge callback: adapt the flat StreamCallback(data, direction) into
+    // the TUI's segmented callbacks (xOnToken, xOnToolStart, etc.).
+    auto onChunk = [this, accumulated](const std::string& data, const std::string& direction) {
+        if (direction == "stdout") {
+            *accumulated += data;
+            xOnToken(data);
+        } else if (direction == "tool") {
+            try {
+                auto j = nlohmann::json::parse(data);
+                std::string toolName = j.value("tool_start", "");
+                if (!toolName.empty()) {
+                    xOnToolStart(toolName, j.value("params", nlohmann::json::object()));
+                }
+            } catch (...) {}
+        } else if (direction == "tool_end") {
+            xOnToolEnd("", data, true);
+        } else if (direction == "tool_error") {
+            xOnToolEnd("", data, false);
         }
-        m_streaming = false;
-        m_streamingEntryIndex = -1;
-        m_agentState = AgentState::Idle;
-        m_statusBar->setAgentState(m_agentState);
-        m_statusBar->setMessageCount(m_messagePanel->count());
-        m_inputPanel->setEnabled(true);
-        m_inputPanel->focus();
-    });
+    };
+
+    m_streamingHandle = m_core->processGoalStreaming(goal, std::move(onChunk));
+
+    // Poll streaming completion from the event loop. Each iteration checks if
+    // the handle is done. If not, re-posts itself. If done, finalizes the output.
+    // This avoids threading issues with posting from background threads.
+    auto poller = std::make_shared<std::function<void()>>();
+    *poller = [this, accumulated, poller]() {
+        if (!m_streamingHandle.m_state || m_streamingHandle.isDone()) {
+            int rc = m_streamingHandle.wait();
+            std::string finalOutput = *accumulated;
+            if (rc == 0 && !finalOutput.empty())
+                xOnComplete(finalOutput);
+            else if (rc != 0)
+                xOnError("streaming process failed");
+            else
+                xOnComplete("");
+        } else if (m_screen) {
+            m_screen->Post(*poller);
+        }
+    };
+    if (m_screen)
+        m_screen->Post(*poller);
 
     return 0;
 }

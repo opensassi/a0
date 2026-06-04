@@ -267,11 +267,15 @@ TEST_F(AgentIntegrationTest, ProcessGoalStreaming) {
     addComponent("stream_comp", m);
     loadSkills();
 
+    std::string collected;
     a0::StreamHandle handle = m_core->processGoalStreaming("stream_prompt",
-        [](const std::string& data, const std::string& dir) {
-            (void)data;
-            (void)dir;
+        [&](const std::string& data, const std::string& dir) {
+            if (dir == "stdout") collected += data;
         });
+    int rc = handle.wait();
+    EXPECT_EQ(rc, 0);
+    // Note: output may be empty when no mock server is configured
+    // (DeepSeekProvider::complete returns empty on HTTP failure)
 }
 
 TEST_F(AgentIntegrationTest, CurrentSessionId) {

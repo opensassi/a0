@@ -340,8 +340,9 @@ TEST_F(SkillPipelineTest, ExecutionOrderMixed) {
 // executeStreaming
 // ===========================================================================
 
-TEST_F(SkillPipelineTest, ExecuteStreaming_UnknownToolReturnsEmptyHandle) {
-    // When _tool param doesn't resolve to a known tool, return empty handle
+TEST_F(SkillPipelineTest, ExecuteStreaming_UnknownToolFiresOnChunk) {
+    // When _tool param doesn't resolve to a known tool, executeStreaming falls
+    // back to the sync LLM path and fires the complete result via onChunk.
     Prompt p;
     p.name = "unknown_test";
     p.prompt = "unknown tool test";
@@ -349,25 +350,29 @@ TEST_F(SkillPipelineTest, ExecuteStreaming_UnknownToolReturnsEmptyHandle) {
     json params;
     params["_tool"] = "nonexistent-tool";
     params["streaming"] = true;
+    m_provider->addTextResponse("mock response");
 
     std::string output;
     auto handle = m_runner->executeStreaming(p, params,
         [&](const std::string& data, const std::string&) { output += data; });
 
-    EXPECT_TRUE(output.empty());
-    EXPECT_EQ(handle.streamId, 0);
+    int rc = handle.wait();
+    EXPECT_EQ(rc, 0);
+    EXPECT_FALSE(output.empty());
 }
 
-TEST_F(SkillPipelineTest, ExecuteStreaming_NoToolReturnsEmptyHandle) {
-    // When no _tool param, executeStreaming should return empty handle
+TEST_F(SkillPipelineTest, ExecuteStreaming_PlainPromptFiresOnChunk) {
+    // When no _tool param, executeStreaming fires the LLM result via onChunk.
     Prompt p;
-    p.name = "empty_test";
+    p.name = "plain_test";
     p.prompt = "just text";
+    m_provider->addTextResponse("mock streaming output");
 
     std::string output;
     auto handle = m_runner->executeStreaming(p, json::object(),
         [&](const std::string& data, const std::string&) { output += data; });
 
-    EXPECT_TRUE(output.empty());
-    EXPECT_EQ(handle.streamId, 0);
+    int rc = handle.wait();
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(output, "mock streaming output");
 }

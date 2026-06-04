@@ -69,12 +69,13 @@ public:
     a0::StreamHandle processGoalStreaming(const std::string& goal,
                                            a0::StreamCallback onChunk) override {
         a0::StreamHandle handle;
-        handle.m_state = std::make_shared<a0::StreamHandle::State>();
+        auto state = std::make_shared<a0::StreamHandle::State>();
+        handle.m_state = state;
 
         auto capturedScenario = m_scenario;
-        handle.m_state->thread = std::thread([this, capturedScenario, onChunk]() {
+        state->thread = std::thread([this, capturedScenario, onChunk, state]() {
             for (const auto& token : capturedScenario.tokens) {
-                if (m_cancelled.load()) return;
+                if (m_cancelled.load()) break;
                 if (onChunk) onChunk(token, "stdout");
                 if (capturedScenario.tokenDelayMs > 0)
                     std::this_thread::sleep_for(
@@ -82,7 +83,7 @@ public:
             }
 
             for (const auto& tc : capturedScenario.toolCalls) {
-                if (m_cancelled.load()) return;
+                if (m_cancelled.load()) break;
                 if (onChunk) onChunk("{\"tool_start\":\"" + tc.name + "\"}", "tool");
                 if (capturedScenario.tokenDelayMs > 0)
                     std::this_thread::sleep_for(
@@ -93,6 +94,9 @@ public:
             if (!m_cancelled.load() && !capturedScenario.finalOutput.empty()) {
                 if (onChunk) onChunk(capturedScenario.finalOutput, "stdout");
             }
+
+            state->exitCode = m_cancelled.load() ? -1 : 0;
+            state->done = true;
         });
 
         return handle;

@@ -5,6 +5,7 @@
 #include <functional>
 #include <cstdint>
 #include <unordered_map>
+#include <thread>
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/screen_interactive.hpp"
 #include <ctime>
@@ -65,6 +66,7 @@ private:
     AgentState m_agentState = AgentState::Idle;
     bool m_streaming = false;
     int m_streamingEntryIndex = -1;
+    a0::StreamHandle m_streamingHandle;
 
     ftxui::ScreenInteractive* m_screen = nullptr;
     ftxui::Component m_mainComponent;
