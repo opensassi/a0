@@ -9,6 +9,18 @@ find_package(nlohmann_json 3.11.0 REQUIRED)
 find_package(GTest REQUIRED)
 find_package(SQLite3 REQUIRED)
 
+# === TUI Dependencies ===
+include(FetchContent)
+FetchContent_Declare(ftxui
+  GIT_REPOSITORY https://github.com/ArthurSonzogni/ftxui
+  GIT_TAG v6.1.9
+)
+FetchContent_Declare(md4c
+  GIT_REPOSITORY https://github.com/mity/md4c
+  GIT_TAG release-0.5.2
+)
+FetchContent_MakeAvailable(ftxui md4c)
+
 set(LIB_SOURCES
     src/a0_dir.cpp
     src/session_context.cpp
@@ -50,12 +62,13 @@ add_subdirectory(src/skills)
 add_subdirectory(src/persistence)
 add_subdirectory(src/b1)
 add_subdirectory(src/c2)
+add_subdirectory(src/tui)
 
 target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib skills_lib persistence_lib cmd_runner_lib ipc_lib)
 
 add_executable(a0 src/main.cpp)
 target_include_directories(a0 PRIVATE thirdparty)
-target_link_libraries(a0 PRIVATE a0_lib persistence_lib cmd_runner_lib)
+target_link_libraries(a0 PRIVATE a0_lib persistence_lib cmd_runner_lib tui_lib)
 
 option(ENABLE_TRACE "Enable trace logging" OFF)
 if(ENABLE_TRACE)
@@ -119,6 +132,46 @@ add_agent_test(test_skill_args test/unit/test_skill_args.cpp)
 target_link_libraries(test_skill_args PRIVATE pthread)
 add_agent_test(test_context_manager test/unit/test_context_manager.cpp)
 add_agent_test(test_deepseek_provider test/unit/test_deepseek_provider.cpp)
+
+# --- TUI tests ---
+function(add_tui_test TEST_NAME TEST_SOURCE)
+    add_executable(${TEST_NAME} ${TEST_SOURCE})
+    target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test/tui)
+    target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(${TEST_NAME} PRIVATE
+        tui_lib
+        a0_lib
+        persistence_lib
+        cmd_runner_lib
+        ftxui::component
+        md4c
+        GTest::gtest
+        GTest::gtest_main
+        pthread
+    )
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endfunction()
+
+add_tui_test(test_tui_styles test/unit/test_tui_styles.cpp)
+add_tui_test(test_tui_session_manager test/unit/test_tui_session_manager.cpp)
+add_tui_test(test_tui_panels test/unit/test_tui_panels.cpp)
+add_tui_test(test_tui_markdown test/unit/test_tui_markdown.cpp)
+
+add_library(tui_test_mock STATIC
+    test/tui/mock/test_screen.cpp
+)
+target_include_directories(tui_test_mock PUBLIC test/tui)
+target_link_libraries(tui_test_mock PUBLIC
+    tui_lib
+    ftxui::component
+    md4c
+    GTest::gtest
+    pthread
+)
+
+add_tui_test(test_tui_integration test/unit/test_tui_integration.cpp)
+target_link_libraries(test_tui_integration PRIVATE tui_test_mock)
+target_include_directories(test_tui_integration PRIVATE test/tui)
 
 add_agent_test(test_system_tools test/unit/test_system_tools.cpp)
 

@@ -177,6 +177,15 @@ public:
     virtual std::string currentSessionId() const = 0;
     virtual void run() = 0;
 
+    /// Ensure a session exists, creating one if needed.
+    /// Returns true if a session is available (existing or newly created).
+    /// Callers that need a session UUID early (for logging, etc.)
+    /// should call this after init() instead of creating sessions manually.
+    virtual bool ensureSession() = 0;
+
+    /// Database row ID for the current session, or 0 if none.
+    virtual int64_t sessionDbId() const = 0;
+
     /// Streaming goal processing: processes a goal with streaming tool invocations.
     /// onChunk receives streaming output from tool invocations.
     virtual a0::StreamHandle processGoalStreaming(const std::string& goal,

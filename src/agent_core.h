@@ -27,13 +27,14 @@ public:
     json processGoal(const std::string& goal, const json& params);
     json runSkill(const std::string& skillName, const json& params);
     bool resumeSession(const std::string& sessionId) override;
+    bool ensureSession() override;
+    int64_t sessionDbId() const override { return m_sessionDbId; }
     std::string currentSessionId() const override;
     void run() override;
     a0::StreamHandle processGoalStreaming(const std::string& goal,
                                            a0::StreamCallback onChunk) override;
 
     int agentDbId() const { return m_agentDbId; }
-    int64_t sessionDbId() const { return m_sessionDbId; }
 
     /// Set pre-created session info (called after init when session is created early).
     /// sessionDbId must already be a valid DB session row.

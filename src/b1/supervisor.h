@@ -49,6 +49,7 @@ private:
     int m_c2Fd = -1;
     std::chrono::steady_clock::time_point m_lastC2Push;
     int m_listenFd = -1;
+    int m_c2ChildPid = -1;
 
     int xHandleRegister(const ipc::Message& msg, int peerFd);
     int xHandleHeartbeat(const ipc::Message& msg, int peerPid);

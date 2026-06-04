@@ -19,6 +19,7 @@
 #include "stream_registry.h"
 #include "hex_session_id.h"
 #include "session_context.h"
+#include "tui/agent_tui.h"
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -32,13 +33,16 @@
 #include <chrono>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <sqlite3.h>
+#include <filesystem>
 
 using json = nlohmann::json;
 
-static std::string g_a0LogFile; // --log-file value, propagated to child processes
+static std::string g_a0LogFile; // --log-file value
+static std::string g_a0LogDir;  // --log-dir value
 
 // ---------------------------------------------------------------------------
 // Helpers (unchanged from original)
@@ -143,6 +147,34 @@ static std::string xChildLog(const std::string& parentLog, const std::string& su
     return (dot != std::string::npos)
         ? parentLog.substr(0, dot) + "-" + suffix + parentLog.substr(dot)
         : parentLog + "-" + suffix;
+}
+
+static std::string xMakeLogPath(const std::string& sessionId, pid_t pid,
+                                 const std::string& suffix) {
+    if (g_a0LogDir.empty()) return "";
+    return g_a0LogDir + "/a0-" + sessionId + "-"
+         + std::to_string(pid) + suffix + ".log";
+}
+
+/// Redirect child stdout+stderr. Called after fork(), before exec().
+/// If path is empty, redirects to /dev/null.
+static void xChildRedirectStdio(const std::string& path) {
+    int fd = -1;
+    if (!path.empty())
+        fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0)
+        fd = ::open("/dev/null", O_WRONLY);
+    if (fd >= 0) {
+        ::dup2(fd, STDOUT_FILENO);
+        ::dup2(fd, STDERR_FILENO);
+        if (fd > 2) ::close(fd);
+    }
+}
+
+static std::string xAbsPath(const std::string& path) {
+    if (path.empty() || path[0] == '/')
+        return path;
+    return std::filesystem::absolute(path).string();
 }
 
 static std::string getC2PidPath() {
@@ -472,9 +504,9 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
     // Create session early (for persistence of init-phase operations)
     std::unique_ptr<a0::SessionContext> sessionCtx;
     if (resumeSessionId.empty()) {
-        std::string sessionUuid = generateHexSessionId();
-        int64_t sessionDbId = stack.persistence.createSession(
-            sessionUuid, 0, 0, stack.core->agentDbId());
+        stack.core->ensureSession();
+        std::string sessionUuid = stack.core->currentSessionId();
+        int64_t sessionDbId = stack.core->sessionDbId();
         stack.skillMgr.setRecordingSession(sessionDbId);
         char cwdBuf[4096];
         std::string initialCwd = ::getcwd(cwdBuf, sizeof(cwdBuf)) ? cwdBuf : ".";
@@ -490,6 +522,23 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
             sessionCtx->restore(&stack.skillMgr);
         }
     }
+
+    // Resolve session ID for log naming
+    std::string sid = resumeSessionId.empty()
+        ? stack.core->currentSessionId()
+        : resumeSessionId;
+    if (!g_a0LogFile.empty()) {
+        int fd = ::open(g_a0LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) { ::dup2(fd, STDERR_FILENO); ::close(fd); }
+    } else if (!g_a0LogDir.empty() && !sid.empty()) {
+        std::string logPath = xMakeLogPath(sid, getpid(), "");
+        int fd = ::open(logPath.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) { ::dup2(fd, STDERR_FILENO); ::close(fd); }
+    }
+    if (!g_a0LogDir.empty())
+        ::setenv("A0_LOG_DIR", g_a0LogDir.c_str(), 1);
+    if (!sid.empty())
+        ::setenv("A0_SESSION_ID", sid.c_str(), 1);
 
     json params;
     try { params = json::parse(runParamsStr); } catch (...) { params = json::object(); }
@@ -512,19 +561,22 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
 }
 
 // ---------------------------------------------------------------------------
-// Command: repl (interactive, default)
+// Command: tui (interactive, default)
 // ---------------------------------------------------------------------------
 
-static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
-                   const std::string& apiKey, const std::string& mockUrl,
-                   const std::string& resumeSessionId,
-                   bool noDocker, bool noContainerPool, bool noB1,
-                   const std::string& idleTimeoutStr,
-                   const std::string& maxIdleStr,
-                   const std::string& defaultImage,
-                   int maxParallel = 4,
-                   const std::string& externalRepo = "https://github.com/opensassi/a0",
-                   const std::unordered_map<std::string, std::string>& skillArgs = {}) {
+static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
+                  const std::string& apiKey, const std::string& mockUrl,
+                  const std::string& resumeSessionId,
+                  bool noDocker, bool noContainerPool, bool noB1,
+                  const std::string& idleTimeoutStr,
+                  const std::string& maxIdleStr,
+                  const std::string& defaultImage,
+                  int maxParallel = 4,
+                  const std::string& externalRepo = "https://github.com/opensassi/a0",
+                  const std::unordered_map<std::string, std::string>& skillArgs = {},
+                  const std::string& tuiResumeUuid = "",
+                  bool tuiNoPermissions = false,
+                  bool tuiTestMode = false) {
     AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
                      idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
     stack.core->setSkillArgs(skillArgs);
@@ -544,9 +596,9 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
     // Create session early (for persistence of init-phase operations)
     std::unique_ptr<a0::SessionContext> sessionCtx;
     if (resumeSessionId.empty()) {
-        std::string sessionUuid = generateHexSessionId();
-        int64_t sessionDbId = stack.persistence.createSession(
-            sessionUuid, 0, 0, stack.core->agentDbId());
+        stack.core->ensureSession();
+        std::string sessionUuid = stack.core->currentSessionId();
+        int64_t sessionDbId = stack.core->sessionDbId();
         stack.skillMgr.setRecordingSession(sessionDbId);
         sessionCtx = std::make_unique<a0::SessionContext>(
             initialCwd, a0Dir, sessionUuid, sessionDbId, &stack.persistence);
@@ -557,6 +609,9 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
             stack.containerMgr->setSessionPrefix(sessionUuid.substr(0, 8));
         }
 
+        // session is already set via ensureSession(), but we need to set sessionCtx
+        // which ensureSession() doesn't handle
+        // setSession is idempotent for the same sessionId/dbId
         stack.core->setSession(sessionUuid, sessionDbId, sessionCtx.get());
     } else {
         stack.skillMgr.setRecordingSession(stack.core->sessionDbId());
@@ -571,6 +626,27 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
             }
         }
     }
+
+    // Resolve session ID for log naming
+    std::string sid = resumeSessionId.empty()
+        ? stack.core->currentSessionId()
+        : resumeSessionId;
+
+    // Redirect a0's own stderr now that we have the session ID
+    if (!g_a0LogFile.empty()) {
+        int fd = ::open(g_a0LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) { ::dup2(fd, STDERR_FILENO); ::close(fd); }
+    } else if (!g_a0LogDir.empty() && !sid.empty()) {
+        std::string logPath = xMakeLogPath(sid, getpid(), "");
+        int fd = ::open(logPath.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) { ::dup2(fd, STDERR_FILENO); ::close(fd); }
+    }
+
+    // Export log dir so supervisor can derive child log paths
+    if (!g_a0LogDir.empty())
+        ::setenv("A0_LOG_DIR", g_a0LogDir.c_str(), 1);
+    if (!sid.empty())
+        ::setenv("A0_SESSION_ID", sid.c_str(), 1);
 
     bool needsB1 = !noB1;
     int b1Fd = -1;
@@ -589,7 +665,12 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
             pid_t pid = fork();
             if (pid == 0) {
                 setsid();
-                std::string b1Log = xChildLog(g_a0LogFile, "b1");
+                std::string b1Log;
+                if (!g_a0LogFile.empty())
+                    b1Log = xChildLog(g_a0LogFile, "b1");
+                else if (!g_a0LogDir.empty() && !sid.empty())
+                    b1Log = xMakeLogPath(sid, getpid(), "-b1");
+                xChildRedirectStdio(b1Log);
                 if (!b1Log.empty()) {
                     execlp(b1Path.c_str(), "b1", "--workdir", initialCwd.c_str(),
                            "--a0-dir", a0Dir.c_str(), "--log-file", b1Log.c_str(), nullptr);
@@ -618,9 +699,15 @@ static int cmdRepl(const std::string& a0Dir, const std::string& skillsDir,
         }
     }
 
-    stack.core->run();
-    (void)b1Fd;
-    return 0;
+    // Launch TUI
+    {
+        a0::tui::AgentTui tui(stack.core, &stack.persistence, &stack.skillMgr,
+                              [&b1Fd]() { return b1Fd >= 0; },
+                              tuiNoPermissions);
+        if (!tuiResumeUuid.empty())
+            tui.resumeSession(tuiResumeUuid);
+        return tui.run(tuiTestMode);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -667,7 +754,12 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
             pid_t b1Pid = fork();
             if (b1Pid == 0) {
                 setsid();
-                std::string b1Log = xChildLog(g_a0LogFile, "b1");
+                std::string b1Log;
+                if (!g_a0LogFile.empty())
+                    b1Log = xChildLog(g_a0LogFile, "b1");
+                else if (!g_a0LogDir.empty())
+                    b1Log = xMakeLogPath(sessionUuid, getpid(), "-b1");
+                xChildRedirectStdio(b1Log);
                 if (!b1Log.empty()) {
                     execlp(b1Path.c_str(), "b1", "--workdir", workdir.c_str(),
                            "--a0-dir", a0Dir.c_str(), "--log-file", b1Log.c_str(), nullptr);
@@ -819,9 +911,11 @@ int main(int argc, char* argv[]) {
     std::string a0Dir = "./.a0";
     std::string envFilePath = ".env";
     std::string logFile;
+    std::string logDir;
     app.add_option("--a0-dir", a0Dir, ".a0 state root (default ./.a0)");
     app.add_option("--env-file", envFilePath, ".env file path (default ./.env)");
     app.add_option("--log-file", logFile, "Redirect stderr to file");
+    app.add_option("--log-dir", logDir, "Log directory — auto-names a0-<sessionId>-<pid>.log");
 
     // Agent flags (shared by repl and run modes)
     std::string apiKey, mockUrl, skillsDir = "./skills", resumeSessionId;
@@ -876,6 +970,15 @@ int main(int argc, char* argv[]) {
     runCmd->add_option("--resume", resumeSessionId);
     runCmd->add_option("prompt", runPrompt, "Prompt text (positional)");
 
+    // Subcommand: tui
+    std::string tuiResumeUuid;
+    bool tuiNoPermissions = false;
+    bool tuiTestMode = false;
+    auto* tuiCmd = app.add_subcommand("tui", "Interactive terminal UI (default)");
+    tuiCmd->add_option("--resume", tuiResumeUuid, "Resume session by UUID");
+    tuiCmd->add_flag("--no-permissions", tuiNoPermissions, "Auto-approve tool execution");
+    tuiCmd->add_flag("--test-mode", tuiTestMode, "Use FixedSize screen for testing");
+
     // Subcommand: terminal
     std::string terminalId;
     std::string terminalCwd;
@@ -928,24 +1031,16 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         // Resolve a0Dir to absolute path so it works after potential chdir
-        if (a0Dir[0] != '/') {
-            char absBuf[4096];
-            if (::getcwd(absBuf, sizeof(absBuf))) {
-                if (a0Dir.size() >= 2 && a0Dir[0] == '.' && a0Dir[1] == '/')
-                    a0Dir.erase(0, 2);
-                a0Dir = std::string(absBuf) + "/" + a0Dir;
-            }
-        }
+        if (a0Dir[0] != '/')
+            a0Dir = xAbsPath(a0Dir);
     }
 
-    // Redirect stderr to log file if specified
+    // Resolve log settings — actual redirect happens per-session
     g_a0LogFile = logFile;
-    if (!logFile.empty()) {
-        int fd = ::open(logFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd >= 0) {
-            ::dup2(fd, STDERR_FILENO);
-            ::close(fd);
-        }
+    g_a0LogDir = logDir;
+    if (!g_a0LogDir.empty()) {
+        g_a0LogDir = xAbsPath(g_a0LogDir);
+        ::mkdir(g_a0LogDir.c_str(), 0755);
     }
 
     // Dispatch by subcommand
@@ -967,9 +1062,15 @@ int main(int argc, char* argv[]) {
                       defaultImage, maxParallel, externalRepo, skillArgs);
     if (app.got_subcommand(termCmd))
         return cmdTerminal(a0Dir, terminalId, terminalCwd);
+    if (app.got_subcommand(tuiCmd))
+        return cmdTui(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
+                      noDocker, noContainerPool, noB1,
+                      idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo, skillArgs,
+                      tuiResumeUuid, tuiNoPermissions, tuiTestMode);
 
-    // Default: repl
-    return cmdRepl(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
-                   noDocker, noContainerPool, noB1,
-                   idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo, skillArgs);
+    // Default: tui
+    return cmdTui(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
+                  noDocker, noContainerPool, noB1,
+                  idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo, skillArgs,
+                  tuiResumeUuid, tuiNoPermissions, tuiTestMode);
 }

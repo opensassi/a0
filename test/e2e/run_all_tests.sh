@@ -1,10 +1,11 @@
 #!/bin/bash
 # run_all_tests.sh — Full test suite for the a0 project.
 #
-# Runs all three test layers in order:
+# Runs all four test layers in order:
 #   1. Unit tests (ctest / Google Test, C++)
 #   2. Agent E2E tests (mock DeepSeek API, no browser)
 #   3. c2 dashboard E2E tests (headed browser, Playwright)
+#   4. TUI E2E tests (mock DeepSeek + --test-mode)
 #
 # Exits with 0 if all pass, 1 if any fail.
 
@@ -35,7 +36,7 @@ echo ""
 # ------------------------------------------------------------------
 # Phase 1: Unit tests
 # ------------------------------------------------------------------
-echo "=== [1/3] Unit tests (ctest) ==="
+echo "=== [1/4] Unit tests (ctest) ==="
 echo ""
 
 if [ ! -d "${BUILD_DIR}" ]; then
@@ -55,7 +56,7 @@ echo ""
 # ------------------------------------------------------------------
 # Phase 2: Agent E2E tests
 # ------------------------------------------------------------------
-echo "=== [2/3] Agent E2E tests (mock DeepSeek) ==="
+echo "=== [2/4] Agent E2E tests (mock DeepSeek) ==="
 echo ""
 
 if bash "${PROJECT_ROOT}/test/e2e/run_e2e_tests.sh" 2>&1; then
@@ -69,7 +70,7 @@ echo ""
 # ------------------------------------------------------------------
 # Phase 3: c2 dashboard E2E tests (headed browser)
 # ------------------------------------------------------------------
-echo "=== [3/3] c2 dashboard E2E tests (headed browser) ==="
+echo "=== [3/4] c2 dashboard E2E tests (headed browser) ==="
 echo ""
 
 echo "  --- c2 dashboard (29 assertions) ---"
@@ -83,6 +84,25 @@ if bash "${PROJECT_ROOT}/test/e2e/test_c2_dashboard_e2e.sh" 2>&1; then
     fi
 else
     fail_suite "c2-dashboard-e2e"
+fi
+
+echo ""
+
+# ------------------------------------------------------------------
+# Phase 4: TUI E2E tests (mock DeepSeek + --test-mode)
+# ------------------------------------------------------------------
+echo "=== [4/4] TUI E2E tests (mock DeepSeek + --test-mode) ==="
+echo ""
+
+if command -v expect &>/dev/null; then
+    if bash "${PROJECT_ROOT}/test/e2e/test_tui_e2e.sh" 2>&1; then
+        pass_suite
+    else
+        fail_suite "tui-e2e"
+    fi
+else
+    echo "  SKIP: 'expect' not installed — skipping interactive TUI E2E tests"
+    echo "  Install with: apt install expect"
 fi
 
 echo ""

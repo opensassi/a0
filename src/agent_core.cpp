@@ -193,6 +193,16 @@ void DefaultAgentCore::setSession(const std::string& sessionId,
     }
 }
 
+bool DefaultAgentCore::ensureSession() {
+    if (m_sessionDbId > 0) return true;
+    if (!m_persistence || m_agentDbId <= 0) return false;
+    if (m_sessionId.empty())
+        m_sessionId = generateHexSessionId();
+    m_sessionDbId = m_persistence->createSession(m_sessionId, 0, 0, m_agentDbId);
+    m_skillRunner->setGlobalVar("SESSION_ID", m_sessionId);
+    return m_sessionDbId > 0;
+}
+
 void DefaultAgentCore::xPushToContext(const std::string& goal, const json& result) {
     (void)goal;
     m_context->push({"assistant", result.is_string() ? result.get<std::string>() : result.dump()});
@@ -413,11 +423,11 @@ json DefaultAgentCore::processGoal(const std::string& goal, const json& params) 
     m_context->push({"user", goal});
 
     if (m_persistence && m_agentDbId > 0) {
-        if (m_sessionDbId <= 0) {
-            m_sessionDbId = m_persistence->createSession(m_sessionId, 0, 0, m_agentDbId);
+        ensureSession();
+        if (m_sessionDbId > 0) {
+            m_persistence->appendMessage(m_sessionDbId, std::nullopt, 0,
+                "user", goal, "", "", "", "");
         }
-        m_persistence->appendMessage(m_sessionDbId, std::nullopt, 0,
-            "user", goal, "", "", "", "");
     }
 
     int mainSeq = 1;

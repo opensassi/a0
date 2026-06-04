@@ -204,6 +204,22 @@ void Supervisor::shutdown() {
         ::close(pair.first);
     }
     m_agents.clear();
+
+    // Kill c2 child if we launched it
+    if (m_c2ChildPid > 0) {
+        ::kill(m_c2ChildPid, SIGTERM);
+        for (int i = 0; i < 20; ++i) {
+            if (::kill(m_c2ChildPid, 0) != 0) break;
+            usleep(100000);
+        }
+        if (::kill(m_c2ChildPid, 0) == 0) {
+            ::kill(m_c2ChildPid, SIGKILL);
+        }
+        int status;
+        ::waitpid(m_c2ChildPid, &status, 0);
+        m_c2ChildPid = -1;
+    }
+
     ipc::UnixSocket::unlinkPath(m_socketPath);
 }
 
@@ -415,8 +431,26 @@ int Supervisor::xHandleTerminalOpen(const ipc::Message& msg, int peerFd) {
 
     pid_t pid = fork();
     if (pid == 0) {
-        // Child: launch a0 terminal in the requested directory
         setsid();
+        // Redirect child stdout/stderr
+        {
+            const char* logDir = getenv("A0_LOG_DIR");
+            const char* sessionId = getenv("A0_SESSION_ID");
+            std::string termLog;
+            if (logDir && sessionId)
+                termLog = std::string(logDir) + "/a0-" + sessionId + "-"
+                        + std::to_string(getpid()) + "-term.log";
+            int fd = -1;
+            if (!termLog.empty())
+                fd = ::open(termLog.c_str(), O_WRONLY|O_CREAT|O_APPEND, 0644);
+            if (fd < 0) fd = ::open("/dev/null", O_WRONLY);
+            if (fd >= 0) {
+                ::dup2(fd, STDOUT_FILENO);
+                ::dup2(fd, STDERR_FILENO);
+                if (fd > 2) ::close(fd);
+            }
+        }
+        // Child: launch a0 terminal in the requested directory
         std::string a0Dir = cwd + "/.a0";
         if (!msg.terminalId.empty()) {
                     if (!a0Log.empty()) {
@@ -496,9 +530,28 @@ int Supervisor::xLaunchC2IfNeeded() {
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
+        // Redirect child stdout/stderr
+        const char* logDir = getenv("A0_LOG_DIR");
+        const char* sessionId = getenv("A0_SESSION_ID");
+        std::string c2Log;
+        if (logDir && sessionId)
+            c2Log = std::string(logDir) + "/a0-" + sessionId + "-"
+                  + std::to_string(getpid()) + "-c2.log";
+        {
+            int fd = -1;
+            if (!c2Log.empty())
+                fd = ::open(c2Log.c_str(), O_WRONLY|O_CREAT|O_APPEND, 0644);
+            if (fd < 0) fd = ::open("/dev/null", O_WRONLY);
+            if (fd >= 0) {
+                ::dup2(fd, STDOUT_FILENO);
+                ::dup2(fd, STDERR_FILENO);
+                if (fd > 2) ::close(fd);
+            }
+        }
         execlp(c2Path.c_str(), "c2", "--socket", m_c2SocketPath.c_str(), nullptr);
         _exit(127);
     } else if (pid > 0) {
+        m_c2ChildPid = pid;
         for (int i = 0; i < 30; ++i) {
             ipc::UnixSocket retrySock;
             rc = retrySock.connect(m_c2SocketPath, 100);
