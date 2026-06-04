@@ -150,6 +150,7 @@ function(add_tui_test TEST_NAME TEST_SOURCE)
         pthread
     )
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    set_tests_properties(${TEST_NAME} PROPERTIES RUN_SERIAL TRUE)
 endfunction()
 
 add_tui_test(test_tui_styles test/unit/test_tui_styles.cpp)

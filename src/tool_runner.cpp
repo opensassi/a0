@@ -1,6 +1,7 @@
 #include "tool_runner.h"
 #include "command_runner.h"
 #include "trace.h"
+#include <unistd.h>
 
 using a0::CommandRunner;
 using a0::CommandResult;
@@ -80,9 +81,17 @@ a0::StreamHandle ToolRunner::runStreaming(const Tool& tool,
 
     // Wrap shell command to also accept stdin via redirect
     auto handle = CommandRunner::runStreaming(cmd, onChunk, tool.timeoutSecs);
-    // Send the initial input
+    // Send the initial input then close stdin so the child sees EOF
     if (!input.empty()) {
         handle.sendInput(input);
+    }
+    // Close stdin pipe so child processes can terminate (they don't wait for more input)
+    if (handle.m_state) {
+        std::lock_guard<std::mutex> lock(handle.m_state->mutex);
+        if (handle.m_state->stdinFd >= 0) {
+            close(handle.m_state->stdinFd);
+            handle.m_state->stdinFd = -1;
+        }
     }
     return handle;
 }

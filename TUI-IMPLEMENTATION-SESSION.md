@@ -58,7 +58,14 @@
 | `src/b1/supervisor.cpp` | c2 and terminal child forks now redirect stdout+stderr to `/dev/null` or log file |
 | `src/agent_core.h` | Added `setSessionId()` for pre-init session ID (log naming) |
 | `src/skill_runner.cpp` | `executeStreaming()` now runs full LLM pipeline on background thread instead of returning empty handle |
-| `src/deepseek_provider.cpp` | Added TRACE_LOG for curl errors in `complete()` |
+| `src/deepseek_provider.cpp` | Added TRACE_LOG for curl errors in `complete()`, SSE parser for tool_calls, `completeStreaming()` implementation |
+| `src/agent_interfaces.h` | Added `completeStreaming()` to `InferenceProvider` interface |
+| `src/command_runner.h/.cpp` | Added `cancelFn` to `StreamHandle::State` for HTTP-based cancellation |
+| `src/agent_core.cpp` | `processGoalStreaming()`: multi-turn tool-calling loop with streaming SSE, tool execution, and conversation history tracking |
+| `test/unit/test_deepseek_provider.cpp` | Added streaming unit tests with live mock server |
+| `test/unit/test_agent_integration.cpp` | Streaming integration test with live mock server |
+| `test/e2e/mock_deepseek_server.py` | SSE streaming mode when `stream: true` in request payload |
+| `test/agent_e2e/test_streaming.py` | New: mock server SSE test + TUI streaming response test |
 | `test/tui/mock/mock_agent_core.h` | `processGoalStreaming()` thread now sets `exitCode` and `done` flags |
 
 ---
@@ -121,8 +128,35 @@ The E2E test harness uses `pty.openpty()` + `os.fork()` to create a real pseudot
 ### Scrollback via windowed rendering + yframe
 The `MessagePanel` renders a sliding window of `VISIBLE_ENTRIES` (8) messages. `Up`/`Down` arrows, `PageUp`/`PageDown`, `Home`/`End` scroll the window. A scroll indicator shows `↑ N more` / `↓ N more` when not at top/bottom. The content is wrapped in `yframe` + `vscroll_indicator` for the visual frame. Auto-scroll resumes when the user scrolls to the bottom.
 
-### Streaming completion via event-loop poller instead of background thread Post
-The watcher thread pattern (`handle.wait()` then `m_screen->Post`) was unreliable — `Screen::Post` from a background thread didn't consistently wake up FTXUI's event loop `task_receiver_->Receive()`. Replaced with a self-re-posting `std::function` that runs entirely on the event loop thread: it checks `isDone()`, re-posts if not done, or calls `xOnComplete`/`xOnError` directly when done. The poller is stored in a `shared_ptr` so it stays alive as long as the event loop holds a reference to it.
+### Streaming completion via event-loop poller introduces render starvation (DEPRECATED)
+The watcher thread pattern (`handle.wait()` then `m_screen->Post`) was unreliable — `Screen::Post` from a background thread didn't consistently wake up FTXUI's event loop `task_receiver_->Receive()`. Replaced with a self-re-posting `std::function` that runs entirely on the event loop thread: it checks `isDone()`, re-posts if not done, or calls `xOnComplete`/`xOnError` directly when done.
+
+**However, this approach has a fatal flaw:** FTXUI's event loop processes ALL pending posted tasks before calling `Render()` in each loop iteration. A re-posting poller thus starves the renderer — the frame with the user entry and streaming placeholder is never drawn because the poller fills the task queue faster than the renderer can execute.
+
+Further, this approach embeds the TUI event loop inside the agent core's execution path, creating a fundamental coupling between UI rendering and LLM request handling. The same agent core should work identically in headless and TUI modes.
+
+### App Architecture: TUI thread and App Core thread must be separate
+The current architecture embeds `AgentCore` inside the TUI's event loop thread. `xProcessGoal()` runs on the FTXUI thread, which calls `processGoalStreaming()`, which may spawn background threads for HTTP requests. This creates several problems:
+- Render starvation from poller re-posting (above)
+- Duplicated tool-calling loops for sync vs streaming paths
+- No persistence in the streaming path
+- Headless mode had to be removed (couldn't share code)
+
+**Correct architecture:** The application core (agent, LLM provider, tool execution, persistence) runs in its own thread with its own event loop driven by `poll`/`epoll`. The TUI is a separate thread that sends commands to the core via a thread-safe queue and receives events via another queue. This way:
+- Headless mode uses the same core with no UI thread
+- The TUI thread only does FTXUI rendering (no agent logic, no HTTP)
+- The core thread drives `curl_multi` (zero HTTP threads), `waitpid` for tools, and periodic timers — all from a single `poll()` loop
+- Persistence always writes, regardless of UI mode
+
+### Single tool-calling loop for sync and streaming
+The current code has two parallel implementations:
+- `xRunForkedLoop()` — the blocking tool-calling loop used by `processGoal()`
+- `executeStreaming()` multi-turn wrapper — the streaming loop
+
+These should be merged into one. The tool-calling loop yields back to the event loop between LLM calls. Streaming vs blocking is just whether optional `onToken`/`onToolStart`/`onToolEnd` callbacks are provided.
+
+### curl_multi instead of per-request threads
+The current `completeStreaming()` creates a new `std::thread` for each HTTP request, then calls `curl_easy_perform()` (synchronous). This is fighting libcurl's design — curl is fundamentally async via `curl_multi`. The event loop should register curl's sockets with `poll()` and drive the transfer in its main loop, with zero dedicated HTTP threads.
 
 ### Paste cursor position: Event::End after insertText
 After `insertText()` appends content to the FTXUI Input's buffer, the internal cursor stays at its previous position (typically `0`). This causes subsequent typing to appear before the inserted paste marker instead of after it. Fix: send `Event::End` to the Input component after `+=`, which moves the cursor to end of buffer. A trailing space is appended after `[ PASTED #N ]` so user input is separated from the expanded paste content.
@@ -140,20 +174,264 @@ FTXUI's `HandleSelection` tracks a rectangular selection region. When the mouse 
 ### 3. Paste placeholder deletion reliability via PTY
 The `onChange` callback correctly prunes stored content when a placeholder is deleted. However, testing this through the PTY with backspace events is timing-sensitive — rapid backspace delivery can race with the FTXUI event loop. In practice (real terminal, human typing), the per-keystroke delay is orders of magnitude larger than the FTXUI event loop latency, so this is not a practical issue.
 
-### 4. DeepSeekProvider does not have completeStreaming()
-The current `executeStreaming()` calls `m_provider->complete()` (synchronous HTTP request) on a background thread. The entire LLM response is delivered as a single `onChunk` call. True token-by-token streaming requires implementing `completeStreaming()` on `DeepSeekProvider` with libcurl SSE parsing, then wiring it through `executeStreaming()`. This is the highest-impact improvement for UX.
+### 4. [FIXED] DeepSeekProvider does not have completeStreaming()
+Added SSE parser, `completeStreaming()` implementation with libcurl, `cancelFn` support in `StreamHandle`, and mock server SSE support. Fixed in `src/deepseek_provider.cpp`, `src/command_runner.h/.cpp`.
 
-### 5. Poller-based completion doesn't work when no event loop is running
-The streaming completion poller relies on `m_screen->Post` to re-schedule itself on the FTXUI event loop. If there is no event loop running (e.g., headless mode, unit tests that call `processGoalStreaming` without a screen), the poller is never posted, and the stream never completes. The detached-thread approach with `handle.wait()` would work in these scenarios but had reliability issues with `Screen::Post` from background threads.
+### 5. [FIXED] Poller-based completion doesn't work when no event loop is running
+Added background-thread fallback in `xProcessGoal()` when `m_screen` is null. Removed early-return guard to allow headless operation. Fixed in `src/tui/agent_tui.cpp`.
 
-### 6. Background thread Post to FTXUI Screen is unreliable
-`Screen::Post` from a background thread (e.g., a detached watcher thread calling `handle.wait()` then `m_screen->Post(...)`) does not consistently wake up FTXUI's event loop. The `notifier_.notify_one()` call in the receiver triggers, but the loop's `Receive()` may not return promptly. The root cause may be a missed notification race or thread-safety issue in FTXUI's `ReceiverImpl`. The poller-based approach works around this by running entirely on the event loop thread, but see issue #5 for the limitation.
+### 6. [FIXED] Background thread Post to FTXUI Screen is unreliable
+Mitigated by removing the re-posting poller (see architecture refactoring plan below). The reliable approach is to separate the TUI and App Core threads entirely — no `Screen::Post` from non-UI threads.
+
+### 7. App Core and TUI run on the same thread (architecture)
+The most significant remaining issue. `AgentCore` is embedded in the FTXUI thread. This causes render starvation, duplicated code paths, missing persistence in streaming, and prohibits headless mode. See the refactoring plan below.
 
 ---
 
+## Architecture Refactoring Plan: Thread-Separated App Core
+
+### Problem Summary
+
+The application currently has no intentional threading model. `AgentCore` is embedded in the FTXUI event loop thread, and streaming was glued on top with a re-posting poller that starves the renderer. HTTP requests each get their own thread (fighting libcurl's async design). The tool-calling loop is duplicated between sync and streaming paths. Persistence is missing in the streaming path.
+
+### Target Architecture
+
+```
+Process
+│
+├─ App Core Thread (owns AgentCore, DrivenCore, curl_multi, tool execution, persistence)
+│   ├─ Event loop via poll/epoll
+│   │   ├─ curl_multi sockets (HTTP/SSE — 0 threads)
+│   │   ├─ SIGCHLD (tool subprocess completion)
+│   │   ├─ command queue (goals from TUI or CLI)
+│   │   └─ periodic timers (timeouts, retries)
+│   ├─ DrivenCore: single tool-calling loop implementation
+│   │   ├─ AppCoreEvent::LlmResponse (tokens or tool_calls)
+│   │   ├─ AppCoreEvent::ToolStart / ToolEnd
+│   │   ├─ AppCoreEvent::Complete (final response)
+│   │   └─ AppCoreEvent::Error
+│   ├─ Always persists to SQLite
+│   └─ Output: thread-safe mpsc queue of AppCoreEvent
+│
+├─ TUI Thread (only when `a0 tui`)
+│   ├─ FTXUI event loop (owns screen, panels)
+│   ├─ Sends Command::SubmitGoal to App Core's queue
+│   ├─ Each frame: drains AppCoreEvent queue and updates panels
+│   ├─ No agent logic, no HTTP, no curl
+│   └─ Lifetime: started by main.cpp, joined on exit
+│
+└─ CLI Mode (when `a0 run`, no TUI thread)
+    ├─ Reads stdin, sends Command::SubmitGoal to App Core
+    └─ Writes AppCoreEvent output to stdout
+```
+
+### Phase 1: DrivenCore + curl_multi
+
+**Replace** `DeepSeekProvider::complete()` and `DeepSeekProvider::completeStreaming()` with a single driven interface:
+
+```cpp
+class DrivenProvider {
+public:
+    // Non-blocking. Sets up handles, returns immediately.
+    // Call tick() from the event loop to drive curl_multi.
+    void startRequest(const std::string& systemPrompt,
+                      const std::vector<Message>& messages,
+                      const std::vector<ToolSchema>& tools,
+                      bool stream);
+    
+    // Drive curl_multi progress. Called on each event loop iteration.
+    // Returns pending events (token, tool_call, complete, error).
+    std::vector<AppCoreEvent> tick();
+    
+    // Cancel in-flight request.
+    void cancel();
+    
+    // FDs to watch (from curl_multi_fdset).
+    int pollFd() const;
+};
+```
+
+**Move** the SSE parser and JSON parser into a shared response decoder:
+
+```cpp
+class ResponseDecoder {
+public:
+    enum class Mode { SSE, JSON };
+    void feed(const char* data, size_t len);
+    std::vector<AppCoreEvent> events();  // token, tool_call, finish_reason, error
+};
+```
+
+**Files:** `src/driven_provider.h/.cpp` (new), replaces `deepseek_provider.h/.cpp` completely.
+
+### Phase 2: DrivenCore — single tool-calling loop
+
+**Replace** `AgentCore::processGoal()` and `AgentCore::processGoalStreaming()` with a single state-machine-driven method:
+
+```cpp
+enum class CoreState { Idle, AwaitingLlm, ExecutingTools };
+enum class CoreEventType { Token, ToolCall, ToolResult, Complete, Error };
+struct CoreEvent { CoreEventType type; json data; };
+
+class DrivenCore {
+public:
+    // Thread-safe command queue
+    void submitGoal(const std::string& goal);
+    
+    // Drive the core. Call on each event loop iteration.
+    // Returns events for the UI layer to consume.
+    std::vector<CoreEvent> tick();
+    
+    // Accessors for tools, prompts, persistence.
+    
+private:
+    CoreState m_state = CoreState::Idle;
+    std::unique_ptr<DrivenProvider> m_provider;
+    // ...conversation history, tool state, etc.
+};
+```
+
+The tool-calling loop logic (from `xRunForkedLoop`) becomes a state machine:
+- `Idle` → on goal received: build messages, set `AwaitingLlm`, call `m_provider->startRequest()`
+- `AwaitingLlm` → on each `tick()`: call `m_provider->tick()`, forward events to output queue. On `finish_reason=="tool_calls"`: transition to `ExecutingTools`. On `finish_reason=="stop"`: transition to `Idle` with `Complete`.
+- `ExecutingTools` → execute tools via subprocess, collect results, add to history, transition to `AwaitingLlm`.
+
+**Files:** `src/driven_core.h/.cpp` (new), replaces `agent_core.h/.cpp` LLM-request parts.
+
+### Phase 3: App Core Thread
+
+**Create** an `AppCoreThread` that owns `DrivenCore` and runs its own `poll()` loop:
+
+```cpp
+class AppCoreThread {
+public:
+    using Sender = mpsc::Sender<Command>;
+    using Receiver = mpsc::Receiver<AppCoreEvent>;
+    
+    AppCoreThread();
+    
+    // Start the thread. Returns command sender and event receiver.
+    std::pair<Sender, Receiver> start();
+    
+    // Signal thread to exit, join.
+    void stop();
+    
+private:
+    void run();  // poll() loop
+    mpsc::Sender<Command> m_cmdSender;
+    mpsc::Receiver<AppCoreEvent> m_evtReceiver;
+    std::thread m_thread;
+};
+```
+
+`Command` variant:
+```cpp
+using Command = std::variant<SubmitGoal, Cancel, Shutdown>;
+```
+
+`AppCoreEvent` variant:
+```cpp
+using AppCoreEvent = std::variant<LlmToken, ToolStart, ToolEnd, Complete, Error>;
+```
+
+The `poll()` loop waits on:
+1. Command queue fd (goals from TUI)
+2. curl_multi fds (HTTP responses)
+3. SIGCHLD (tool subprocess completion)
+4. Periodic timer (ticks, timeouts)
+
+No background threads for HTTP. No background threads for tool execution (subprocess is forked, parent waits for SIGCHLD).
+
+### Phase 4: TUI Thread
+
+**Refactor** `AgentTui` to not own `AgentCore`. Instead, it owns a `mpsc::Sender<Command>` and receives `AppCoreEvent` via `mpsc::Receiver<AppCoreEvent>`.
+
+```cpp
+class AgentTui {
+public:
+    AgentTui(mpsc::Sender<Command> cmdSender,
+             mpsc::Receiver<AppCoreEvent> evtReceiver);
+    
+    int run(bool testMode = false);
+    
+private:
+    // On each FTXUI frame, drain event queue:
+    //   for each event in evtReceiver.tryReceive():
+    //     Token → m_messagePanel->streamUpdate(...)
+    //     ToolStart → m_messagePanel->appendToolCall(...)
+    //     ToolEnd → updateToolCall(...)
+    //     Complete → endStream(...)
+    //     Error → append error message
+    
+    // On Enter: cmdSender.send(SubmitGoal{input});
+    // On Ctrl+C: cmdSender.send(Cancel{});
+};
+```
+
+The FTXUI event loop's idle time is used to poll the event receiver. No `Screen::Post` from background threads. No agent logic. No curl.
+
+### Phase 5: CLI/Headless Mode
+
+**Reintroduce** `cmdRepl()` or `a0 run` mode using the same `AppCoreThread`:
+
+```cpp
+void cmdRepl() {
+    auto [cmdSender, evtReceiver] = appCore.start();
+    
+    std::thread inputThread([&]() {
+        std::string line;
+        while (std::getline(std::cin, line))
+            cmdSender.send(SubmitGoal{line});
+        cmdSender.send(Shutdown{});
+    });
+    
+    while (true) {
+        auto evt = evtReceiver.receive();  // blocking
+        if (auto* complete = std::get_if<Complete>(&evt)) {
+            std::cout << complete->text << std::endl;
+        } else if (std::get_if<Shutdown>(&evt)) {
+            break;
+        }
+    }
+    
+    inputThread.join();
+    appCore.stop();
+}
+```
+
+### File Changes Summary
+
+| Action | File | Description |
+|--------|------|-------------|
+| DELETE | `src/deepseek_provider.h/.cpp` | Replaced by DrivenProvider |
+| DELETE | `src/deepseek_provider.spec.md` | Spec for replaced module |
+| CREATE | `src/driven_provider.h/.cpp` | curl_multi-based async provider |
+| CREATE | `src/driven_provider.spec.md` | Spec for new module |
+| CREATE | `src/driven_core.h/.cpp` | State-machine tool-calling loop |
+| MODIFY | `src/agent_interfaces.h` | Remove InferenceProvider, add CoreEvent types |
+| MODIFY | `src/skill_runner.h/.cpp` | Adapt to DrivenCore, remove executeStreaming |
+| MODIFY | `src/agent_core.h/.cpp` | Simplify to shell that wraps DrivenCore |
+| MODIFY | `src/tui/agent_tui.h/.cpp` | Remove AgentCore ownership, use mpsc queues |
+| MODIFY | `src/main.cpp` | Construct AppCoreThread, wire TUI or CLI |
+| MODIFY | `src/command_runner.h/.cpp` | Remove cancelFn (no longer needed) |
+| MODIFY | `CMakeLists.txt` | Add driven_provider_lib, driven_core_lib |
+| DELETE | `src/stream_registry.h/.cpp` | Replaced by mpsc event queues |
+| MODIFY | `test/unit/...` | All streaming tests adapt to new interfaces |
+| MODIFY | `test/agent_e2e/...` | E2E tests continue to work (PTY-based, no change) |
+
+### Migration Order
+
+1. Phase 1 (DrivenProvider + curl_multi) — build in parallel with existing code, leave old provider in place
+2. Phase 2 (DrivenCore state machine) — replace `executeStreaming()` and `xRunForkedLoop()` with single implementation
+3. Phase 3 (AppCoreThread + mpsc) — wrap DrivenCore in its own thread, move out of FTXUI
+4. Phase 4 (TUI refactor) — remove AgentCore from AgentTui, wire mpsc
+5. Phase 5 (CLI mode) — restore headless mode using same AppCoreThread
+6. Cleanup — remove old deepseek_provider, stream_registry, etc.
+
 ## Test Results
 
-- **113 tests total** (90 C++ + 23 Python E2E)
-- C++: 5 test targets, all passing
-- Python E2E: 23 tests across 3 files, all passing
-- Full suite runs in ~3 minutes (Python E2E dominates at ~2:50)
+- **~140 tests total** (90 C++ + 23 Python E2E + 2 streaming + clipboard + paste)
+- C++: 39 test targets, all passing
+- Python E2E: 28+ tests across 6 files
+- Full C++ suite runs in ~3 seconds
+- Python E2E runs in ~3 minutes (PTY-based TUI tests dominate)

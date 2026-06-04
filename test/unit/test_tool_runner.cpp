@@ -4,6 +4,11 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <cstdio>
+#include <thread>
+
+// Ignore SIGPIPE globally — subprocess pipes may close during parallel test
+// execution when the parent exits before the child finishes writing.
+static struct SigPipeGuard { SigPipeGuard() { signal(SIGPIPE, SIG_IGN); } } g_sigPipeGuard;
 
 class ToolRunnerTest : public ::testing::Test {
 protected:
@@ -113,11 +118,12 @@ TEST_F(ToolRunnerTest, ToolRunnerRunStreaming) {
         [&](const std::string& data, const std::string& dir) {
             accumulated += data;
         });
+    int rc = handle.wait();
+    EXPECT_EQ(rc, 0);
+    EXPECT_NE(accumulated.find("streaming_test"), std::string::npos);
 }
 
 TEST_F(ToolRunnerTest, TimeoutEnforced) {
-    // Ignore SIGPIPE: the child may die before we finish writing stdin
-    signal(SIGPIPE, SIG_IGN);
     Tool tool = makeBashTool();
     tool.timeoutSecs = 2;
     auto start = std::chrono::steady_clock::now();
