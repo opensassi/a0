@@ -64,8 +64,8 @@ int Supervisor::run() {
     while (m_running) {
         pollFds.clear();
         pollFds.push_back({m_listenFd, POLLIN, 0});
-        if (m_c2Fd >= 0) {
-            pollFds.push_back({m_c2Fd, POLLIN, 0});
+        if (m_c2Socket.fd() >= 0) {
+            pollFds.push_back({m_c2Socket.fd(), POLLIN, 0});
         }
         for (auto& pair : m_agents) {
             pollFds.push_back({pair.first, POLLIN, 0});
@@ -88,34 +88,30 @@ int Supervisor::run() {
                 m_agents[clientFd].pid = 0;
                 m_agents[clientFd].fd = clientFd;
                 m_agents[clientFd].connectedAt = std::chrono::steady_clock::now();
+                m_agentSockets.emplace(clientFd, clientFd);
             }
         }
         ++idx;
 
         // Handle c2 messages (prompt_reply)
-        if (m_c2Fd >= 0) {
+        if (m_c2Socket.fd() >= 0) {
             if (pollFds[idx].revents & (POLLIN | POLLHUP | POLLERR)) {
                 if (pollFds[idx].revents & (POLLHUP | POLLERR)) {
-                    ::close(m_c2Fd);
-                    m_c2Fd = -1;
+                    m_c2Socket.close();
                 } else {
-                    ipc::UnixSocket c2Sock(m_c2Fd);
                     ipc::Message msg;
-                    int recvRc = ipc::recvMessage(c2Sock, msg, 100);
-                    if (recvRc == 0) {
+                    int r = m_c2Socket.recv(msg, 100);
+                    if (r == ipc::RECV_OK) {
                         if (msg.type == ipc::MessageType::PROMPT_REPLY) {
                             xHandlePromptReply(msg);
                         } else if (msg.type == ipc::MessageType::STREAM_INPUT) {
                             xHandleStreamInput(msg);
                         } else if (msg.type == ipc::MessageType::TERMINAL_OPEN) {
-                            // c2 requests a terminal → forward to first connected a0
                             xHandleTerminalOpen(msg, -1);
                         }
-                    } else {
-                        ::close(m_c2Fd);
-                        m_c2Fd = -1;
+                    } else if (r < 0) {
+                        m_c2Socket.close();
                     }
-                    c2Sock.release();
                 }
             }
             ++idx;
@@ -132,15 +128,17 @@ int Supervisor::run() {
                         TRACE_LOG("b1: agent disconnected pid=" << it->second.pid
                                   << " session=" << it->second.sessionUuid);
                     }
+                    m_agentSockets.erase(fd);
                     ::close(fd);
                     m_agents.erase(fd);
                     continue;
                 }
 
-                ipc::UnixSocket peerSock(fd);
+                auto sockIt = m_agentSockets.find(fd);
+                if (sockIt == m_agentSockets.end()) continue;
                 ipc::Message msg;
-                int recvRc = ipc::recvMessage(peerSock, msg, 100);
-                if (recvRc == 0) {
+                int r = sockIt->second.recv(msg, 100);
+                if (r == ipc::RECV_OK) {
                     if (msg.type == ipc::MessageType::REGISTER) {
                         xHandleRegister(msg, fd);
                     } else if (msg.type == ipc::MessageType::HEARTBEAT) {
@@ -150,21 +148,19 @@ int Supervisor::run() {
                     } else if (msg.type == ipc::MessageType::STREAM_DATA) {
                         TRACE_LOG("b1: relay stream_data streamId=" << msg.streamId
                                   << " fd=" << fd);
-                        // Track stream owner and forward to c2
                         m_streamOwners[msg.streamId] = fd;
                         xSendToC2(msg);
                     } else if (msg.type == ipc::MessageType::STREAM_END) {
                         m_streamOwners.erase(msg.streamId);
                         xSendToC2(msg);
                     } else if (msg.type == ipc::MessageType::TERMINAL_READY) {
-                        // a0 opened a terminal → notify c2
                         xSendToC2(msg);
                     }
-                } else {
+                } else if (r < 0) {
+                    m_agentSockets.erase(fd);
                     ::close(fd);
                     m_agents.erase(fd);
                 }
-                peerSock.release();
             }
         }
 
@@ -184,7 +180,7 @@ int Supervisor::run() {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
             now - m_lastC2Push).count();
-        if (elapsed >= 5 && m_c2Fd >= 0) {
+        if (elapsed >= 5 && m_c2Socket.fd() >= 0) {
             xPushSnapshotToC2();
             m_lastC2Push = now;
         }
@@ -196,13 +192,12 @@ int Supervisor::run() {
 void Supervisor::shutdown() {
     m_running = false;
     m_listenSocket.close();
-    if (m_c2Fd >= 0) {
-        ::close(m_c2Fd);
-        m_c2Fd = -1;
-    }
-    for (auto& pair : m_agents) {
+    m_c2Socket.close();
+    for (auto& pair : m_agentSockets) {
+        pair.second.close();
         ::close(pair.first);
     }
+    m_agentSockets.clear();
     m_agents.clear();
 
     // Kill c2 child if we launched it
@@ -257,8 +252,7 @@ int Supervisor::xHandleHeartbeat(const ipc::Message& msg, int peerPid) {
 }
 
 int Supervisor::xHandleUserPrompt(const ipc::Message& msg, int peerFd) {
-    // Forward to c2
-    if (m_c2Fd < 0) return -1;
+    if (m_c2Socket.fd() < 0) return -1;
 
     auto it = m_agents.find(peerFd);
     int a0Pid = (it != m_agents.end()) ? it->second.pid : 0;
@@ -270,10 +264,7 @@ int Supervisor::xHandleUserPrompt(const ipc::Message& msg, int peerFd) {
     fwd.toolCallId = msg.toolCallId;
     fwd.prompt = msg.prompt;
 
-    ipc::UnixSocket c2Sock(m_c2Fd);
-    int rc = ipc::sendMessage(c2Sock, fwd);
-    c2Sock.release();
-    return rc;
+    return m_c2Socket.send(fwd);
 }
 
 int Supervisor::xHandlePromptReply(const ipc::Message& msg) {
@@ -317,7 +308,7 @@ int Supervisor::xDetectCrashes() {
 }
 
 int Supervisor::xPushSnapshotToC2() {
-    if (m_c2Fd < 0) return -1;
+    if (m_c2Socket.fd() < 0) return -1;
 
     ipc::Message update;
     update.type = ipc::MessageType::UPDATE;
@@ -337,28 +328,22 @@ int Supervisor::xPushSnapshotToC2() {
     }
     update.agents = agents;
 
-    ipc::UnixSocket c2Sock(m_c2Fd);
-    int rc = ipc::sendMessage(c2Sock, update);
+    int rc = m_c2Socket.send(update);
     if (rc < 0) {
-        ::close(m_c2Fd);
-        m_c2Fd = -1;
+        m_c2Socket.close();
         return -1;
     }
-    c2Sock.release();
     return 0;
 }
 
 int Supervisor::xSendToC2(const ipc::Message& msg) {
-    if (m_c2Fd < 0) return -1;
+    if (m_c2Socket.fd() < 0) return -1;
 
-    ipc::UnixSocket c2Sock(m_c2Fd);
-    int rc = ipc::sendMessage(c2Sock, msg);
+    int rc = m_c2Socket.send(msg);
     if (rc < 0) {
-        ::close(m_c2Fd);
-        m_c2Fd = -1;
+        m_c2Socket.close();
         return -1;
     }
-    c2Sock.release();
     return 0;
 }
 
@@ -507,7 +492,7 @@ int Supervisor::xLaunchC2IfNeeded() {
         }
         rc = ipc::sendMessage(c2Sock, reg);
         if (rc == 0) {
-            m_c2Fd = c2Sock.release();
+            m_c2Socket = ipc::BufferedSocket(c2Sock.release());
             return 0;
         }
     }
@@ -562,7 +547,7 @@ int Supervisor::xLaunchC2IfNeeded() {
                 reg.workdir = m_workdir;
                 rc = ipc::sendMessage(retrySock, reg);
                 if (rc == 0) {
-                    m_c2Fd = retrySock.release();
+                    m_c2Socket = ipc::BufferedSocket(retrySock.release());
                     return 0;
                 }
             }

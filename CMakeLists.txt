@@ -217,6 +217,7 @@ endfunction()
 
 add_ipc_test(test_unix_socket test/unit/test_unix_socket.cpp)
 add_ipc_test(test_ipc_protocol test/unit/test_ipc_protocol.cpp)
+add_ipc_test(test_buffered_socket test/unit/test_buffered_socket.cpp)
 
 # --- b1 tests ---
 function(add_b1_test TEST_NAME TEST_SOURCE)

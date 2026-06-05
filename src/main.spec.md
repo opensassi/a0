@@ -79,6 +79,7 @@ int main(int argc, char* argv[]);
 // TUI path (cmdTui) additionally:
 //   - Creates AgentTui(apiKey, model, &skillMgr, &persistence, agentId, b1Status)
 //   - AgentTui constructs DrivenProvider + DrivenCore internally
+//   - --mock-api URL forwarded via tui.setMockUrl(mockUrl) → DrivenProvider
 //   - No DefaultAgentCore used for TUI rendering loop
 ```
 
@@ -107,6 +108,10 @@ c2 --log-file /tmp/c2-e2e.log
 ```
 
 When `cmdTerminal` launches b1, it checks whether a parent `--log-file` was set. If so, it derives the b1 log path and passes it as `--log-file` to the b1 executable. The REPL mode b1 launch follows the same derivation.
+
+### Terminal BufferedSocket
+
+The terminal mode (`cmdTerminal`) connects to b1 via `UnixSocket`, then moves the fd into a `BufferedSocket` for the IPC receive loop. All `sendMessage()` calls are replaced with `BufferedSocket::send()`. The input thread reads from b1 via `BufferedSocket::recv()` with 100ms timeout, checking for `RECV_OK` (process message) vs other return codes (retry).
 
 ## 4. AgentStack
 
@@ -316,7 +321,7 @@ sequenceDiagram
 | `main` (CLI flags) | `terminal --terminal-id X --cwd /tmp` → terminal subcommand parsed, chdir to /tmp |
 | `main` (tui mode) | `a0 tui` → cmdTui constructs AgentTui with DrivenProvider/DrivenCore |
 | `cmdTui` | Session management | core.ensureSession() + setSession() called before TUI launch |
-| `cmdTui` | mockUrl propagation | Mock URL must be passed to DrivenProvider inside AgentTui |
+| `cmdTui` | mockUrl propagation | `tui.setMockUrl(mockUrl)` called, forwards to DrivenProvider |
 | `cmdTerminal` | b1 auto-launch when b1.sock missing → fork/exec b1, connect, register |
 | `cmdTerminal` | b1 already running → reuses existing b1, no second fork |
 | `xChildLog` | `/tmp/a.log` with suffix `"b1"` → returns `/tmp/a-b1.log` |

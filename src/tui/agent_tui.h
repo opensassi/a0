@@ -48,6 +48,8 @@ public:
 
     void submitInput(const std::string& input);
 
+    void setMockUrl(const std::string& url) { m_provider->setMockUrl(url); }
+
 private:
     a0::persistence::PersistenceStore* m_persistence;
     int64_t m_agentId = 0;

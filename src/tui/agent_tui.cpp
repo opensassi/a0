@@ -93,13 +93,17 @@ void AgentTui::shutdown() {
 
 void AgentTui::xTickCore() {
     if (!m_drivenCore->idle()) {
+        TRACE_LOG("xTickCore: core not idle, ticking...");
         auto events = m_drivenCore->tick();
+        TRACE_LOG("xTickCore: tick returned " << events.size() << " events");
         for (auto& ev : events) {
             xHandleEvent(ev);
         }
+        bool nowIdle = m_drivenCore->idle();
+        TRACE_LOG("xTickCore: core idle=" << nowIdle);
         // If the core is still busy after tick, request continued animation frames.
         // This keeps the coreTicker Renderer running and draining events.
-        if (!m_drivenCore->idle() && m_screen) {
+        if (!nowIdle && m_screen) {
             m_screen->RequestAnimationFrame();
         }
     }
@@ -107,16 +111,21 @@ void AgentTui::xTickCore() {
 
 void AgentTui::xHandleEvent(const mpsc::AppCoreEvent& ev) {
     if (std::holds_alternative<mpsc::LlmToken>(ev)) {
+        TRACE_LOG("AgentTui: LlmToken(\"" << std::get<mpsc::LlmToken>(ev).text << "\")");
         xOnToken(std::get<mpsc::LlmToken>(ev).text);
     } else if (std::holds_alternative<mpsc::ToolStart>(ev)) {
         const auto& ts = std::get<mpsc::ToolStart>(ev);
+        TRACE_LOG("AgentTui: ToolStart(" << ts.toolName << ")");
         xOnToolStart(ts.toolName, ts.arguments);
     } else if (std::holds_alternative<mpsc::ToolEnd>(ev)) {
         const auto& te = std::get<mpsc::ToolEnd>(ev);
+        TRACE_LOG("AgentTui: ToolEnd(" << te.toolName << ")");
         xOnToolEnd(te.toolName, te.output, te.exitCode == 0);
     } else if (std::holds_alternative<mpsc::Complete>(ev)) {
+        TRACE_LOG("AgentTui: Complete(\"" << std::get<mpsc::Complete>(ev).text << "\")");
         xOnComplete(std::get<mpsc::Complete>(ev).text);
     } else if (std::holds_alternative<mpsc::Error>(ev)) {
+        TRACE_LOG("AgentTui: Error(\"" << std::get<mpsc::Error>(ev).message << "\")");
         xOnError(std::get<mpsc::Error>(ev).message);
     }
 }
@@ -185,6 +194,12 @@ void AgentTui::xOnComplete(const std::string& fullOutput) {
         m_messagePanel->endStream(m_streamingEntryIndex);
         m_streamingEntryIndex = -1;
         m_streamingText.clear();
+    } else {
+        // Non-streaming response: append as a complete assistant message
+        MessageEntry entry;
+        entry.role = MessageRole::Assistant;
+        entry.content = fullOutput;
+        m_messagePanel->append(entry);
     }
 
     m_agentState = AgentState::Idle;
@@ -291,6 +306,10 @@ int AgentTui::xHandleInterrupt() {
         m_statusBar->setAgentState(m_agentState);
         m_inputPanel->setEnabled(true);
         m_inputPanel->component()->TakeFocus();
+
+        if (m_screen) {
+            m_screen->RequestAnimationFrame();
+        }
     }
     return 0;
 }

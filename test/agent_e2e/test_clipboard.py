@@ -177,3 +177,32 @@ def test_copy_after_drag_no_crash():
             assert "Idle" in text or "b1" in text or "msgs" in text, (
                 f"TUI crashed after drag. Got: {text[:200]}"
             )
+
+
+def test_osc52_sequence_in_output():
+    """Mouse drag-select should emit OSC 52 escape sequence to stdout."""
+    _clear_clipboard_log()
+    with MockServer() as server:
+        with TuiDriver(mock_server=server) as driver:
+            assert _wait_for_tui_ready(driver), "TUI failed to start"
+
+            # Drag across the status bar row to trigger copyToClipboard
+            driver.send_mouse_down(2, 1, button=0)
+            time.sleep(0.05)
+            driver.send_mouse_move(40, 1)
+            time.sleep(0.05)
+            driver.send_mouse_up(40, 1)
+            time.sleep(0.5)
+
+            # Check raw output for OSC 52 sequence
+            raw = driver.capture_raw(timeout=2)
+            assert b"\x1b]52;c;" in raw, (
+                f"OSC 52 sequence not found in raw output. "
+                f"Raw bytes (hex): {raw[:200].hex()}"
+            )
+
+            # Also verify clipboard contents via mock xclip
+            contents = _clipboard_contents()
+            assert "Idle" in contents and "msgs" in contents, (
+                f"Clipboard should contain status bar text. Got: '{contents[:100]}'"
+            )

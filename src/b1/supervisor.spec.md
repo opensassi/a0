@@ -42,7 +42,8 @@ private:
     ipc::UnixSocket m_listenSocket;
     bool m_running = false;
     std::unordered_map<int, AgentRecord> m_agents;
-    int m_c2Fd = -1;
+    std::unordered_map<int, ipc::BufferedSocket> m_agentSockets;
+    ipc::BufferedSocket m_c2Socket;
     std::chrono::steady_clock::time_point m_lastC2Push;
     int m_listenFd = -1;
     int m_c2ChildPid = -1;
@@ -157,7 +158,7 @@ sequenceDiagram
 
 ### Shutdown
 
-`shutdown()` kills the c2 child process (`m_c2ChildPid`) with SIGTERM, waits up to 2s, then escalates to SIGKILL. Waits on the pid with `waitpid()` before returning.
+`shutdown()` closes `m_c2Socket` (which closes the underlying fd and clears its buffer), then iterates `m_agentSockets` closing each and clearing their buffers. Finally kills the c2 child process (`m_c2ChildPid`) with SIGTERM, waits up to 2s, then escalates to SIGKILL.
 
 ### TRACE_LOG instrumentation
 
@@ -178,7 +179,9 @@ Critical relay points include TRACE_LOG calls (enabled via `-DENABLE_TRACE=ON`):
 | c2 socket unreachable | `xLaunchC2IfNeeded` fork/execs new c2 via setsid() |
 | user_prompt from unknown agent | Forwarded to c2 with pid=0 |
 | prompt_reply for unknown session | Logged to stderr, dropped |
-| c2 connection lost mid-operation | Next send returns -1 → fd closed, c2 auto-relaunch via `xLaunchC2IfNeeded` |
+| c2 connection lost mid-operation | Next send returns -1 → socket closed, c2 auto-relaunch via `xLaunchC2IfNeeded` |
+| recv returns RECV_AGAIN | No action — poll loop retries next iteration |
+| recv returns RECV_ERR | Socket closed, erased from maps |
 | --log-file derivation | Child a0 terminal receives derived log path; if parent log is empty, no --log-file passed |
 | shutdown with live c2 child | SIGTERM with 2s grace, SIGKILL if still alive, then `waitpid` |
 

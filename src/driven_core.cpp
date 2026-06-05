@@ -189,6 +189,7 @@ std::vector<mpsc::AppCoreEvent> DrivenCore::tick() {
 }
 
 void DrivenCore::xHandleLlmEvents(const std::vector<mpsc::AppCoreEvent>& events) {
+    TRACE_LOG("DrivenCore::xHandleLlmEvents count=" << events.size());
     for (const auto& ev : events) {
         if (std::holds_alternative<mpsc::LlmToken>(ev)) {
             m_accumText += std::get<mpsc::LlmToken>(ev).text;

@@ -245,7 +245,8 @@ public:
 
 // DrivenProvider — async LLM provider (src/driven_provider.h/.cpp)
 //   curl_multi-based, startRequest()/startRequestStreaming() non-blocking
-//   tick() drives curl, returns decoded AppCoreEvent vector
+//   tick() drives curl_multi_wait() + curl_multi_perform(), returns decoded AppCoreEvent vector
+//   Note: curl_multi_wait required before perform to drive async DNS resolver
 //   Designed for event-loop integration alongside DeepSeekProvider
 
 // DrivenCore — tick-driven state machine core (src/driven_core.h/.cpp)
@@ -1265,4 +1266,20 @@ The complete technical specification for the Skills sub‑module is provided in 
 **Location**: `./src/skills/technical-specification.md`  
 **Source code**: `./src/skills/`
 
+## Appendix C: Concurrency Model Specification
+
+The complete technical specification for the concurrency model is provided in a separate document: `./specs/concurrency-model.md`. It covers all concurrent execution in the a0 agent ecosystem — independent threads, async event loops, and inter-process communication — as a high-level C4 architecture where each component is a concurrency context (thread or async loop) rather than a source file.
+
+**Key findings:**
+- 9 concurrency contexts across 3 processes (a0: 6, b1: 1, c2: 2)
+- All IPC uses Unix domain sockets with `BufferedSocket` for buffered reads (100B chunks, 64KB max)
+- Three independent mutex domains in c2 (`C2Listener::m_b1Mutex`, `B1Registry::m_mutex`, `SseManager::m_mutex`) — no nested acquisition, deadlock-free
+- `DrivenProvider` is single-thread by design; `curl_multi_wait` required before `perform` for async DNS
+- `AppCoreThread` is fully implemented but currently unused (TUI drives `DrivenCore` directly on the FTXUI thread)
+
+**Location**: `./specs/concurrency-model.md`  
+**Source code**: Cross-cuts entire source tree (see §10 of the concurrency spec for file mapping)
+
 ---
+
+

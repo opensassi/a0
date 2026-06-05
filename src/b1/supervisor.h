@@ -46,7 +46,8 @@ private:
     ipc::UnixSocket m_listenSocket;
     bool m_running = false;
     std::unordered_map<int, AgentRecord> m_agents;
-    int m_c2Fd = -1;
+    std::unordered_map<int, ipc::BufferedSocket> m_agentSockets;
+    ipc::BufferedSocket m_c2Socket;
     std::chrono::steady_clock::time_point m_lastC2Push;
     int m_listenFd = -1;
     int m_c2ChildPid = -1;

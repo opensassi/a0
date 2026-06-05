@@ -274,6 +274,12 @@ std::vector<mpsc::AppCoreEvent> DrivenProvider::tick() {
 
     // Drive curl
     int running;
+
+    // Non-blocking poll of curl's internal fds (async DNS resolver, TCP connect).
+    // Without this, the async resolver's socket never gets polled and DNS queries
+    // hang until they time out. Zero timeout means it returns immediately.
+    curl_multi_wait(m_multi, nullptr, 0, 0, nullptr);
+
     CURLMcode mc = curl_multi_perform(m_multi, &running);
     TRACE_LOG("DrivenProvider::tick perform running=" << running << " mc=" << mc);
     if (mc != CURLM_OK) {
@@ -297,14 +303,26 @@ std::vector<mpsc::AppCoreEvent> DrivenProvider::tick() {
     if (m_handle.streaming && m_handle.easy) {
         // Read the response body accumulated so far
         if (!m_handle.responseBody.empty()) {
+            TRACE_LOG("DrivenProvider: feeding " << m_handle.responseBody.size() << " bytes to decoder");
             m_handle.decoder.feed(m_handle.responseBody);
             m_handle.responseBody.clear();
 
             // Collect decoder events
             auto decoderEvents = m_handle.decoder.events();
+            TRACE_LOG("DrivenProvider: decoder produced " << decoderEvents.size() << " events (complete=" << m_handle.decoder.complete() << ")");
+            for (const auto& ev : decoderEvents) {
+                if (std::holds_alternative<mpsc::LlmToken>(ev))
+                    TRACE_LOG("  event: LlmToken(\"" << std::get<mpsc::LlmToken>(ev).text << "\")");
+                else if (std::holds_alternative<mpsc::Complete>(ev))
+                    TRACE_LOG("  event: Complete(\"" << std::get<mpsc::Complete>(ev).text << "\")");
+                else if (std::holds_alternative<mpsc::Error>(ev))
+                    TRACE_LOG("  event: Error(\"" << std::get<mpsc::Error>(ev).message << "\")");
+            }
             events.insert(events.end(),
                           std::make_move_iterator(decoderEvents.begin()),
                           std::make_move_iterator(decoderEvents.end()));
+        } else {
+            TRACE_LOG("DrivenProvider: streaming but responseBody empty (running=" << running << ")");
         }
     }
 
@@ -327,6 +345,10 @@ void DrivenProvider::xProcessCompletion(CURL* easy, CURLcode result,
 
     long httpCode = 0;
     curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &httpCode);
+
+    TRACE_LOG("xProcessCompletion: result=" << result << " httpCode=" << httpCode
+              << " streaming=" << m_handle.streaming
+              << " responseBody.size=" << m_handle.responseBody.size());
 
     if (result != CURLE_OK) {
         out.push_back(mpsc::Error{

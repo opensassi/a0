@@ -152,6 +152,9 @@ public:
     /// Submit input programmatically (for test harness).
     void submitInput(const std::string& input);
 
+    /// Set mock URL for testing (forwards to DrivenProvider).
+    void setMockUrl(const std::string& url) { m_provider->setMockUrl(url); }
+
 private:
     ::a0::persistence::PersistenceStore* m_persistence;
     int64_t m_agentId = 0;

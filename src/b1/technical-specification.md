@@ -124,8 +124,9 @@ private:
     std::string m_workdir;
     ipc::UnixSocket m_listenSocket;
     bool m_running = false;
-    std::unordered_map<int, AgentRecord> m_agents;  // keyed by peer fd
-    int m_c2Fd = -1;                     // -1 if not connected
+    std::unordered_map<int, AgentRecord> m_agents;        // keyed by peer fd
+    std::unordered_map<int, ipc::BufferedSocket> m_agentSockets;
+    ipc::BufferedSocket m_c2Socket;                        // persistent buffered reader for c2 IPC
     std::chrono::steady_clock::time_point m_lastC2Push;
     int m_listenFd = -1;
     int m_c2ChildPid = -1;               // PID of forked c2 child

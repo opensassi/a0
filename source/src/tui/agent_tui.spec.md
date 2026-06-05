@@ -74,6 +74,9 @@ public:
     /// Programmatic input submission (used by tests).
     void submitInput(const std::string& input);
 
+    /// Set mock URL for testing (forwards to DrivenProvider).
+    void setMockUrl(const std::string& url) { m_provider->setMockUrl(url); }
+
 private:
     // Non-owning dependencies
     a0::persistence::PersistenceStore* m_persistence;
@@ -289,7 +292,12 @@ sequenceDiagram
             AT->>MP: appendToolCall(name, Completed/Failed, output)
             AT->>SB: setAgentState(Thinking)
         alt Complete
-            AT->>MP: endStream
+            alt streaming (m_streamingEntryIndex >= 0)
+                AT->>MP: streamUpdate(fullOutput)
+                AT->>MP: endStream
+            else non-streaming (no prior LlmToken)
+                AT->>MP: append(Assistant, fullOutput)
+            end
             AT->>SB: setAgentState(Idle)
             AT->>IP: setEnabled(true)
         alt Error
@@ -319,6 +327,7 @@ sequenceDiagram
     AT->>SB: setAgentState(Idle)
     AT->>IP: setEnabled(true)
     AT->>IP: focus()
+    AT->>Screen: RequestAnimationFrame() — force re-render
 ```
 
 ---
@@ -511,8 +520,10 @@ window.getAnimationState = function() {
 | `xOnToolStart` | Tool begins | appendToolCall called, state = Executing |
 | `xOnToolEnd` | Tool succeeds | appendToolCall called with Completed |
 | `xOnToolEnd` | Tool fails | appendToolCall called with Failed |
-| `xOnComplete` | Response done | endStream called, state = Idle, input re-enabled |
+| `xOnComplete` | Streaming response (token received) | endStream called, state = Idle, input re-enabled |
+| `xOnComplete` | Non-streaming response (no prior token) | MessageEntry appended directly, state = Idle |
 | `xOnError` | Error occurs | Error message appended, state = Idle |
+| `setMockUrl` | URL forwarded | m_provider->setMockUrl() called with URL |
 | `xTickCore` | Events pending | tick() called, events dispatched |
 | `xTickCore` | Core still busy | RequestAnimationFrame posted |
 

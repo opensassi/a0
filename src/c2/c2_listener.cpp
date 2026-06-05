@@ -51,7 +51,8 @@ int C2Listener::run() {
         pollFds.clear();
         pollFds.push_back({m_listenFd, POLLIN, 0});
 
-        for (int fd : peerFds) {
+        for (auto& [fd, _] : m_peers) {
+            (void)_;
             pollFds.push_back({fd, POLLIN, 0});
         }
 
@@ -66,12 +67,12 @@ int C2Listener::run() {
             ipc::UnixSocket client;
             if (m_listenSocket.accept(client) == 0 && client.isOpen()) {
                 TRACE_LOG("c2: b1 connect on listen socket");
-                peerFds.push_back(client.release());
+                int fd = client.release();
+                m_peers.emplace(fd, fd);
             }
         }
 
-        // Helper lambda: clean up a disconnected peer fd, removing from m_b1PidToFd
-        // and B1Registry so stale entries don't accumulate.
+        // Helper lambda: clean up a disconnected peer fd
         auto xCleanupPeer = [this](int fd) {
             int b1Pid = 0;
             {
@@ -87,30 +88,30 @@ int C2Listener::run() {
                 TRACE_LOG("c2: removing stale b1 pid=" << b1Pid);
                 m_registry->removeB1(b1Pid);
             }
-            auto it = std::find(peerFds.begin(), peerFds.end(), fd);
-            if (it != peerFds.end()) peerFds.erase(it);
         };
 
         for (size_t i = 1; i < pollFds.size(); ++i) {
             int fd = pollFds[i].fd;
             if (pollFds[i].revents & (POLLHUP | POLLERR)) {
                 TRACE_LOG("c2: b1 disconnected fd=" << fd);
+                m_peers.erase(fd);
                 ::close(fd);
                 xCleanupPeer(fd);
                 continue;
             }
 
             if (pollFds[i].revents & POLLIN) {
-                ipc::UnixSocket sock(fd);
+                auto peerIt = m_peers.find(fd);
+                if (peerIt == m_peers.end()) continue;
                 ipc::Message msg;
-                int r = ipc::recvMessage(sock, msg, 100);
-                if (r == 0) {
+                int r = peerIt->second.recv(msg, 100);
+                if (r == ipc::RECV_OK) {
                     xHandleMessage(nlohmann::json::parse(ipc::serialize(msg)), fd);
-                } else {
+                } else if (r < 0) {
+                    m_peers.erase(fd);
                     ::close(fd);
                     xCleanupPeer(fd);
                 }
-                sock.release();
             }
         }
     }

@@ -228,6 +228,21 @@ class TuiDriver:
                     break
         return strip_ansi(output.decode("utf-8", errors="replace"))
 
+    def capture_raw(self, timeout=2.0):
+        """Read available rendered output, return raw bytes (no ANSI stripping)."""
+        output = b""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            r, _, _ = select.select([self.master_fd], [], [], 0.1)
+            if r:
+                try:
+                    data = os.read(self.master_fd, 65536)
+                    if data:
+                        output += data
+                except OSError:
+                    break
+        return output
+
     def _write_raw(self, data):
         if self.master_fd and self.master_fd > 0:
             os.write(self.master_fd, data)

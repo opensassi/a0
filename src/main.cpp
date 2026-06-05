@@ -749,7 +749,7 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
                               agentId,
                               [&b1Fd]() { return b1Fd >= 0; });
         if (!mockUrl.empty()) {
-            // Pass mock URL to the DrivenProvider inside AgentTui
+            tui.setMockUrl(mockUrl);
         }
         if (!tuiResumeUuid.empty())
             tui.resumeSession(tuiResumeUuid);
@@ -828,11 +828,12 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
     }
 
     // Connect to b1
-    a0::ipc::UnixSocket b1Sock;
-    if (b1Sock.connect(b1SockPath, 2000) != 0) {
+    a0::ipc::UnixSocket b1RawSock;
+    if (b1RawSock.connect(b1SockPath, 2000) != 0) {
         std::cerr << "a0: terminal: cannot connect to b1\n";
         return 1;
     }
+    a0::ipc::BufferedSocket b1Sock(b1RawSock.release());
 
     // Create PTY
     int master = posix_openpt(O_RDWR | O_NOCTTY);
@@ -875,7 +876,7 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
         ready.streamId = streamId;
         ready.pid = getpid();
         ready.terminalId = terminalId;
-        a0::ipc::sendMessage(b1Sock, ready);
+        b1Sock.send(ready);
     }
 
     // Read loop
@@ -887,8 +888,9 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
         std::thread inputThread([&]() {
             while (!done) {
                 a0::ipc::Message inputMsg;
-                int rc = a0::ipc::recvMessage(b1Sock, inputMsg, 100);
-                if (rc == 0 && inputMsg.type == a0::ipc::MessageType::STREAM_INPUT
+                int rc = b1Sock.recv(inputMsg, 100);
+                if (rc == a0::ipc::RECV_OK
+                    && inputMsg.type == a0::ipc::MessageType::STREAM_INPUT
                     && inputMsg.streamId == streamId) {
                     write(master, inputMsg.chunkData.data(), inputMsg.chunkData.size());
                 }
@@ -915,7 +917,7 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
                     chunk.chunkSeq = seq;
                     chunk.chunkDirection = "stdout";
                     chunk.chunkData = data;
-                    a0::ipc::sendMessage(b1Sock, chunk);
+                    b1Sock.send(chunk);
                 } else {
                     done = true;
                 }
@@ -938,7 +940,7 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
         end.type = a0::ipc::MessageType::STREAM_END;
         end.streamId = streamId;
         end.pid = exitCode;
-        a0::ipc::sendMessage(b1Sock, end);
+        b1Sock.send(end);
 
         if (inputThread.joinable()) inputThread.join();
     }

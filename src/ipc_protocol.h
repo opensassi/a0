@@ -51,4 +51,55 @@ int deserialize(const std::string& jsonLine, Message& msg);
 int recvMessage(UnixSocket& sock, Message& msg, int timeoutMs = 5000);
 int sendMessage(UnixSocket& sock, const Message& msg);
 
+// ============================================================================
+// Buffered recv result codes
+// ============================================================================
+
+enum RecvResult {
+    RECV_OK = 0,      // complete \n-delimited message in msg
+    RECV_AGAIN = 1,   // no complete message yet, retry next poll
+    RECV_ERR = -1     // fatal, close connection
+};
+
+// ============================================================================
+// BufferedSocket — persistent per-connection buffered reader
+// ============================================================================
+
+class BufferedSocket {
+public:
+    BufferedSocket() = default;
+    explicit BufferedSocket(int fd);
+    ~BufferedSocket();
+
+    BufferedSocket(BufferedSocket&& other) noexcept
+        : m_fd(other.m_fd), m_buffer(std::move(other.m_buffer)) {
+        other.m_fd = -1;
+    }
+    BufferedSocket& operator=(BufferedSocket&& other) noexcept {
+        if (this != &other) {
+            close();
+            m_fd = other.m_fd;
+            m_buffer = std::move(other.m_buffer);
+            other.m_fd = -1;
+        }
+        return *this;
+    }
+
+    int fd() const { return m_fd; }
+    int release();
+    void close();
+
+    /// Read one complete \n-delimited message.
+    int recv(Message& msg, int timeoutMs = 5000);
+
+    /// Send a message.
+    int send(const Message& msg);
+
+private:
+    int m_fd = -1;
+    std::string m_buffer;
+    static constexpr size_t READ_CHUNK = 100;
+    static constexpr size_t MAX_BUFFER = 65536;
+};
+
 } // namespace a0::ipc

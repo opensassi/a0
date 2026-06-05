@@ -33,7 +33,7 @@ private:
     ipc::UnixSocket m_listenSocket;
     int m_listenFd = -1;
     bool m_running = false;
-    std::vector<int> peerFds;
+    std::unordered_map<int, ipc::BufferedSocket> m_peers;
     std::unordered_map<int, int> m_b1PidToFd;
     mutable std::mutex m_b1Mutex;
 
@@ -132,6 +132,8 @@ sequenceDiagram
 | sendToB1 to disconnected b1 | Returns -1 (fd closed or not found) |
 | stream_data with missing fields | Returns -1, no SSE broadcast |
 | b1 socket hangup or recv error | `xCleanupPeer` called → `removeB1(pid)` to prevent stale entries |
+| recv returns RECV_AGAIN | No action — poll loop retries |
+| recv returns RECV_ERR | m_peers entry erased, fd closed, xCleanupPeer called |
 
 ## 6. Testing Requirements
 

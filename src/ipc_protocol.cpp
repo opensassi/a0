@@ -1,6 +1,11 @@
 #include "ipc_protocol.h"
 #include <vector>
 #include <algorithm>
+#include <poll.h>
+#include <cerrno>
+#include <cstring>
+#include <unistd.h>
+#include <sys/socket.h>
 
 namespace a0::ipc {
 
@@ -127,6 +132,85 @@ int sendMessage(UnixSocket& sock, const Message& msg) {
     int rc = sock.send(wire);
     if (rc < 0) return -1;
     return 0;
+}
+
+// ============================================================================
+// BufferedSocket implementation
+// ============================================================================
+
+BufferedSocket::BufferedSocket(int fd) : m_fd(fd) {}
+
+BufferedSocket::~BufferedSocket() { close(); }
+
+int BufferedSocket::release() {
+    int fd = m_fd;
+    m_fd = -1;
+    m_buffer.clear();
+    return fd;
+}
+
+void BufferedSocket::close() {
+    if (m_fd >= 0) ::close(m_fd);
+    m_fd = -1;
+    m_buffer.clear();
+}
+
+int BufferedSocket::send(const Message& msg) {
+    if (m_fd < 0) return -1;
+    std::string wire = serialize(msg);
+    size_t total = 0;
+    while (total < wire.size()) {
+        ssize_t n = ::send(m_fd, wire.data() + total,
+                           wire.size() - total, MSG_NOSIGNAL);
+        if (n <= 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        total += static_cast<size_t>(n);
+    }
+    return 0;
+}
+
+int BufferedSocket::recv(Message& msg, int timeoutMs) {
+    if (m_fd < 0) return RECV_ERR;
+
+    // 1. Check existing buffer for a complete message
+    auto nl = m_buffer.find('\n');
+    if (nl != std::string::npos) {
+        std::string line = m_buffer.substr(0, nl);
+        m_buffer.erase(0, nl + 1);
+        return deserialize(line, msg) == 0 ? RECV_OK : RECV_ERR;
+    }
+
+    // 2. No complete message — poll for data
+    struct pollfd pfd = {m_fd, POLLIN, 0};
+    int rc = ::poll(&pfd, 1, timeoutMs);
+    if (rc < 0) return RECV_ERR;
+    if (rc == 0) return RECV_AGAIN;
+
+    // 3. Read what's available (up to READ_CHUNK bytes)
+    char buf[READ_CHUNK];
+    ssize_t n = ::recv(m_fd, buf, sizeof(buf), 0);
+    if (n <= 0) return RECV_ERR;
+
+    m_buffer.append(buf, static_cast<size_t>(n));
+
+    // 4. Guard against unbounded growth
+    if (m_buffer.size() > MAX_BUFFER) {
+        m_buffer.clear();
+        return RECV_ERR;
+    }
+
+    // 5. Scan for message delimiter in accumulated buffer
+    nl = m_buffer.find('\n');
+    if (nl != std::string::npos) {
+        std::string line = m_buffer.substr(0, nl);
+        m_buffer.erase(0, nl + 1);
+        return deserialize(line, msg) == 0 ? RECV_OK : RECV_ERR;
+    }
+
+    // Partial data received but no complete message yet
+    return RECV_AGAIN;
 }
 
 } // namespace a0::ipc

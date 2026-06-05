@@ -8,6 +8,12 @@ Async LLM provider using `curl_multi` for non-blocking HTTP requests. Supports b
 
 **Dependencies:** `libcurl`, `nlohmann/json`, `response_decoder.h`, `mpsc.h`, `agent_interfaces.h`
 
+**Important:** `tick()` must call `curl_multi_wait(m_multi, nullptr, 0, 0, nullptr)` before
+`curl_multi_perform()` to drive curl's internal async DNS resolver and connection I/O.
+Without this, the async resolver's sockets are never polled, DNS queries hang until
+timeout, and curl reports `CURLE_COULDNT_RESOLVE_HOST`. The zero-timeout wait is a
+single non-blocking `poll()` call (~1µs).
+
 ## 2. Component Specifications
 
 ```cpp
@@ -130,6 +136,8 @@ sequenceDiagram
 
     loop tick cycle
         C->>DP: tick()
+        DP->>CURL: curl_multi_wait() — drives async DNS & I/O
+        Note over DP,CURL: Zero-timeout poll of curl's internal fds.<br/>Required for async DNS resolver to complete.
         DP->>CURL: curl_multi_perform()
         CURL-->>DP: running handles
         DP->>CURL: curl_multi_info_read()

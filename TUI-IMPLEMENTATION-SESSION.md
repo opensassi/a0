@@ -128,42 +128,36 @@ DrivenProvider uses `curl_multi` for non-blocking HTTP. `startRequestStreaming()
 ### First LLM request omits tool schemas
 The initial LLM request in `DrivenCore::submitGoal` starts with `includeTools=false` (matching the old streaming path behavior). Tool schemas are only included in follow-up requests after tool execution. This avoids the mock server returning `tool_calls` instead of a content response.
 
+### curl_multi_perform needs curl_multi_wait before it to drive async DNS
+`DrivenProvider::tick()` calls `curl_multi_perform()` but curl's internal async DNS resolver has its own sockets that must be polled for DNS responses. Without `curl_multi_wait(m_multi, nullptr, 0, 0, nullptr)` before each `perform`, DNS resolution never completes and curl returns `CURLE_COULDNT_RESOLVE_HOST`. The zero-timeout `wait` is a single `poll()` syscall (~1µs) that drives curl's internal I/O non-blockingly. This affected both mock server and real DeepSeek API usage.
+
+### Non-streaming responses need explicit handling in xOnComplete
+`DrivenProvider` sends `"stream": true` in the request body, but the mock server returns plain JSON (not SSE). The `ResponseDecoder::xFlushBuffer` method detects JSON mode and emits a single `Complete` event with no preceding `LlmToken`. `AgentTui::xOnComplete` only handled the streaming path (`m_streamingEntryIndex >= 0`), so the response was silently dropped. Fixed by adding an `else` branch that appends the response as a `MessageEntry` directly.
+
+### BufferedSocket replaces one-byte-at-a-time IPC recv
+`recvMessage()` in `ipc_protocol.cpp` read one byte per `poll()` + `recv()` syscall — ~300 syscalls for a 150-byte REGISTER message. Replaced with `BufferedSocket`, a persistent per-connection buffered reader that reads up to 100 bytes per call and accumulates in a per-fd buffer. All callers updated: b1 supervisor (socket map per agent), c2 listener (map replaces vector), a0 terminal mode. `RecvResult` enum replaces magic integers: `RECV_OK` (0), `RECV_AGAIN` (1), `RECV_ERR` (-1). Callers previously closed connections on any non-zero return; they now distinguish `RECV_AGAIN` (retry) from `RECV_ERR` (close).
+
+### Concurrency model specification written
+Created `specs/concurrency-model.md` (840 lines, 10 sections) covering all 9 concurrency contexts across 3 processes (a0, b1, c2). Includes C4 container diagrams, mutex domain analysis, 4 sequence diagrams, and 4 identified issues. Reviewed by 7-expert panel producing 8 revisions.
+
 ---
 
-## Remaining Issues (All Caused by Current Changes)
+## Remaining Issues
 
-### 1. curl_multi transfer never completes — LLM response not rendered
-**Symptom**: test_tui_submit_goal_shows_response fails with timeout (15s). The mock server receives the tools_for_prompt request (via old DeepSeekProvider) but NOT the DrivenProvider's streaming request. The `curl_multi_perform` call from `DrivenProvider::tick()` does not establish the HTTP connection to the mock server.
+### 1. c2 signal handler calls non-async-signal-safe shutdown
+Section 7.4 of the concurrency spec flags that the c2 signal handler calls `dashboard.shutdown()` and `listener.shutdown()` which acquire mutexes — not async-signal-safe. If a signal arrives while the dashboard or listener holds a mutex, the shutdown call deadlocks and `_exit(0)` is never reached. Fix: self-pipe trick or signalfd for signal-safe shutdown.
 
-**Trace evidence**: TRACE log shows `DrivenCore::submitGoal`, `DrivenProvider::startRequestStreaming`, and `DrivenProvider::tick` called, but the second `[MOCK] POST` never appears. The `curl_multi_perform` returns `running=0` immediately without initiating the connection.
+### 2. hex_session_id uses std::mt19937 (not CSPRNG)
+Section 4.2 of the concurrency spec notes that `hex_session_id` seeds `std::mt19937` from `std::random_device`. Sufficient for session UUIDs used as identifiers, but not suitable for security tokens. Should be documented with a note in the concurrency model spec.
 
-**Root cause investigation**: The `curl_multi` handle is initialized in `DrivenProvider` constructor (`curl_multi_init()`). The easy handle is created and configured in `startRequestStreaming`, then added to `m_multi` via `curl_multi_add_handle`. On the next `tick()`, `curl_multi_perform(m_multi, &running)` is called. `running` should be 1 (transfer in progress). But the connection is never established to the mock server — no TCP SYN packet reaches the mock port.
+### 3. close(stdinPipe1) without lock in stream reader thread
+Spec §6.1 documents that `command_runner.cpp:256` closes `stdinPipe1` without holding `state->mutex`. If `sendInput()` is called concurrently, the write may go to a recycled fd. Mitigated in practice by the race window (close happens after pipe EOF, sendInput called before child exits). Fix: wrap in `lock_guard`.
 
-**Hypothesis**: curl may be trying HTTPS (TLS) even though the URL is HTTP. The URL set via `setMockUrl` is `http://127.0.0.1:PORT/v1/chat/completions` and the SSL verification skip check looks for "localhost" or "127.0.0.1" in `m_baseUrl`. This should work for plain HTTP.
+### 4. DeepSeekProvider cross-thread access from skill executor
+Spec §6.2 documents that `skill_runner.cpp:348` calls `m_provider->complete()` from a background thread, but `DeepSeekProvider` has no internal locks and shares `m_baseUrl` with `setMockUrl()`. Not triggered in current usage (TUI uses DrivenProvider), but the code path exists. Fix: add mutex or route through DrivenProvider.
 
-**To fix**: Verify the URL is correctly set on the curl handle. Test with `curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L)` to see connection diagnostics. Or bypass curl_multi entirely and use a synchronous curl_easy_perform in a thread (like the old code did).
-
-### 2. Interrupt doesn't render "Interrupted" message
-**Symptom**: test_tui_interrupt_streaming fails. After sending Ctrl+C during streaming, the TUI output shows `Thinking` instead of `Idle` or the "Interrupted" system message.
-
-**Root cause**: `xHandleInterrupt` correctly calls `m_drivenCore->cancel()`, appends an "Interrupted" `MessageEntry`, and sets `m_agentState = AgentState::Idle`. But the FTXUI event loop doesn't re-render after these UI updates — the captured screen output still shows the pre-interrupt state.
-
-**To fix**: Call `m_screen->RequestAnimationFrame()` at the end of `xHandleInterrupt` to trigger a render cycle. Or ensure the setOnSubmit callback chain triggers a render via FTXUI's Post mechanism after the interrupt callback returns.
-
-### 3. Mock URL not propagated to DrivenProvider
-**Symptom**: When `--mock-api` is specified on the command line, it's passed to the old `DeepSeekProvider` via `stack.provider.setMockUrl(mockUrl)` in `AgentStack`. But the new `DrivenProvider` inside `AgentTui` doesn't receive this URL.
-
-**Current behavior**: `DrivenProvider` connects to the real DeepSeek API (`https://api.deepseek.com/v1/chat/completions`) which requires a valid API key. Tests using mock servers fail because the provider ignores the mock URL.
-
-**To fix**: Add a `setMockUrl(const std::string&)` method to `AgentTui` (which forwards to its internal `DrivenProvider`). Call it from `cmdTui` in `main.cpp` when `mockUrl` is not empty:
-```cpp
-if (!mockUrl.empty()) {
-    tui.setMockUrl(mockUrl);
-}
-```
-
-### 4. (Minor) Interrupt test expects old status text
-The interrupt test checks for `"Interrupted"` in the captured output. The current handler appends a message with `MessageRole::System` and content `"Interrupted"`. The message panel renders this with the role label `┌─ System` above the content. The test's `capture()` strips ANSI but should find the `Interrupted` text once #2 is fixed.
+### 5. g_timeoutFired read without std::atomic_signal_fence
+Spec §9.3 documents that `g_timeoutFired` (declared `volatile sig_atomic_t`) is read at `command_runner.cpp:348` without a matching volatile qualification. On some architectures the compiler may hoist the read before `alarm()`. Fix: replace with `std::atomic<int>` + `std::atomic_signal_fence`.
 
 ---
 
@@ -194,29 +188,5 @@ AgentTui (FTXUI event loop thread)
 
 | Suite | Status | Failures |
 |-------|--------|----------|
-| C++ unit tests (39 targets) | 39/39 PASS | — |
-| Python E2E (36 tests) | 25/28 PASS | test_tui_submit_goal_shows_response (curl_multi never connects), test_tui_interrupt_streaming (render not triggered), test_tui_osc_52_sequence (clipboard env) |
-
-All failures are caused by the current implementation changes. The three failures must all be fixed — none are pre-existing.
-
----
-
-## Immediate Fixes Needed
-
-### Fix 1: Mock URL propagation
-Add `setMockUrl()` to `AgentTui` → `DrivenProvider`. Simplest change, affects all mock-based tests.
-
-### Fix 2: curl_multi transfer not completing
-The foundamental issue: `curl_multi` doesn't connect to the mock server. Possible causes:
-- URL not propagated (Fix 1 might fix this)
-- Multi handle initialized but curl_multi_socket_action needed instead of curl_multi_perform
-- SSL/TLS attempted on HTTP URL
-- Easy handle options lost when added to multi
-
-**Fallback**: If curl_multi can't be made to work, replace DrivenProvider with a simple synchronous curl_easy_perform on a background thread, matching the old DeepSeekProvider pattern.
-
-### Fix 3: Interrupt render trigger
-Add `RequestAnimationFrame()` in `xHandleInterrupt` after UI state updates.
-
-### Fix 4: Heartbeat mechanism
-If `RequestAnimationFrame()` from xTickCore doesn't keep FTXUI rendering, add a `Screen::Post([]{});` after `xHandleSubmit` to guarantee at least one render cycle after goal submission.
+| C++ unit tests (40 targets) | 40/40 PASS | — |
+| Python E2E (39 tests) | 39/39 PASS | — |

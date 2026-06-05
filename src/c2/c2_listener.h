@@ -32,7 +32,7 @@ private:
     ipc::UnixSocket m_listenSocket;
     int m_listenFd = -1;
     bool m_running = false;
-    std::vector<int> peerFds;
+    std::unordered_map<int, ipc::BufferedSocket> m_peers;
     std::unordered_map<int, int> m_b1PidToFd;
     std::mutex m_b1Mutex;
 

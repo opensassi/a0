@@ -81,6 +81,53 @@ namespace MessageType {
     constexpr const char* TERMINAL_READY = "terminal_ready";
 }
 
+// ============================================================================
+// Buffered recv result codes
+// ============================================================================
+
+/// Return codes for BufferedSocket::recv().
+/// Callers must distinguish RECV_AGAIN (retry next poll) from RECV_ERR (close).
+enum RecvResult {
+    RECV_OK = 0,      // complete \n-delimited message in msg
+    RECV_AGAIN = 1,   // no complete message yet — poll and retry
+    RECV_ERR = -1     // fatal error — close connection
+};
+
+// ============================================================================
+// BufferedSocket — persistent per-connection buffered reader
+// ============================================================================
+
+/// Move-only buffered reader that replaces the one-byte-at-a-time recvMessage().
+/// Reads up to READ_CHUNK (100) bytes per recv() call, accumulating in a per-fd
+/// buffer. Returns RECV_OK when a \n-delimited message is ready, RECV_AGAIN when
+/// data arrived but no complete message yet, or RECV_ERR on error/overflow.
+class BufferedSocket {
+public:
+    BufferedSocket() = default;
+    explicit BufferedSocket(int fd);
+    ~BufferedSocket();
+    BufferedSocket(BufferedSocket&&) noexcept;       // clears source
+    BufferedSocket& operator=(BufferedSocket&&) noexcept;
+    BufferedSocket(const BufferedSocket&) = delete;
+
+    int fd() const;
+    int release();              // detach fd without closing
+    void close();               // close fd + clear buffer
+
+    /// Read one complete \n-delimited message.
+    /// Returns RecvResult: RECV_OK, RECV_AGAIN, or RECV_ERR.
+    int recv(Message& msg, int timeoutMs = 5000);
+
+    /// Send a message (delegates to underlying socket send).
+    int send(const Message& msg);
+
+private:
+    int m_fd = -1;
+    std::string m_buffer;               // partial message accumulation
+    static constexpr size_t READ_CHUNK = 100;
+    static constexpr size_t MAX_BUFFER = 65536;
+};
+
 /// Serialize a Message to a JSON-line string (appends \n).
 std::string serialize(const Message& msg);
 
@@ -110,6 +157,7 @@ int sendMessage(UnixSocket& sock, const Message& msg);
 graph TB
     subgraph "ipc_lib"
         US[UnixSocket]
+        BS[BufferedSocket<br/>per-fd buffer]
         PROTO[Message + serialize/deserialize
                recvMessage/sendMessage]
     end
@@ -124,8 +172,11 @@ graph TB
     A0 --> PROTO
     B1 --> US
     B1 --> PROTO
+    B1 --> BS
     C2 --> US
     C2 --> PROTO
+    C2 --> BS
+    BS --> US
 ```
 
 ## 4. Data Flow
@@ -133,16 +184,25 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant Sender
-    participant Sock as UnixSocket
+    participant BS as BufferedSocket
     participant Receiver
 
-    Sender->>Sock: send("{"type":"register","pid":1234}\n")
-    Note over Sock: write(2) via kernel buffer
-    Sock-->>Receiver: bytes arrive
-    Receiver->>Sock: recv(buffer)
-    Receiver->>Receiver: accumulate until '\n'
-    Receiver->>Receiver: deserialize(jsonLine)
-    Receiver-->>Receiver: Message{type:"register", pid:1234}
+    Note over BS: Persistent per-fd buffer (empty initially)
+
+    Sender-->>BS: bytes arrive (up to 100B)
+    BS->>BS: poll() with timeout
+    BS->>BS: recv(100) → append to m_buffer
+    BS->>BS: scan for '\n' in buffer
+
+    alt '\n' found
+        BS->>BS: splice line from buffer
+        BS->>BS: deserialize(line) → Message
+        BS-->>Receiver: RECV_OK + msg
+    else no '\n'
+        BS-->>Receiver: RECV_AGAIN (retry next poll)
+    else buffer > 64KB
+        BS-->>Receiver: RECV_ERR (overflow)
+    end
 ```
 
 ## 5. Error Handling
@@ -156,6 +216,11 @@ sequenceDiagram
 | Malformed JSON in deserialize | Returns -1 |
 | recvMessage timeout waiting for `\n` | Returns -2, no data consumed |
 | recvMessage with missing type | Returns -2 |
+| BufferedSocket recv on closed fd | Returns RECV_ERR |
+| BufferedSocket recv with partial data | Returns RECV_AGAIN — caller retries |
+| BufferedSocket recv buffer overflow (>64KB) | Returns RECV_ERR, buffer cleared |
+| BufferedSocket recv invalid JSON | Returns RECV_ERR |
+| BufferedSocket send on unconnected | Returns -1 |
 
 ## 6. Edge Cases
 
@@ -180,5 +245,14 @@ sequenceDiagram
 | recvMessage message split across two recvs | Returns 0 after second recv completes line |
 | recvMessage timeout | Returns -2 |
 | pollWritable returns 1 | Socket is writable |
+| BufferedSocket default constructed | fd() == -1 |
+| BufferedSocket move transfers ownership | Source fd() == -1 after move |
+| BufferedSocket complete message | Single recv() returns RECV_OK with valid Message |
+| BufferedSocket message > READ_CHUNK | Accumulates across multiple recv() calls, returns RECV_OK |
+| BufferedSocket fragment without \n | Returns RECV_AGAIN, buffer retains partial data |
+| BufferedSocket back-to-back messages | Both returned via successive recv() calls (second from buffer, no poll) |
+| BufferedSocket buffer overflow | 70KB without \n → returns RECV_ERR |
+| BufferedSocket send/recv round-trip | send → recv returns RECV_OK, fields match |
+| BufferedSocket caller patterns | prompt_reply, register, update, stream_input — all decode correctly |
 
 All socket tests use `socketpair(AF_UNIX, SOCK_STREAM, 0)` — no filesystem needed.
