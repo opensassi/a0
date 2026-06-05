@@ -1,5 +1,10 @@
 # DefaultAgentCore Spec
 
+> **DEPRECATED — kept as reference only. Not compiled into the active binary.**
+> Replaced by `DrivenCore` + `runSync()` which uses `LlmProvider*` and handles the
+> tool-calling loop directly via `DependencyGraph`. All session management is now
+> done through `PersistenceStore` directly (see `main.cpp` `cmdRun`/`cmdTui`).
+
 ## 1. Overview
 
 DefaultAgentCore is the central orchestrator of the agent system. It owns pointers to every subsystem (skill manager, runners, provider, context, resolver, inference engine, persistence, Docker infra) and exposes a high-level goal-processing loop. Its lifecycle is: construct → init (load skills + validate handlers + generate session ID) → run (REPL) or processGoal — resumeSession replays a prior session's log.

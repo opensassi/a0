@@ -61,7 +61,7 @@ void AppCoreThread::stop() {
 void AppCoreThread::xRun() {
     TRACE_LOG("AppCoreThread started");
 
-    DrivenProvider provider(m_apiKey, m_model);
+    DeepSeekProvider provider(m_apiKey, m_model);
     if (!m_mockUrl.empty()) {
         provider.setMockUrl(m_mockUrl);
     }

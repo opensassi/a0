@@ -6,7 +6,7 @@
 namespace a0 {
 
 // ---------------------------------------------------------------------------
-// Curl write callback — appends data to per-easy-handle string buffer
+// Curl write callback -- appends data to per-easy-handle string buffer
 // ---------------------------------------------------------------------------
 static size_t writeCb(void* contents, size_t size, size_t nmemb, void* userp) {
     size_t total = size * nmemb;
@@ -21,7 +21,6 @@ static size_t writeCb(void* contents, size_t size, size_t nmemb, void* userp) {
 DrivenProvider::DrivenProvider(const std::string& apiKey, const std::string& model)
     : m_apiKey(apiKey)
     , m_model(model)
-    , m_baseUrl("https://api.deepseek.com/v1/chat/completions")
 {
     m_multi = curl_multi_init();
     curl_multi_setopt(m_multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 1L);
@@ -35,71 +34,12 @@ DrivenProvider::~DrivenProvider() {
 }
 
 // ---------------------------------------------------------------------------
-// Request payload builder
-// ---------------------------------------------------------------------------
-
-void DrivenProvider::xBuildPayload(json& payload,
-                                    const std::string& systemPrompt,
-                                    const std::vector<Message>& messages,
-                                    const std::vector<ToolSchema>& tools,
-                                    bool stream) const {
-    payload["model"] = m_model;
-    payload["stream"] = stream;
-    payload["max_tokens"] = 4096;
-
-    json msgs = json::array();
-    if (!systemPrompt.empty()) {
-        msgs.push_back({{"role", "system"}, {"content", systemPrompt}});
-    }
-    for (const auto& msg : messages) {
-        json jmsg;
-        jmsg["role"] = msg.role;
-        jmsg["content"] = msg.content;
-        if (!msg.toolCallId.empty()) {
-            jmsg["tool_call_id"] = msg.toolCallId;
-        }
-        if (!msg.toolCalls.empty()) {
-            json tcs = json::array();
-            for (const auto& tc : msg.toolCalls) {
-                tcs.push_back({
-                    {"id", tc.id},
-                    {"type", "function"},
-                    {"function", {
-                        {"name", tc.name},
-                        {"arguments", tc.arguments.dump()}
-                    }}
-                });
-            }
-            jmsg["tool_calls"] = tcs;
-        }
-        msgs.push_back(jmsg);
-    }
-    payload["messages"] = msgs;
-
-    if (!tools.empty()) {
-        json toolsArray = json::array();
-        for (const auto& t : tools) {
-            toolsArray.push_back({
-                {"type", "function"},
-                {"function", {
-                    {"name", t.name},
-                    {"description", t.description},
-                    {"parameters", t.inputSchema}
-                }}
-            });
-        }
-        payload["tools"] = toolsArray;
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Setup common curl options
 // ---------------------------------------------------------------------------
 
 void DrivenProvider::xSetupCommon(CURL* curl, curl_slist*& headers, bool /*streaming*/) {
     headers = curl_slist_append(headers, "Content-Type: application/json");
-    std::string authHeader = "Authorization: Bearer " + m_apiKey;
-    headers = curl_slist_append(headers, authHeader.c_str());
+    xAddAuth(headers);
 
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCb);
@@ -133,7 +73,6 @@ void DrivenProvider::startRequest(const std::string& systemPrompt,
     curl_slist* headers = nullptr;
     xSetupCommon(curl, headers, false);
 
-    // Store body in handle BEFORE setting curl options (CURLOPT_POSTFIELDS stores a pointer)
     m_handle.requestBody = std::move(body);
     m_handle.easy = curl;
     m_handle.headers = headers;
@@ -174,7 +113,6 @@ void DrivenProvider::startRequestStreaming(const std::string& systemPrompt,
     curl_slist* headers = nullptr;
     xSetupCommon(curl, headers, true);
 
-    // Store body in handle BEFORE setting curl options (CURLOPT_POSTFIELDS stores a pointer)
     m_handle.requestBody = std::move(body);
     m_handle.easy = curl;
     m_handle.headers = headers;
@@ -234,7 +172,6 @@ void DrivenProvider::xUpdatePollInfo() const {
 
     curl_multi_fdset(m_multi, &readFds, &writeFds, &excFds, &maxFd);
 
-    // Find the first read fd and write fd (poll() can handle multiple via the caller)
     m_cachedReadFd = -1;
     m_cachedWriteFd = -1;
     for (int fd = 0; fd <= maxFd; ++fd) {
@@ -258,26 +195,21 @@ void DrivenProvider::xUpdatePollInfo() const {
 int DrivenProvider::timeoutMs() const {
     if (!m_active) return -1;
     xUpdatePollInfo();
-    // If timeout is 0, curl wants immediate attention; use 1ms minimum to avoid busy-spin
-    if (m_cachedTimeout < 0) return -1;   // no timeout (wait indefinitely)
-    if (m_cachedTimeout == 0) return 1;   // minimum poll wait
+    if (m_cachedTimeout < 0) return -1;
+    if (m_cachedTimeout == 0) return 1;
     return (int)m_cachedTimeout;
 }
 
 // ---------------------------------------------------------------------------
-// tick() — drive curl_multi, return events
+// tick() -- drive curl_multi, return events
 // ---------------------------------------------------------------------------
 
 std::vector<mpsc::AppCoreEvent> DrivenProvider::tick() {
     if (!m_active) return {};
     TRACE_LOG("DrivenProvider::tick");
 
-    // Drive curl
     int running;
 
-    // Non-blocking poll of curl's internal fds (async DNS resolver, TCP connect).
-    // Without this, the async resolver's socket never gets polled and DNS queries
-    // hang until they time out. Zero timeout means it returns immediately.
     curl_multi_wait(m_multi, nullptr, 0, 0, nullptr);
 
     CURLMcode mc = curl_multi_perform(m_multi, &running);
@@ -290,7 +222,6 @@ std::vector<mpsc::AppCoreEvent> DrivenProvider::tick() {
 
     std::vector<mpsc::AppCoreEvent> events;
 
-    // Check for completed transfers
     CURLMsg* msg;
     int msgsLeft;
     while ((msg = curl_multi_info_read(m_multi, &msgsLeft))) {
@@ -299,25 +230,14 @@ std::vector<mpsc::AppCoreEvent> DrivenProvider::tick() {
         }
     }
 
-    // For streaming: feed accumulated response body to decoder in between ticks
     if (m_handle.streaming && m_handle.easy) {
-        // Read the response body accumulated so far
         if (!m_handle.responseBody.empty()) {
             TRACE_LOG("DrivenProvider: feeding " << m_handle.responseBody.size() << " bytes to decoder");
             m_handle.decoder.feed(m_handle.responseBody);
             m_handle.responseBody.clear();
 
-            // Collect decoder events
             auto decoderEvents = m_handle.decoder.events();
             TRACE_LOG("DrivenProvider: decoder produced " << decoderEvents.size() << " events (complete=" << m_handle.decoder.complete() << ")");
-            for (const auto& ev : decoderEvents) {
-                if (std::holds_alternative<mpsc::LlmToken>(ev))
-                    TRACE_LOG("  event: LlmToken(\"" << std::get<mpsc::LlmToken>(ev).text << "\")");
-                else if (std::holds_alternative<mpsc::Complete>(ev))
-                    TRACE_LOG("  event: Complete(\"" << std::get<mpsc::Complete>(ev).text << "\")");
-                else if (std::holds_alternative<mpsc::Error>(ev))
-                    TRACE_LOG("  event: Error(\"" << std::get<mpsc::Error>(ev).message << "\")");
-            }
             events.insert(events.end(),
                           std::make_move_iterator(decoderEvents.begin()),
                           std::make_move_iterator(decoderEvents.end()));
@@ -326,7 +246,6 @@ std::vector<mpsc::AppCoreEvent> DrivenProvider::tick() {
         }
     }
 
-    // Check if streaming request is complete (decoder says complete + transfer done)
     if (m_handle.streaming && m_handle.decoder.complete() && !running) {
         cancel();
     }
@@ -340,7 +259,6 @@ std::vector<mpsc::AppCoreEvent> DrivenProvider::tick() {
 
 void DrivenProvider::xProcessCompletion(CURL* easy, CURLcode result,
                                          std::vector<mpsc::AppCoreEvent>& out) {
-    // Verify this is our handle
     if (easy != m_handle.easy) return;
 
     long httpCode = 0;
@@ -364,14 +282,12 @@ void DrivenProvider::xProcessCompletion(CURL* easy, CURLcode result,
         return;
     }
 
-    // Non-streaming: decode the complete response body
     if (!m_handle.streaming) {
         auto decoderEvents = ResponseDecoder::decodeJson(m_handle.responseBody);
         out.insert(out.end(),
                    std::make_move_iterator(decoderEvents.begin()),
                    std::make_move_iterator(decoderEvents.end()));
 
-        // If decoder produced no events, emit a generic Complete
         bool hasFinal = false;
         for (const auto& ev : out) {
             if (std::holds_alternative<mpsc::Complete>(ev) ||
@@ -381,7 +297,6 @@ void DrivenProvider::xProcessCompletion(CURL* easy, CURLcode result,
             }
         }
         if (!hasFinal) {
-            // Extract content directly as fallback
             try {
                 json j = json::parse(m_handle.responseBody);
                 std::string content = j["choices"][0]["message"]["content"].get<std::string>();
@@ -393,7 +308,6 @@ void DrivenProvider::xProcessCompletion(CURL* easy, CURLcode result,
 
         cancel();
     }
-    // Streaming: handled in tick() via decoder feed cycle
 }
 
 } // namespace a0

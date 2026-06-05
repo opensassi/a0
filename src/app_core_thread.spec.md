@@ -6,7 +6,9 @@ Thread-safe application core that owns a `DrivenCore` and runs it in a dedicated
 
 **Source files:** `src/app_core_thread.h/.cpp`
 
-**Dependencies:** `driven_core.h`, `driven_provider.h`, `mpsc.h`, `skills/skills.h`, `persistence/persistence_store.h`
+**Dependencies:** `driven_core.h`, `deepseek_provider.h`, `mpsc.h`, `skills/skills.h`, `persistence/persistence_store.h`
+
+**Note:** Internally constructs a `DeepSeekProvider` (the `DrivenProvider` subclass) and passes it to `DrivenCore`. This is the only non-abstract LLM provider used by the thread wrapper. To use a different provider, construct a new thread wrapper or pass the provider via dependency injection.
 
 ## 2. Component Specifications
 

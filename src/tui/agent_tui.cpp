@@ -20,17 +20,20 @@
 
 namespace a0::tui {
 
-AgentTui::AgentTui(const std::string& apiKey,
-                   const std::string& model,
+AgentTui::AgentTui(a0::LlmProvider* provider,
                    a0::skills::SkillManager* skillMgr,
                    a0::persistence::PersistenceStore* persistence,
                    int64_t agentId,
-                   std::function<bool()> b1Status)
+                   std::function<bool()> b1Status,
+                   int64_t sessionDbId,
+                   const std::string& sessionUuid)
     : m_persistence(persistence)
     , m_agentId(agentId)
     , m_b1Status(std::move(b1Status))
-    , m_provider(std::make_unique<a0::DrivenProvider>(apiKey, model))
-    , m_drivenCore(std::make_unique<a0::DrivenCore>(m_provider.get(), skillMgr, persistence))
+    , m_provider(provider)
+    , m_drivenCore(std::make_unique<a0::DrivenCore>(m_provider, skillMgr, persistence))
+    , m_sessionUuid(sessionUuid)
+    , m_sessionDbId(sessionDbId)
     , m_messagePanel(std::make_unique<MessagePanel>())
     , m_inputPanel(std::make_unique<InputPanel>())
     , m_statusBar(std::make_unique<StatusBar>())
@@ -38,6 +41,9 @@ AgentTui::AgentTui(const std::string& apiKey,
     , m_sessionMgr(std::make_unique<SessionManager>(persistence))
     , m_markdown(std::make_unique<MarkdownRenderer>())
 {
+    if (m_sessionDbId > 0) {
+        m_drivenCore->setSession(m_sessionDbId, m_sessionUuid);
+    }
     TRACE_LOG("AgentTui constructed");
     xBuildLayout();
 }
@@ -101,8 +107,6 @@ void AgentTui::xTickCore() {
         }
         bool nowIdle = m_drivenCore->idle();
         TRACE_LOG("xTickCore: core idle=" << nowIdle);
-        // If the core is still busy after tick, request continued animation frames.
-        // This keeps the coreTicker Renderer running and draining events.
         if (!nowIdle && m_screen) {
             m_screen->RequestAnimationFrame();
         }
@@ -138,6 +142,7 @@ int AgentTui::resumeSession(const std::string& uuid) {
     m_sessionUuid = uuid;
     m_sessionDbId = dbId;
     m_statusBar->setSessionId(uuid);
+    m_drivenCore->setSession(dbId, uuid);
 
     if (m_persistence) {
         auto msgs = m_persistence->loadMessages(dbId);
@@ -272,7 +277,7 @@ int AgentTui::xHandleSubmit(const std::string& input) {
     m_statusBar->setAgentState(m_agentState);
     m_inputPanel->setEnabled(false);
 
-    // Submit goal to DrivenCore synchronously
+    // Submit goal to DrivenCore
     m_drivenCore->submitGoal(expanded);
 
     // Tick immediately to process the first batch of events

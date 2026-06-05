@@ -7,7 +7,7 @@
 #include <thread>
 
 #include "driven_core.h"
-#include "driven_provider.h"
+#include "deepseek_provider.h"
 #include "mpsc.h"
 #include "skills/skills.h"
 

@@ -5,8 +5,6 @@
 
 using json = nlohmann::json;
 
-class InferenceProvider;
-
 namespace a0::skills { class SkillManager; }
 
 namespace a0 {
@@ -22,11 +20,8 @@ HandlerResult xWrite(const json& params);
 // Git handler
 HandlerResult xGitCommand(const std::string& subcommand, const json& params);
 
-// Meta handlers (need SkillManager / InferenceProvider)
+// Meta handlers (need SkillManager)
 HandlerResult xShowSkills(const json& params, a0::skills::SkillManager* skillMgr);
 HandlerResult xShowSkillTools(const json& params, a0::skills::SkillManager* skillMgr);
-HandlerResult xToolsForPrompt(const json& params,
-                              a0::skills::SkillManager* skillMgr,
-                              InferenceProvider* provider);
 
 }

@@ -37,6 +37,42 @@ using StructuredValue = std::variant<nullptr_t, bool, double, std::string,
 using JSONSchema = std::unordered_map<std::string, StructuredValue>;
 ```
 
+### 2.0 Abstract Async LLM Provider
+
+```cpp
+namespace a0 {
+
+/// Abstract async LLM provider interface.
+/// Non-blocking startRequest() / tick() API designed for event-loop integration.
+class LlmProvider {
+public:
+    virtual ~LlmProvider() = default;
+    virtual void startRequest(const std::string& systemPrompt,
+                              const std::vector<Message>& messages,
+                              const std::vector<ToolSchema>& tools) = 0;
+    virtual void startRequestStreaming(const std::string& systemPrompt,
+                                       const std::vector<Message>& messages,
+                                       const std::vector<ToolSchema>& tools) = 0;
+    virtual std::vector<mpsc::AppCoreEvent> tick() = 0;
+    virtual void cancel() = 0;
+    virtual bool active() const = 0;
+    virtual int timeoutMs() const = 0;
+    virtual void setMockUrl(const std::string& url) = 0;
+};
+
+} // namespace a0
+```
+
+**Implementation hierarchy:**
+
+```
+LlmProvider  (pure virtual, DrivedCore depends on this)
+    ↑
+DrivenProvider  (universal curl_multi machinery, protected virtual hooks)
+    ↑                        ↑
+DeepSeekProvider           (Future: OpenAiProvider, etc.)
+```
+
 ### 2.1 Core Data Structures
 
 ```cpp
@@ -115,31 +151,20 @@ public:
 class ToolRunner {
 public:
     virtual ~ToolRunner() = default;
-    // Runs a tool with the given parameters. Must enforce timeout from tool.timeoutSecs.
-    // Returns the stdout output as a string (or JSON for structured outputs).
-    // On timeout, returns a string starting with "ERROR: timeout".
-    // On command failure, returns a string starting with "ERROR:".
     virtual json run(const Tool& tool, const json& params) = 0;
-
-    // Streaming variant: returns immediately with a StreamHandle.
-    // onChunk is called from a background thread with (chunk, direction).
-    // Default implementation delegates to CommandRunner::runStreaming.
     virtual a0::StreamHandle runStreaming(const Tool& tool,
                                            const json& params,
                                            a0::StreamCallback onChunk);
 };
 
+/// @deprecated Replaced by async LlmProvider + DrivedCore.
+///             Keeped as reference for future provider-agnostic designs.
 class InferenceProvider {
 public:
     virtual ~InferenceProvider() = default;
     virtual std::string complete(const std::string& systemPrompt,
                                   const std::string& userPrompt) = 0;
     virtual void setMockUrl(const std::string& url) = 0;
-};
-
-struct ContextFrame {
-    std::string role;
-    std::string content;
 };
 
 class ContextManager {
@@ -161,40 +186,28 @@ public:
     virtual std::vector<std::string> missingDependencies(const Prompt& prompt) const = 0;
 };
 
+/// @deprecated Replaced by DrivenCore's direct tool-calling loop.
+///             Kept as reference. No longer compiled.
 class SkillRunner {
 public:
     virtual ~SkillRunner() = default;
-    // Expands prompt.prompt by:
-    //   1. Replacing {{key}} placeholders with values from params (where key matches a top-level field).
-    //   2. Replacing {{tool:name key="value" ...}} placeholders with the result of executing the named tool.
-    //   3. Replacing {{tool_call:qualified_name}} placeholders with the short name.
     virtual std::string expandPrompt(const Prompt& prompt, const json& params) = 0;
-    // Runs the validator chain. If any validator returns a string starting with "ERROR:",
-    // the final result is prefixed with "VALIDATOR_ERROR:".
     virtual json runValidators(const Prompt& prompt, const json& input) = 0;
-    // Executes the prompt: expandPrompt -> InferenceProvider.complete() -> runValidators.
-    // Before calling complete, it must verify that all dependencies are present (using DependencyResolver).
     virtual json execute(const Prompt& prompt, const json& params) = 0;
-
-    // Streaming variant: executes the prompt with streaming tool invocations.
     virtual a0::StreamHandle executeStreaming(const Prompt& prompt,
                                                const json& params,
                                                a0::StreamCallback onChunk) = 0;
-
     virtual void setGlobalVar(const std::string& key, const std::string& value) = 0;
     virtual void setGlobalVars(const std::unordered_map<std::string, std::string>& vars) = 0;
 };
 
-
-
+/// @deprecated Replaced by DrivenCore + runSync().
+///             Kept as reference. No longer compiled.
 class AgentCore {
 public:
     virtual ~AgentCore() = default;
     virtual bool init(const std::string& componentsDir) = 0;
-    // Processes a user goal. Matches prompts by exact name (case-sensitive) against the goal string.
-    // If no exact match, enters the forked tool-calling loop (xRunForkedLoop).
     virtual json processGoal(const std::string& goal) = 0;
-    // Streaming variant: processes a goal with streaming tool invocations.
     virtual a0::StreamHandle processGoalStreaming(const std::string& goal,
                                                    a0::StreamCallback onChunk) = 0;
     virtual bool resumeSession(const std::string& sessionId) = 0;
@@ -203,7 +216,6 @@ public:
 };
 
 // === Docker Integration Interfaces ===
-// Full implementations reside in ./src/docker/
 
 class ContainerManager {
 public:
@@ -220,6 +232,18 @@ public:
     virtual ~ComposeManager() = default;
     virtual std::string startEnvironment(const Prompt& prompt, const std::string& skillDirectory) = 0;
     virtual void stopEnvironment(const Prompt& prompt) = 0;
+};
+
+class DockerToolRunner : public ToolRunner {
+public:
+    virtual ~DockerToolRunner() = default;
+};
+
+class ComposeManager {
+public:
+    virtual ~ComposeManager() = default;
+    virtual std::string startEnvironment(const Prompt& prompt, const std::string& skillDirectory) = 0;
+    virtual void stopEnvironment(const Prompt& prompt) = 0;
     virtual void markUsed(const Prompt& prompt) = 0;
     virtual void setCurrentPrompt(const Prompt& prompt) = 0;
     virtual std::string getCurrentNetwork() const = 0;
@@ -229,34 +253,29 @@ public:
 class DockerToolRunner : public ToolRunner {
 public:
     virtual ~DockerToolRunner() = default;
-    // Constructor (in implementation) will take ContainerManager* and ComposeManager*.
 };
 
 // === Async / Event-Driven Interfaces ===
-// Full specifications in individual .spec.md files.
 
 // mpsc::Channel — header-only MPSC channel with eventfd wakeup (src/mpsc.h)
-//   Channel<T>::create() → pair<Sender<T>, Receiver<T>>
-//   Sender<T>: cloneable, thread-safe, send(value)
-//   Receiver<T>: move-only, poll_fd() for epoll, drain() non-blocking
 
 // ResponseDecoder — stateful SSE/JSON decoder (src/response_decoder.h/.cpp)
 //   feed(bytes) → decodes tokens/tool_calls, events() returns vector<AppCoreEvent>
 
-// DrivenProvider — async LLM provider (src/driven_provider.h/.cpp)
-//   curl_multi-based, startRequest()/startRequestStreaming() non-blocking
-//   tick() drives curl_multi_wait() + curl_multi_perform(), returns decoded AppCoreEvent vector
-//   Note: curl_multi_wait required before perform to drive async DNS resolver
-//   Designed for event-loop integration alongside DeepSeekProvider
+// DrivenProvider — async LLM provider, implements LlmProvider (src/driven_provider.h/.cpp)
+//   curl_multi base machinery. Subclasses override xBuildPayload() and xAddAuth().
+//   DeepSeekProvider : DrivenProvider (src/deepseek_provider.h/.cpp) — DeepSeek-specific config.
+//   xBuildPayload produces OpenAI-compatible JSON.
+//   xAddAuth adds "Authorization: Bearer" header.
 
 // DrivenCore — tick-driven state machine core (src/driven_core.h/.cpp)
 //   States: Idle → AwaitingLlm → ExecutingTools → Idle
 //   submitGoal(goal) → tick() drives provider + tool execution
-//   Replaces xRunForkedLoop() and processGoalStreaming()
+//   runSync(goal) → synchronous wrapper for CLI headless mode
+//   Uses LlmProvider* — works with any provider
 
 // AppCoreThread — thread-safe wrapper (src/app_core_thread.h/.cpp)
 //   Owns DrivenCore in dedicated thread with ppoll()-based event loop
-//   Commands via mpsc::Receiver<Command>, events via mpsc::Sender<AppCoreEvent>
 ```
 
 ---
@@ -589,52 +608,38 @@ sequenceDiagram
 
 | Class                | Test Case                                                   | Verification                                       |
 | -------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
-| `ToolRunner`         | `run` with `split_lines` tool                               | Input "a\nb\nc" → output `["a","b","c"]`           |
 | `ToolRunner`         | `run` with `bash` tool                                      | Input "echo hello" → output "hello\n"              |
 | `ToolRunner`         | `run` with `args` mode and object params                    | Command receives `--file=test.txt` style arguments |
 | `ToolRunner`         | `run` with a command that sleeps 31 seconds                 | Returns `"ERROR: timeout"` (enforces timeoutSecs)  |
 | `ToolRunner`         | `runStreaming` basic echo                                   | onChunk called with output, handle.isDone() true   |
-| `SkillRunner`        | `expandPrompt` with `{{goal}}` placeholder                  | Substitutes value from `params["goal"]`            |
-| `SkillRunner`        | `expandPrompt` with eager tool call                         | Eager execution, substitution                      |
-| `SkillRunner`        | `expandPrompt` with `{{tool_call:...}}`                     | Short name substitution                            |
-| `SkillRunner`        | `runValidators` with failing validator                      | Result starts with `"VALIDATOR_ERROR: ERROR: ..."` |
-| `SkillRunner`        | `execute` when dependencies missing                         | Returns error message, does not call LLM           |
-| `SkillRegistry`      | `loadFromDirectory` with malformed JSON                     | Skips file, logs warning, continues                |
-| `DependencyResolver` | `checkPromptDependencies` on prompt with missing tool       | Returns false, missing list includes the tool      |
-| `AgentCore`          | `processGoal` with exact prompt name match                  | Uses the prompt, does not infer a new one          |
-| `AgentCore`          | `processGoal` with non‑existent goal                        | Falls back to forked tool-calling loop             |
-| `AgentCore`          | `processGoal` forked loop max turns exceeded                | Returns `"ERROR: max tool call turns exceeded"`    |
 | `DependencyGraph`    | `classifyTool` READER prefix                                | Returns READER                                       |
 | `DependencyGraph`    | `classifyTool` WRITER prefix                                | Returns WRITER                                       |
 | `DependencyGraph`    | `classifyTool` unknown                                      | Returns READ_WRITE                                   |
 | `DependencyGraph`    | `buildBatches` mixed readers/writers                        | Correct ordering: readers batch first, then writers  |
 | `DependencyGraph`    | `executeBatches` reader command tools                       | `CommandRunner::runAll` called for parallel execution |
 | `ToolState`          | `set`/`get`/`has`/`remove`/`clear`                          | All CRUD operations correct                          |
-| `ToolState`          | Thread-safe concurrent access                               | No data races under TSAN                             |
 | `SkillManager`       | `executeToolStreaming` system tool                          | Synchronous handler, single onChunk call             |
-| `SkillManager`       | `executeToolStreaming` command tool                         | Delegates to `ToolRunner::runStreaming`              |
 | `SkillManager`       | `toolState` accessor                                        | Returns reference to `m_toolState`                   |
-| `MPSC Channel`       | Single sender, single receiver                              | Message delivered via drain()                        |
-| `MPSC Channel`       | Multiple senders (threaded)                                 | All messages received, no data race                  |
-| `MPSC Channel`       | poll_fd readability                                         | eventfd readable after send                          |
-| `ResponseDecoder`    | SSE token chunk                                             | feed() produces LlmToken with correct text           |
-| `ResponseDecoder`    | SSE finish_reason:stop                                      | complete() returns true, Complete emitted            |
-| `ResponseDecoder`    | JSON non-streaming decode                                   | decodeJson() returns correct events                  |
 | `DrivenProvider`     | Non-streaming request completes                             | HTTP 200, response body decoded into events          |
 | `DrivenProvider`     | Streaming request emits tokens                              | tick() returns LlmToken events incrementally         |
 | `DrivenProvider`     | Cancel in-flight request                                    | active() returns false, no more events               |
 | `DrivenCore`         | submitGoal from idle                                        | Transitions to AwaitingLlm, starts request           |
+| `DrivenCore`         | runSync returns result                                      | Returns final output text, core idle                 |
 | `DrivenCore`         | LLM returns tool calls                                      | Transitions to ExecutingTools                        |
 | `DrivenCore`         | Max tool call turns exceeded                                | xFailGoal with error message                         |
+| `DrivenCore`         | User message persisted on submitGoal                        | loadMessages(sessionId) contains user role           |
+| `DrivenCore`         | Assistant text persisted after runSync                      | loadMessages(sessionId) contains assistant role      |
+| `DrivenCore`         | No persistence without session                              | loadMessages(0) returns empty                        |
+| `DrivenCore`         | Session switch persists to correct session                  | Messages go to correct session after setSession call |
+| `DrivenCore`         | setSession before submit                                    | Session ID used in persistence calls                 |
+| `AgentTui`           | Injected session reused on first submit                     | No second session created; user msg persisted        |
+| `AgentTui`           | ResumeSession wires DrivenCore                              | New messages go to resumed session                   |
 | `AppCoreThread`      | start() launches thread                                     | running() returns true                               |
 | `AppCoreThread`      | SubmitGoal command                                          | Core receives goal, events sent back                 |
 | `AppCoreThread`      | Shutdown command                                            | Thread exits, running() returns false                |
 | `SkillLoader`        | `validateAgainstSchema` valid manifest                      | Returns 0                                            |
 | `SkillLoader`        | `validateAgainstSchema` invalid manifest                    | Returns -1, errors populated                         |
 | `SkillLoader`        | Schema file missing                                         | Warning printed, validation passes through           |
-| `ComposeManager`     | `startPersistent` new stack                                 | composeUp called, persistent set                     |
-| `ComposeManager`     | `stopPersistent` active stack                               | composeDown called, entries removed                  |
-| `ComposeManager`     | `isPersistent` persistent vs ephemeral                      | Correct boolean returned                             |
 
 ### 5.2 End‑to‑End Tests (against mock DeepSeek)
 
@@ -904,6 +909,11 @@ All built-in tool handlers are registered directly on `SkillManager` via `regist
 
 All skills‑related code must be placed in `./src/skills/`, with its own `CMakeLists.txt` included from the top‑level `CMakeLists.txt`.
 
+**Deprecated files (kept on disk as reference, not compiled):**
+- `src/agent_core.h/.cpp` — replaced by `DrivenCore` + `runSync()`
+- `src/skill_runner.h/.cpp` — replaced by `DrivenCore`'s direct tool-calling loop
+- `src/deepseek_provider.h/.cpp` (old, implementing `InferenceProvider`) — replaced by new `DeepSeekProvider : DrivenProvider : LlmProvider`
+
 #### Step 12: Implement CommandRunner utility
 
 The `CommandRunner` is a stateless utility class that wraps all subprocess creation in the agent. Every `fork()`, `exec()`, `pipe()`, `alarm()` call is isolated here — no other class manages processes directly.
@@ -948,6 +958,10 @@ project/
 │   └── playwright-bridge.js             # Node.js HTTP daemon for 23 Playwright actions
 ├── src/
 │   ├── a0_dir.h/.cpp                    # .a0/ directory lifecycle (create, gitignore)
+│   ├── llm_provider.h                   # Abstract async LLM provider interface
+│   ├── driven_provider.h/.cpp           # Universal curl_multi LLM provider base
+│   ├── deepseek_provider.h/.cpp         # DeepSeek subclass of DrivenProvider
+│   ├── driven_core.h/.cpp               # Tick-based state machine (replaces AgentCore)
 │   ├── command_runner.h/.cpp            # All subprocess management (fork/exec/pipe/alarm)
 │   ├── dependency_graph.h/.cpp          # Reader/writer classification + batch execution
 │   ├── tool_state.h/.cpp                # Thread-safe per-session key-value state bag

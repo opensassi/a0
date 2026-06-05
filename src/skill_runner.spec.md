@@ -1,5 +1,9 @@
 # DefaultSkillRunner Spec
 
+> **DEPRECATED — kept as reference only. Not compiled into the active binary.**
+> Replaced by `DrivenCore` which handles the tool-calling loop directly.
+> Prompt template execution (`runSkill`) is a stub in the new codebase.
+
 ## 1. Overview
 
 DefaultSkillRunner implements SkillRunner. It orchestrates the end-to-end execution of a Skill: dependency validation, optional Docker Compose environment startup, prompt expansion (substituting `{{key}}` params and executing `{{tool:name args}}` placeholders), LLM inference via InferenceProvider, and post-LLM validator chaining.

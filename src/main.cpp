@@ -1,14 +1,12 @@
 #include "CLI11.hpp"
 #include "a0_dir.h"
-#include "agent_core.h"
 #include "persistence/sqlite_store.h"
+#include "persistence/build_identity.h"
 #include "system_handlers.h"
 #include "skills/skills.h"
-#include "context_manager.h"
 #include "deepseek_provider.h"
-#include "dependency_resolver.h"
+#include "driven_core.h"
 
-#include "skill_runner.h"
 #include "tool_runner.h"
 #include "docker/container_manager.h"
 #include "docker/compose_manager.h"
@@ -41,11 +39,11 @@
 
 using json = nlohmann::json;
 
-static std::string g_a0LogFile; // --log-file value
-static std::string g_a0LogDir;  // --log-dir value
+static std::string g_a0LogFile;
+static std::string g_a0LogDir;
 
 // ---------------------------------------------------------------------------
-// Helpers (unchanged from original)
+// Helpers
 // ---------------------------------------------------------------------------
 
 static void loadEnvFile(const std::string& path) {
@@ -156,8 +154,6 @@ static std::string xMakeLogPath(const std::string& sessionId, pid_t pid,
          + std::to_string(pid) + suffix + ".log";
 }
 
-/// Redirect a0's own stderr to a log file. Uses O_EXCL so concurrent/serial
-/// runs with the same sessionId+pid never collide — appends .1, .2, ... .99.
 static bool xRedirectStderr(const std::string& sessionId, pid_t pid) {
     if (!g_a0LogFile.empty()) {
         int fd = ::open(g_a0LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
@@ -188,7 +184,6 @@ static bool xRedirectStderr(const std::string& sessionId, pid_t pid) {
     return false;
 }
 
-/// Export log-relevant env vars so supervisor children derive correct paths.
 static void xExportLogEnv(const std::string& sessionId) {
     if (!g_a0LogDir.empty())
         ::setenv("A0_LOG_DIR", g_a0LogDir.c_str(), 1);
@@ -196,8 +191,6 @@ static void xExportLogEnv(const std::string& sessionId) {
         ::setenv("A0_SESSION_ID", sessionId.c_str(), 1);
 }
 
-/// Redirect child stdout+stderr. Called after fork(), before exec().
-/// If path is empty, redirects to /dev/null.
 static void xChildRedirectStdio(const std::string& path) {
     int fd = -1;
     if (!path.empty())
@@ -333,7 +326,6 @@ static int cmdSessionList(const std::string& a0Dir,
     a0::persistence::SqliteStore db(a0Dir + "/db/sessions.db");
     sqlite3* raw = static_cast<sqlite3*>(db.handle());
 
-    // Total count
     sqlite3_stmt* stmt;
     int total = 0;
     if (sqlite3_prepare_v2(raw, "SELECT COUNT(*) FROM session", -1, &stmt, nullptr) == SQLITE_OK) {
@@ -341,7 +333,6 @@ static int cmdSessionList(const std::string& a0Dir,
         sqlite3_finalize(stmt);
     }
 
-    // Query sessions
     const char* sql =
         "SELECT s.uuid, s.started_at, s.ended_at,"
         " (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) AS msg_count"
@@ -404,12 +395,10 @@ static int cmdSessionList(const std::string& a0Dir,
 }
 
 // ---------------------------------------------------------------------------
-// Build full agent stack (shared by repl and run)
+// Build minimal agent stack
 // ---------------------------------------------------------------------------
 
-static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
-                                     InferenceProvider* provider) {
-    // Core handlers
+static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr) {
     mgr.registerHandler("system-bash-bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
     mgr.registerHandler("system-fs-read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
     mgr.registerHandler("system-fs-glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
@@ -417,20 +406,15 @@ static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
     mgr.registerHandler("system-fs-edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
     mgr.registerHandler("system-fs-write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
 
-    // Git wildcard: ctx.subcommand provides the resolved CLI subcommand
     mgr.registerHandler("system-git-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
         return a0::xGitCommand(ctx.subcommand, p);
     });
 
-    // Meta handlers (need SkillManager + InferenceProvider)
     mgr.registerHandler("system-meta-show_skills", [&mgr](const json& p, const a0::skills::HandlerContext&) {
         return a0::xShowSkills(p, &mgr);
     });
     mgr.registerHandler("system-meta-show_skill_tools", [&mgr](const json& p, const a0::skills::HandlerContext&) {
         return a0::xShowSkillTools(p, &mgr);
-    });
-    mgr.registerHandler("system-meta-tools_for_prompt", [&mgr, provider](const json& p, const a0::skills::HandlerContext&) {
-        return a0::xToolsForPrompt(p, &mgr, provider);
     });
 }
 
@@ -438,16 +422,12 @@ struct AgentStack {
     a0::persistence::SqliteStore persistence;
     a0::skills::SkillManager skillMgr;
     SubprocessToolRunner toolRunner;
-    DeepSeekProvider provider;
-    DefaultContextManager context;
-    DefaultDependencyResolver depResolver;
+    a0::DeepSeekProvider llmProvider;
 
     a0::docker::DockerContainerManager* containerMgr = nullptr;
     a0::docker::DockerComposeManager* composeMgr = nullptr;
     a0::docker::DockerToolRunnerImpl* dockerRunner = nullptr;
     a0::DockerSecurityFilter dockerFilter;
-    DefaultSkillRunner* skillRunner = nullptr;
-    DefaultAgentCore* core = nullptr;
 
     AgentStack(const std::string& a0Dir, const std::string& skillsDir,
                const std::string& apiKey, const std::string& mockUrl,
@@ -457,12 +437,10 @@ struct AgentStack {
                const std::string& externalRepo = "https://github.com/opensassi/a0")
         : persistence(a0Dir + "/db/sessions.db")
         , skillMgr(skillsDir, a0Dir + "/store", &persistence)
-        , provider(apiKey)
-        , depResolver(&skillMgr)
+        , llmProvider(apiKey)
     {
-    (void)provider;
         if (!mockUrl.empty())
-            provider.setMockUrl(mockUrl);
+            llmProvider.setMockUrl(mockUrl);
 
         if (!noDocker) {
             int idleTimeout = 300;
@@ -486,32 +464,28 @@ struct AgentStack {
             if (!list.empty()) dockerFilter.protectContainer(list);
         }
 
-        // Wire ToolRunner/DockerRunner into SkillManager for command tools
         skillMgr.setToolRunner(&toolRunner);
         if (dockerRunner) skillMgr.setDockerRunner(dockerRunner);
-        // Register all system tool C++ handlers
-        xRegisterSystemHandlers(skillMgr, &provider);
-
-    skillRunner = new DefaultSkillRunner(&toolRunner, &provider, &skillMgr,
-        &depResolver, dockerRunner, composeMgr);
-        skillRunner->setSkillsDir(skillsDir);
-
-        core = new DefaultAgentCore(&toolRunner, skillRunner, &provider, &context,
-            &depResolver, &skillMgr,
-            &persistence, dockerRunner, composeMgr);
-        core->setMaxParallel(maxParallel);
-        core->setExternalRepo(externalRepo);
-        skillRunner->setMaxParallel(maxParallel);
+        xRegisterSystemHandlers(skillMgr);
     }
 
     ~AgentStack() {
-        delete core;
-        delete skillRunner;
         delete dockerRunner;
         delete composeMgr;
         delete containerMgr;
     }
 };
+
+// ---------------------------------------------------------------------------
+// Helper: ensure an agent row exists in persistence, returns agentId
+// ---------------------------------------------------------------------------
+
+static int xRegisterAgent(a0::persistence::PersistenceStore& store) {
+    a0::persistence::BuildFingerprint fp;
+    fp.binarySha1 = a0::persistence::BuildIdentity::binarySha1();
+    a0::persistence::BuildIdentity::detectGit(".", fp);
+    return store.registerAgent(fp);
+}
 
 // ---------------------------------------------------------------------------
 // Command: run (one-shot)
@@ -531,21 +505,18 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
                   const std::unordered_map<std::string, std::string>& skillArgs = {}) {
     AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
                      idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
-    stack.core->setSkillArgs(skillArgs);
 
-    // Establish session ID early (before init) so log redirect captures
-    // TRACE and cloning output that happens during init().
+    // resolve skill args into tool state
+    for (const auto& [key, val] : skillArgs)
+        stack.skillMgr.toolState().set("args:system-" + key, val);
+
+    // Establish session ID early for log redirect
+    std::string sid;
     if (!resumeSessionId.empty())
-        stack.core->resumeSession(resumeSessionId);
-    std::string sid = stack.core->currentSessionId();
-    if (sid.empty()) {
+        sid = resumeSessionId;
+    else
         sid = generateHexSessionId();
-        stack.core->setSessionId(sid);
-    }
 
-    // Redirect stderr now — all subsequent output (TRACE logs, clone messages)
-    // goes to the log file. Uses O_EXCL + .N suffix to handle PID reuse.
-    // Only fails when --log-file/--log-dir was requested but the file can't be opened.
     if (!g_a0LogFile.empty() || !g_a0LogDir.empty()) {
         if (!xRedirectStderr(sid, getpid())) {
             std::cerr << "FATAL: "
@@ -556,32 +527,20 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
         }
     }
 
-    if (!stack.core->init(skillsDir, a0Dir)) {
+    // Load skills
+    if (stack.skillMgr.loadAll() != 0) {
         std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
         return 1;
     }
 
-    // Create session early (for persistence of init-phase operations)
-    std::unique_ptr<a0::SessionContext> sessionCtx;
-    if (resumeSessionId.empty()) {
-        stack.core->ensureSession();
-        std::string sessionUuid = stack.core->currentSessionId();
-        int64_t sessionDbId = stack.core->sessionDbId();
-        stack.skillMgr.setRecordingSession(sessionDbId);
-        char cwdBuf[4096];
-        std::string initialCwd = ::getcwd(cwdBuf, sizeof(cwdBuf)) ? cwdBuf : ".";
-        sessionCtx = std::make_unique<a0::SessionContext>(
-            initialCwd, a0Dir, sessionUuid, sessionDbId, &stack.persistence);
-        sessionCtx->init(&stack.skillMgr);
-        stack.core->setSession(sessionUuid, sessionDbId, sessionCtx.get());
-    } else {
-        stack.skillMgr.setRecordingSession(stack.core->sessionDbId());
-        sessionCtx = a0::SessionContext::loadFromDb(
-            stack.core->sessionDbId(), a0Dir, &stack.persistence);
-        if (sessionCtx) {
-            sessionCtx->restore(&stack.skillMgr);
-        }
-    }
+    // Create session
+    int agentId = xRegisterAgent(stack.persistence);
+    int64_t sessionDbId = stack.persistence.createSession(sid, 0, 0, agentId);
+    stack.skillMgr.setRecordingSession(sessionDbId);
+
+    // Build DrivenCore
+    a0::DrivenCore core(&stack.llmProvider, &stack.skillMgr, &stack.persistence);
+    core.setSession(sessionDbId, sid);
 
     json params;
     try { params = json::parse(runParamsStr); } catch (...) { params = json::object(); }
@@ -593,13 +552,22 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
             skillName = runPrompt;
     }
 
-    json result;
-    if (!skillName.empty())
-        result = stack.core->runSkill(skillName, params);
-    else
-        result = stack.core->processGoal(runPrompt, params);
+    if (!skillName.empty()) {
+        std::cerr << "runSkill is not yet implemented in the driven_core path" << std::endl;
+        return 1;
+    }
 
-    std::cout << result.dump() << std::endl;
+    std::string result = core.runSync(runPrompt);
+    json out = json::object();
+    out["status"] = "ok";
+    out["session_id"] = sid;
+    try {
+        json parsed = json::parse(result);
+        out["result"] = parsed;
+    } catch (...) {
+        out["result"] = result;
+    }
+    std::cout << out.dump() << std::endl;
     return 0;
 }
 
@@ -622,20 +590,17 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
                   bool tuiTestMode = false) {
     AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
                      idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
-    stack.core->setSkillArgs(skillArgs);
 
-    // Establish session ID early (before init) so log redirect captures
-    // TRACE and cloning output that happens during init().
+    for (const auto& [key, val] : skillArgs)
+        stack.skillMgr.toolState().set("args:system-" + key, val);
+
+    // Establish session ID early for log redirect
+    std::string sid;
     if (!resumeSessionId.empty())
-        stack.core->resumeSession(resumeSessionId);
-    std::string sid = stack.core->currentSessionId();
-    if (sid.empty()) {
+        sid = resumeSessionId;
+    else
         sid = generateHexSessionId();
-        stack.core->setSessionId(sid);
-    }
 
-    // Redirect stderr now — all subsequent output (TRACE logs, clone messages)
-    // goes to the log file. Uses O_EXCL + .N suffix to handle PID reuse.
     if (!g_a0LogFile.empty() || !g_a0LogDir.empty()) {
         if (!xRedirectStderr(sid, getpid())) {
             std::cerr << "FATAL: "
@@ -647,45 +612,38 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
         xExportLogEnv(sid);
     }
 
-    if (!stack.core->init(skillsDir, a0Dir)) {
+    // Load skills
+    if (stack.skillMgr.loadAll() != 0) {
         std::cerr << "Failed to initialize skills from: " << skillsDir << std::endl;
         return 1;
     }
 
-    // Capture original CWD before session init may chdir into worktree
+    // Register agent and create session
+    int agentId = xRegisterAgent(stack.persistence);
+    int64_t sessionDbId = stack.persistence.createSession(sid, 0, 0, agentId);
+    stack.skillMgr.setRecordingSession(sessionDbId);
+
+    // Capture original CWD
     char cwdBuf[4096];
     std::string initialCwd = ::getcwd(cwdBuf, sizeof(cwdBuf)) ? cwdBuf : ".";
 
-    // Create session early (for persistence of init-phase operations)
     std::unique_ptr<a0::SessionContext> sessionCtx;
+    // For non-resumed sessions, init SessionContext for container prefix etc.
     if (resumeSessionId.empty()) {
-        stack.core->ensureSession();
-        std::string sessionUuid = stack.core->currentSessionId();
-        int64_t sessionDbId = stack.core->sessionDbId();
-        stack.skillMgr.setRecordingSession(sessionDbId);
         sessionCtx = std::make_unique<a0::SessionContext>(
-            initialCwd, a0Dir, sessionUuid, sessionDbId, &stack.persistence);
+            initialCwd, a0Dir, sid, sessionDbId, &stack.persistence);
         sessionCtx->init(&stack.skillMgr);
 
-        // Pass session prefix to Docker container manager for naming
         if (stack.containerMgr) {
-            stack.containerMgr->setSessionPrefix(sessionUuid.substr(0, 8));
+            stack.containerMgr->setSessionPrefix(sid.substr(0, 8));
         }
-
-        // session is already set via ensureSession(), but we need to set sessionCtx
-        // which ensureSession() doesn't handle
-        // setSession is idempotent for the same sessionId/dbId
-        stack.core->setSession(sessionUuid, sessionDbId, sessionCtx.get());
     } else {
-        stack.skillMgr.setRecordingSession(stack.core->sessionDbId());
         sessionCtx = a0::SessionContext::loadFromDb(
-            stack.core->sessionDbId(), a0Dir, &stack.persistence);
+            sessionDbId, a0Dir, &stack.persistence);
         if (sessionCtx) {
             sessionCtx->restore(&stack.skillMgr);
-            // Restore Docker prefix from stored session UUID
             if (stack.containerMgr && !sessionCtx->gitInfo().currentBranch.empty()) {
-                stack.containerMgr->setSessionPrefix(
-                    stack.core->currentSessionId().substr(0, 8));
+                stack.containerMgr->setSessionPrefix(sid.substr(0, 8));
             }
         }
     }
@@ -733,7 +691,7 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
             a0::ipc::Message reg;
             reg.type = a0::ipc::MessageType::REGISTER;
             reg.pid = getpid();
-            reg.sessionUuid = stack.core->currentSessionId();
+            reg.sessionUuid = sid;
             if (a0::ipc::sendMessage(sock, reg) == 0) {
                 b1Fd = sock.release();
                 std::cerr << "a0: registered with b1" << std::endl;
@@ -741,16 +699,15 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
         }
     }
 
-    // Launch TUI (DrivenCore integrated directly, no separate AppCore thread)
+    // Launch TUI
     {
-        int agentId = stack.core ? stack.core->agentDbId() : 0;
-        a0::tui::AgentTui tui(apiKey, "deepseek-chat",
+        a0::tui::AgentTui tui(&stack.llmProvider,
                               &stack.skillMgr, &stack.persistence,
                               agentId,
-                              [&b1Fd]() { return b1Fd >= 0; });
-        if (!mockUrl.empty()) {
+                              [&b1Fd]() { return b1Fd >= 0; },
+                              sessionDbId, sid);
+        if (!mockUrl.empty())
             tui.setMockUrl(mockUrl);
-        }
         if (!tuiResumeUuid.empty())
             tui.resumeSession(tuiResumeUuid);
         return tui.run(tuiTestMode);
@@ -762,7 +719,6 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
 // ---------------------------------------------------------------------------
 
 static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, const std::string& cwd) {
-    // Resolve workdir for b1 — use requested cwd or current dir
     std::string workdir = cwd;
     if (workdir.empty() || workdir == ".") {
         char buf[4096];
@@ -773,7 +729,6 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
             workdir = resolved;
     }
 
-    // Change to the requested working directory before creating PTY
     if (chdir(workdir.c_str()) != 0) {
         std::cerr << "a0: terminal: chdir(" << workdir << ") failed: "
                   << strerror(errno) << "\n";
@@ -787,7 +742,6 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
     std::string sessionUuid = generateHexSessionId();
     int64_t sessionId = persistence.createSession(sessionUuid, 0, 0, agentId);
 
-    // Launch b1 if not running — required for IPC relay to c2
     std::string b1SockPath = a0Dir + "/b1.sock";
     std::string b1PidPath = a0Dir + "/b1.pid";
     {
@@ -827,7 +781,6 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
         }
     }
 
-    // Connect to b1
     a0::ipc::UnixSocket b1RawSock;
     if (b1RawSock.connect(b1SockPath, 2000) != 0) {
         std::cerr << "a0: terminal: cannot connect to b1\n";
@@ -835,7 +788,6 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
     }
     a0::ipc::BufferedSocket b1Sock(b1RawSock.release());
 
-    // Create PTY
     int master = posix_openpt(O_RDWR | O_NOCTTY);
     if (master < 0) {
         std::cerr << "a0: terminal: posix_openpt failed\n";
@@ -844,7 +796,6 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
     grantpt(master);
     unlockpt(master);
 
-    // Fork shell into PTY
     pid_t shellPid = fork();
     if (shellPid == 0) {
         setsid();
@@ -866,7 +817,6 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
         return 1;
     }
 
-    // Create stream and notify c2 via b1
     int64_t streamId = persistence.createStream(sessionId, "",
         "terminal", "host", "", ".", terminalId);
 
@@ -879,7 +829,6 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
         b1Sock.send(ready);
     }
 
-    // Read loop
     {
         char buf[4096];
         int seq = 0;
@@ -964,9 +913,8 @@ int main(int argc, char* argv[]) {
     app.add_option("--a0-dir", a0Dir, ".a0 state root (default ./.a0)");
     app.add_option("--env-file", envFilePath, ".env file path (default ./.env)");
     app.add_option("--log-file", logFile, "Redirect stderr to file");
-    app.add_option("--log-dir", logDir, "Log directory — auto-names a0-<sessionId>-<pid>.log");
+    app.add_option("--log-dir", logDir, "Log directory -- auto-names a0-<sessionId>-<pid>.log");
 
-    // Agent flags (shared by repl and run modes)
     std::string apiKey, mockUrl, skillsDir = "./skills", resumeSessionId;
     std::string idleTimeoutStr = "300", maxIdleStr = "10", defaultImage = "ubuntu:22.04";
     bool noDocker = false, noContainerPool = false, noB1 = false, outputJson = false;
@@ -1035,9 +983,6 @@ int main(int argc, char* argv[]) {
     termCmd->add_option("--cwd", terminalCwd, "Working directory for the terminal shell");
     termCmd->add_option("--terminal-id", terminalId, "Terminal identifier");
 
-    // 0 subcommands = repl mode (default); unlimited otherwise
-    // Nesting works without explicit require_subcommand.
-
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
@@ -1055,7 +1000,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Load env file (needed by all modes)
+    // Load env file
     loadEnvFile(envFilePath);
 
     // Resolve API key from env if not set
@@ -1072,19 +1017,18 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Ensure .a0 directory (needed by all except kill-all)
+    // Ensure .a0 directory
     if (!app.got_subcommand(killCmd)) {
         int r = a0::ensureA0Dir(a0Dir, !resumeSessionId.empty());
         if (r < 0) {
             std::cerr << "a0: fatal: could not create " << a0Dir << std::endl;
             return 1;
         }
-        // Resolve a0Dir to absolute path so it works after potential chdir
         if (a0Dir[0] != '/')
             a0Dir = xAbsPath(a0Dir);
     }
 
-    // Resolve log settings — actual redirect happens per-session
+    // Resolve log settings
     g_a0LogFile = logFile;
     g_a0LogDir = logDir;
     if (!g_a0LogDir.empty()) {
@@ -1103,7 +1047,6 @@ int main(int argc, char* argv[]) {
             return cmdSessionExport(a0Dir, exportSessionId, exportOutputPath, outputJson);
         if (sessionCmd->got_subcommand(sessionListCmd))
             return cmdSessionList(a0Dir, sessionListOffset, sessionListLimit, outputJson);
-        // session with no subcommand → print help
         std::cerr << "a0: session requires a subcommand (export|list)" << std::endl;
         return 1;
     }

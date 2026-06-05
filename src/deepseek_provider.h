@@ -1,20 +1,28 @@
 #pragma once
 
-#include "agent_interfaces.h"
+#include "driven_provider.h"
 
-class DeepSeekProvider : public InferenceProvider {
+namespace a0 {
+
+/// DeepSeek-specific LLM provider.
+///
+/// Implements the OpenAI-compatible API format used by DeepSeek.
+/// API key resolved from constructor argument or DEEPSEEK_API_KEY env var.
+/// Base URL: https://api.deepseek.com/v1/chat/completions
+///
+class DeepSeekProvider : public DrivenProvider {
 public:
-    DeepSeekProvider(const std::string& apiKey, const std::string& model = "deepseek-chat");
-    std::string complete(const std::string& systemPrompt,
-                          const std::string& userPrompt) override;
-    CompletionResponse complete(
-        const std::string& systemPrompt,
-        const std::vector<Message>& messages,
-        const std::vector<ToolSchema>& tools) override;
-    void setMockUrl(const std::string& url) override;
+    explicit DeepSeekProvider(const std::string& apiKey = "",
+                              const std::string& model = "deepseek-chat");
 
-private:
-    std::string m_apiKey;
-    std::string m_model;
-    std::string m_baseUrl;
+protected:
+    void xBuildPayload(json& payload,
+                       const std::string& systemPrompt,
+                       const std::vector<Message>& messages,
+                       const std::vector<ToolSchema>& tools,
+                       bool stream) const override;
+
+    void xAddAuth(curl_slist*& headers) override;
 };
+
+} // namespace a0

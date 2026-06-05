@@ -2,48 +2,57 @@
 
 ## 1. Overview
 
-Async LLM provider using `curl_multi` for non-blocking HTTP requests. Supports both streaming and non-streaming modes. Designed for event-loop integration: `startRequest()` / `startRequestStreaming()` kick off transfers, `tick()` drives curl progress and returns decoded events, `timeoutMs()` provides the poll timeout.
+Universal async LLM provider using `curl_multi` for non-blocking HTTP requests. Implements the `LlmProvider` interface. Supports both streaming and non-streaming modes. Designed for event-loop integration: `startRequest()` / `startRequestStreaming()` kick off transfers, `tick()` drives curl progress and returns decoded events, `timeoutMs()` provides the poll timeout.
+
+Concrete subclasses provide provider-specific API format and auth via the pure virtual hooks `xBuildPayload()` and `xAddAuth()`.
 
 **Source files:** `src/driven_provider.h/.cpp`
 
-**Dependencies:** `libcurl`, `nlohmann/json`, `response_decoder.h`, `mpsc.h`, `agent_interfaces.h`
+**Dependencies:** `llm_provider.h`, `libcurl`, `nlohmann/json`, `response_decoder.h`, `mpsc.h`, `agent_interfaces.h`
 
 **Important:** `tick()` must call `curl_multi_wait(m_multi, nullptr, 0, 0, nullptr)` before
 `curl_multi_perform()` to drive curl's internal async DNS resolver and connection I/O.
 Without this, the async resolver's sockets are never polled, DNS queries hang until
-timeout, and curl reports `CURLE_COULDNT_RESOLVE_HOST`. The zero-timeout wait is a
-single non-blocking `poll()` call (~1µs).
+timeout, and curl reports `CURLE_COULDNT_RESOLVE_HOST`.
 
 ## 2. Component Specifications
 
 ```cpp
 namespace a0 {
 
-class DrivenProvider {
+class DrivenProvider : public LlmProvider {
 public:
     DrivenProvider(const std::string& apiKey,
                    const std::string& model = "deepseek-chat");
-    ~DrivenProvider();
+    ~DrivenProvider() override;
 
-    DrivenProvider(const DrivenProvider&) = delete;
-    DrivenProvider& operator=(const DrivenProvider&) = delete;
-    DrivenProvider(DrivenProvider&&) = delete;
-    DrivenProvider& operator=(DrivenProvider&&) = delete;
-
+    // -- LlmProvider implementation --
     void startRequest(const std::string& systemPrompt,
                       const std::vector<Message>& messages,
-                      const std::vector<ToolSchema>& tools);
-
+                      const std::vector<ToolSchema>& tools) override;
     void startRequestStreaming(const std::string& systemPrompt,
                                const std::vector<Message>& messages,
-                               const std::vector<ToolSchema>& tools);
-
-    std::vector<mpsc::AppCoreEvent> tick();
-    void cancel();
-    bool active() const { return m_active; }
-    int timeoutMs() const;
-    void setMockUrl(const std::string& url);
+                               const std::vector<ToolSchema>& tools) override;
+    std::vector<mpsc::AppCoreEvent> tick() override;
+    void cancel() override;
+    bool active() const override { return m_active; }
+    int timeoutMs() const override;
+    void setMockUrl(const std::string& url) override { m_baseUrl = url; }
     const std::string& mockUrl() const { return m_baseUrl; }
+
+protected:
+    // -- Hooks for subclasses (pure virtual) --
+    virtual void xBuildPayload(json& payload,
+                               const std::string& systemPrompt,
+                               const std::vector<Message>& messages,
+                               const std::vector<ToolSchema>& tools,
+                               bool stream) const = 0;
+    virtual void xAddAuth(curl_slist*& headers) = 0;
+
+    // -- Shared state for subclasses --
+    std::string m_apiKey;
+    std::string m_model;
+    std::string m_baseUrl;
 
 private:
     struct EasyHandle {
@@ -55,19 +64,11 @@ private:
         ResponseDecoder decoder;
     };
 
-    std::string m_apiKey;
-    std::string m_model;
-    std::string m_baseUrl;
     CURLM* m_multi = nullptr;
     bool m_active = false;
     EasyHandle m_handle;
 
     void xSetupCommon(CURL* curl, curl_slist*& headers, bool streaming);
-    void xBuildPayload(json& payload,
-                       const std::string& systemPrompt,
-                       const std::vector<Message>& messages,
-                       const std::vector<ToolSchema>& tools,
-                       bool stream) const;
     void xUpdatePollInfo() const;
     void xProcessCompletion(CURL* easy, CURLcode result,
                             std::vector<mpsc::AppCoreEvent>& out);
@@ -88,7 +89,8 @@ graph TB
     end
 
     subgraph Internals
-        BUILD[xBuildPayload]
+        BUILD[xBuildPayload — virtual]
+        AUTH[xAddAuth — virtual]
         SETUP[xSetupCommon]
         POLL[xUpdatePollInfo]
         COMPL[xProcessCompletion]
@@ -108,6 +110,7 @@ graph TB
 
     SR --> BUILD --> SETUP --> EASY
     SRS --> BUILD --> SETUP --> EASY
+    SETUP --> AUTH
     EASY --> MULTI
     TICK --> PERFORM
     TICK --> INFO
@@ -131,13 +134,13 @@ sequenceDiagram
     C->>DP: startRequestStreaming(sysPrompt, msgs, tools)
     DP->>DP: xBuildPayload(payload)
     DP->>DP: xSetupCommon(curl, headers)
+    DP->>DP: xAddAuth(headers)
     DP->>CURL: curl_multi_add_handle()
     DP-->>C: (returns immediately)
 
     loop tick cycle
         C->>DP: tick()
         DP->>CURL: curl_multi_wait() — drives async DNS & I/O
-        Note over DP,CURL: Zero-timeout poll of curl's internal fds.<br/>Required for async DNS resolver to complete.
         DP->>CURL: curl_multi_perform()
         CURL-->>DP: running handles
         DP->>CURL: curl_multi_info_read()
@@ -150,7 +153,7 @@ sequenceDiagram
             DP->>DEC: decodeJson(responseBody)
             DEC-->>DP: decoder events
         end
-        DP-->>C: vector&lt;AppCoreEvent&gt;
+        DP-->>C: vector<AppCoreEvent>
     end
 
     C->>DP: cancel()

@@ -10,9 +10,9 @@
 #include "ftxui/component/screen_interactive.hpp"
 #include <ctime>
 #include "styles.h"
-#include "../persistence/persistence_store.h"
-#include "../driven_provider.h"
+#include "../llm_provider.h"
 #include "../driven_core.h"
+#include "../persistence/persistence_store.h"
 
 namespace a0::tui {
 
@@ -25,12 +25,13 @@ class MarkdownRenderer;
 
 class AgentTui {
 public:
-    AgentTui(const std::string& apiKey,
-             const std::string& model,
+    AgentTui(a0::LlmProvider* provider,
              a0::skills::SkillManager* skillMgr,
              a0::persistence::PersistenceStore* persistence,
              int64_t agentId = 0,
-             std::function<bool()> b1Status = nullptr);
+             std::function<bool()> b1Status = nullptr,
+             int64_t sessionDbId = 0,
+             const std::string& sessionUuid = "");
 
     virtual ~AgentTui();
 
@@ -54,7 +55,7 @@ private:
     a0::persistence::PersistenceStore* m_persistence;
     int64_t m_agentId = 0;
     std::function<bool()> m_b1Status;
-    std::unique_ptr<a0::DrivenProvider> m_provider;
+    a0::LlmProvider* m_provider;
     std::unique_ptr<a0::DrivenCore> m_drivenCore;
 
     std::unique_ptr<MessagePanel> m_messagePanel;
@@ -71,17 +72,14 @@ private:
     ftxui::ScreenInteractive* m_screen = nullptr;
     ftxui::Component m_mainComponent;
 
-    // Mouse drag tracking for copy-on-select
     bool m_mouseDown = false;
     bool m_mouseMoved = false;
 
-    // Bracketed paste handling
     bool m_pasteActive = false;
     std::string m_pasteBuffer;
     int m_pasteCounter = 0;
     std::unordered_map<int, std::string> m_pastedContents;
 
-    // Accumulated streaming text for the current assistant message
     std::string m_streamingText;
     int m_streamingEntryIndex = -1;
 

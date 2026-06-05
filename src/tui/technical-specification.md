@@ -108,21 +108,23 @@ namespace a0::tui {
 
 /// Main TUI orchestrator. Owns the FTXUI screen, loop, and all panels.
 /// Constructed with references to agent components, then run() enters the event loop.
-/// Owns DrivenProvider + DrivenCore internally (no AgentCore dependency).
+/// Owns DrivenCore internally, holds a non-owning LlmProvider* (injected).
 class AgentTui {
 public:
-    /// \param apiKey      DeepSeek API key for DrivenProvider.
-    /// \param model       Model name (e.g. "deepseek-chat").
+    /// \param provider    Injected LlmProvider (non-owning, must outlive AgentTui).
     /// \param skillMgr    SkillManager for tool schemas and execution.
     /// \param persistence PersistenceStore for session list/resume.
     /// \param agentId     Agent DB id for session creation.
     /// \param b1Status    Function to query b1 connection status (optional).
-    AgentTui(const std::string& apiKey,
-             const std::string& model,
+    /// \param sessionDbId Pre-existing session DB id (0 = create on first input).
+    /// \param sessionUuid Pre-existing session UUID (empty = generate on first input).
+    AgentTui(::a0::LlmProvider* provider,
              ::a0::skills::SkillManager* skillMgr,
              ::a0::persistence::PersistenceStore* persistence,
              int64_t agentId = 0,
-             std::function<bool()> b1Status = nullptr);
+             std::function<bool()> b1Status = nullptr,
+             int64_t sessionDbId = 0,
+             const std::string& sessionUuid = "");
 
     virtual ~AgentTui();
 
@@ -153,13 +155,13 @@ public:
     void submitInput(const std::string& input);
 
     /// Set mock URL for testing (forwards to DrivenProvider).
-    void setMockUrl(const std::string& url) { m_provider->setMockUrl(url); }
+    void setMockUrl(const std::string& url) { if (m_provider) m_provider->setMockUrl(url); }
 
 private:
     ::a0::persistence::PersistenceStore* m_persistence;
     int64_t m_agentId = 0;
     std::function<bool()> m_b1Status;
-    std::unique_ptr<::a0::DrivenProvider> m_provider;
+    ::a0::LlmProvider* m_provider;  // non-owning
     std::unique_ptr<::a0::DrivenCore> m_drivenCore;
 
     std::unique_ptr<MessagePanel> m_messagePanel;
@@ -798,27 +800,27 @@ a0 tui [--resume <uuid>] [--no-permissions]
 
 1. **CLI11 subcommand**: Add `App tuiCmd = app.add_subcommand("tui", "Interactive terminal UI");` with `--resume`, `--no-permissions`, and `--test-mode` flags.
 
-2. **Direct DrivenCore integration**: `AgentTui` is constructed with API key, model, SkillManager, and PersistenceStore — it **owns** `DrivenProvider` + `DrivenCore` internally. No AgentCore or streaming callbacks needed:
+2. **Injected LlmProvider**: `AgentTui` receives an `LlmProvider*` (non-owning), a `SkillManager*`, a `PersistenceStore*`, and optional session IDs. It constructs `DrivenCore` internally. No `AgentCore` or streaming callbacks needed:
 
 ```cpp
 void cmdTui(...) {
-    // Full AgentStack built for tool/skill infrastructure
     AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, ...);
-    stack.core->init(skillsDir, a0Dir);
-    stack.core->ensureSession();
-    int agentId = stack.core->agentDbId();
+    stack.skillMgr.loadAll();
+    int agentId = xRegisterAgent(stack.persistence);
+    int64_t sessionDbId = stack.persistence.createSession(sid, ...);
 
-    AgentTui tui(apiKey, "deepseek-chat",
+    AgentTui tui(&stack.llmProvider,
                  &stack.skillMgr, &stack.persistence,
                  agentId,
-                 [&b1Fd]() { return b1Fd >= 0; });
+                 [&b1Fd]() { return b1Fd >= 0; },
+                 sessionDbId, sid);
     if (!tuiResumeUuid.empty())
         tui.resumeSession(tuiResumeUuid);
     return tui.run(tuiTestMode);
 }
 ```
 
-3. **AgentCore remains for run mode**: The `AgentStack` is still built for `cmdRun()`, but `cmdTui()` only uses SkillManager, PersistenceStore, and agentId from it. The DrivenCore inside AgentTui handles all LLM interaction via DrivenProvider (curl_multi-based) with no dependency on AgentCore or DeepSeekProvider.
+3. **Both cmdRun and cmdTui use the same DrivenCore**: The `cmdRun` path uses `DrivenCore::runSync()` for synchronous headless execution. The `cmdTui` path uses `DrivenCore::tick()` from the FTXUI render loop. Both paths share the same `LlmProvider` → `DrivenCore` architecture, with `DeepSeekProvider` as the default provider implementation.
 
 ### 7.2 `DrivenProvider` (Replaces DeepSeekProvider Streaming)
 

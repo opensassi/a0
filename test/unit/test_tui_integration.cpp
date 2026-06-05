@@ -13,6 +13,22 @@ using namespace a0::tui;
 using namespace a0::tui::test;
 using namespace a0::persistence;
 
+// ---------------------------------------------------------------------------
+// Minimal mock provider that silently accepts requests and returns empty
+// ---------------------------------------------------------------------------
+class NullLlmProvider : public a0::LlmProvider {
+public:
+    void startRequest(const std::string&, const std::vector<::Message>&,
+                       const std::vector<::ToolSchema>&) override {}
+    void startRequestStreaming(const std::string&, const std::vector<::Message>&,
+                                const std::vector<::ToolSchema>&) override {}
+    std::vector<a0::mpsc::AppCoreEvent> tick() override { return {}; }
+    void cancel() override {}
+    bool active() const override { return false; }
+    int timeoutMs() const override { return -1; }
+    void setMockUrl(const std::string&) override {}
+};
+
 // ============================================================================
 // AgentTui — Non-interactive tests (verify layout, no event loop needed)
 // ============================================================================
@@ -26,7 +42,7 @@ struct TuiIntegrationTest : ::testing::Test {
         // they don't exercise goal processing (just verify layout/construction).
         // The DrivenCore will only process goals when a goal is submitted, and
         // nullptr SkillManager is handled gracefully.
-        tui = std::make_unique<AgentTui>("test-key", "test-model",
+        tui = std::make_unique<AgentTui>(nullptr,
                                           nullptr, &mockPersistence, 1, nullptr);
     }
 
@@ -107,7 +123,7 @@ static void testInteractive(
     std::function<void(AgentTui&, TestScreen&)> interactFn)
 {
     auto persistence = std::make_unique<MockPersistenceStore>();
-    AgentTui tui("test-key", "test-model", nullptr, persistence.get(), 1, nullptr);
+    AgentTui tui(nullptr, nullptr, persistence.get(), 1, nullptr);
 
     TestScreen testScreen(80, 24);
     tui.setScreen(testScreen.screenPtr());
@@ -146,22 +162,79 @@ struct TuiAgentConstructionTest : ::testing::Test {
 };
 
 TEST_F(TuiAgentConstructionTest, ConstructWithoutCrash) {
-    AgentTui tui("test-key", "test-model", nullptr, &store, 1, nullptr);
+    AgentTui tui(nullptr, nullptr, &store, 1, nullptr);
     SUCCEED();
 }
 
 TEST_F(TuiAgentConstructionTest, CurrentSessionIdEmptyInitially) {
-    AgentTui tui("test-key", "test-model", nullptr, &store, 1, nullptr);
+    AgentTui tui(nullptr, nullptr, &store, 1, nullptr);
     EXPECT_TRUE(tui.currentSessionId().empty());
 }
 
 TEST_F(TuiAgentConstructionTest, BuildComponentReturnsNonNull) {
-    AgentTui tui("test-key", "test-model", nullptr, &store, 1, nullptr);
+    AgentTui tui(nullptr, nullptr, &store, 1, nullptr);
     EXPECT_NE(tui.component(), nullptr);
 }
 
 TEST_F(TuiAgentConstructionTest, ComponentHasChildren) {
-    AgentTui tui("test-key", "test-model", nullptr, &store, 1, nullptr);
+    AgentTui tui(nullptr, nullptr, &store, 1, nullptr);
     auto comp = tui.component();
     EXPECT_NE(comp, nullptr);
 }
+
+// ============================================================================
+// AgentTui — Session persistence tests
+// ============================================================================
+
+TEST_F(TuiAgentConstructionTest, InjectedSessionIsUsedOnFirstSubmit) {
+    NullLlmProvider nullProvider;
+    int64_t dbId = store.createSession("injected-uuid", 0, 0, 1);
+
+    AgentTui tui(&nullProvider, nullptr, &store, 1, nullptr, dbId, "injected-uuid");
+    tui.submitInput("hello");
+
+    // No new session should be created — the injected one is used
+    int64_t found = store.findSessionByUuid("injected-uuid");
+    EXPECT_EQ(found, dbId);
+
+    // Exactly one session should exist (the injected one, not a TUI-generated duplicate)
+    EXPECT_EQ(store.sessions.size(), 1u);
+
+    // The user message should be persisted to the injected session
+    auto msgs = store.loadMessages(dbId, std::nullopt);
+    ASSERT_GE(msgs.size(), 1u);
+    EXPECT_EQ(msgs[0].role, "user");
+    EXPECT_EQ(msgs[0].content, "hello");
+}
+
+TEST_F(TuiAgentConstructionTest, ResumeSessionWiresDrivenCore) {
+    NullLlmProvider nullProvider;
+    int64_t dbId = store.createSession("resume-uuid", 0, 0, 1);
+
+    // Add a previous message to the session (simulating conversation history)
+    auto sit = store.sessions.find(dbId);
+    ASSERT_NE(sit, store.sessions.end());
+    {
+        a0::persistence::Message prevMsg;
+        prevMsg.id = 1;
+        prevMsg.sessionId = dbId;
+        prevMsg.role = "user";
+        prevMsg.content = "previous question";
+        prevMsg.createdAt = 1000;
+        sit->second.messages.push_back(prevMsg);
+    }
+
+    AgentTui tui(&nullProvider, nullptr, &store, 1, nullptr);
+    int rc = tui.resumeSession("resume-uuid");
+    ASSERT_EQ(rc, 0);
+
+    tui.submitInput("continue the conversation");
+
+    auto msgs = store.loadMessages(dbId, std::nullopt);
+    ASSERT_GE(msgs.size(), 1u);
+    // The newest message should be the user's input
+    EXPECT_EQ(msgs.back().role, "user");
+    EXPECT_EQ(msgs.back().content, "continue the conversation");
+}
+
+

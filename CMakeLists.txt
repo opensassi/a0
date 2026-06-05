@@ -24,13 +24,11 @@ FetchContent_MakeAvailable(ftxui md4c)
 set(LIB_SOURCES
     src/a0_dir.cpp
     src/session_context.cpp
-    src/agent_core.cpp
     src/base_prompt.cpp
     src/tool_runner.cpp
-    src/skill_runner.cpp
-    src/deepseek_provider.cpp
     src/response_decoder.cpp
     src/driven_provider.cpp
+    src/deepseek_provider.cpp
     src/driven_core.cpp
     src/app_core_thread.cpp
     src/context_manager.cpp
@@ -46,11 +44,11 @@ set(LIB_SOURCES
     src/tool_state.cpp
 )
 
-# CommandRunner — isolated utility with no agent dependencies
+# CommandRunner
 add_library(cmd_runner_lib STATIC src/command_runner.cpp)
 target_include_directories(cmd_runner_lib PUBLIC src)
 
-# IPC library — Unix sockets + JSON-line protocol
+# IPC library
 add_library(ipc_lib STATIC
     src/unix_socket.cpp
     src/ipc_protocol.cpp
@@ -104,14 +102,8 @@ add_agent_test(test_skill_loader test/unit/test_skill_loader.cpp)
 add_agent_test(test_validation_engine test/unit/test_validation_engine.cpp)
 add_agent_test(test_version_manager test/unit/test_version_manager.cpp)
 add_agent_test(test_tool_runner test/unit/test_tool_runner.cpp)
-add_agent_test(test_skill_resolver test/unit/test_skill_resolver.cpp)
-# Disabled: replaced by synthetic test framework
-# add_agent_test(test_skill_runner test/unit/test_skill_runner.cpp)
 add_agent_test(test_dependency_resolver test/unit/test_dependency_resolver.cpp)
 add_agent_test(test_session_context test/unit/test_session_context.cpp)
-# Disabled: replaced by synthetic test framework
-# add_agent_test(test_agent_core test/unit/test_agent_core.cpp)
-# add_agent_test(test_interfaces test/unit/test_interfaces.cpp)
 add_agent_test(test_skill_manager test/unit/test_skill_manager.cpp)
 add_agent_test(test_skill_schema test/unit/test_skill_schema.cpp)
 target_compile_definitions(test_skill_schema PRIVATE
@@ -123,19 +115,19 @@ target_link_libraries(test_dependency_graph PRIVATE pthread)
 add_agent_test(test_pipeline_execution test/unit/test_pipeline_execution.cpp)
 target_link_libraries(test_pipeline_execution PRIVATE pthread)
 
-add_agent_test(test_skill_pipeline test/unit/test_skill_pipeline.cpp)
-target_link_libraries(test_skill_pipeline PRIVATE pthread)
+# Disabled: depends on deprecated SkillRunner/InferenceProvider
+# add_agent_test(test_skill_pipeline test/unit/test_skill_pipeline.cpp)
+# target_link_libraries(test_skill_pipeline PRIVATE pthread)
 
 add_agent_test(test_tool_state test/unit/test_tool_state.cpp)
 target_link_libraries(test_tool_state PRIVATE pthread)
 
-add_agent_test(test_external_a0 test/unit/test_external_a0.cpp)
-target_link_libraries(test_external_a0 PRIVATE pthread)
-
-add_agent_test(test_skill_args test/unit/test_skill_args.cpp)
-target_link_libraries(test_skill_args PRIVATE pthread)
 add_agent_test(test_context_manager test/unit/test_context_manager.cpp)
-add_agent_test(test_deepseek_provider test/unit/test_deepseek_provider.cpp)
+add_agent_test(test_system_tools test/unit/test_system_tools.cpp)
+
+add_agent_test(test_driven_core_persistence test/unit/test_driven_core_persistence.cpp)
+target_include_directories(test_driven_core_persistence PRIVATE test/tui)
+target_link_libraries(test_driven_core_persistence PRIVATE pthread)
 
 # --- TUI tests ---
 function(add_tui_test TEST_NAME TEST_SOURCE)
@@ -178,14 +170,6 @@ add_tui_test(test_tui_integration test/unit/test_tui_integration.cpp)
 target_link_libraries(test_tui_integration PRIVATE tui_test_mock)
 target_include_directories(test_tui_integration PRIVATE test/tui)
 
-add_agent_test(test_system_tools test/unit/test_system_tools.cpp)
-
-add_agent_test(test_system_tools_e2e test/unit/test_system_tools_e2e.cpp)
-add_agent_test(test_agent_integration test/unit/test_agent_integration.cpp)
-add_agent_test(test_agent_tool_calls test/unit/test_agent_tool_calls.cpp)
-target_compile_definitions(test_system_tools_e2e PRIVATE
-    TEST_PROJECT_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-
 add_agent_test(test_docker_interfaces test/unit/test_docker_interfaces.cpp)
 
 add_agent_test(test_container_manager test/unit/test_container_manager.cpp)
@@ -204,7 +188,7 @@ add_agent_test(test_docker_tool_runner test/unit/test_docker_tool_runner.cpp)
 target_compile_definitions(test_docker_tool_runner PRIVATE
     TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
 
-# --- IPC tests (standalone — no a0_lib dependency) ---
+# --- IPC tests ---
 function(add_ipc_test TEST_NAME TEST_SOURCE)
     add_executable(${TEST_NAME} ${TEST_SOURCE})
     target_link_libraries(${TEST_NAME} PRIVATE
