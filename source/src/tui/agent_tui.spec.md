@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-The `AgentTui` class is the facade for the TUI sub-module. It owns all panels (MessagePanel, InputPanel, StatusBar, DialogManager, SessionManager), constructs the FTXUI component hierarchy, manages the event loop via `ScreenInteractive`, and wires streaming callbacks from AgentCore/DeepSeekProvider into the rendering pipeline. It is the sole entry point for the `a0 tui` subcommand.
+The `AgentTui` class is the facade for the TUI sub-module. It owns all panels (MessagePanel, InputPanel, StatusBar, DialogManager, SessionManager, MarkdownRenderer), constructs the FTXUI component hierarchy, manages the event loop via `ScreenInteractive`, and wires events from `DrivenCore` (via `m_drivenCore->tick()`) into the rendering pipeline. It is the sole entry point for the `a0 tui` subcommand.
 
-**Lifecycle:** Construct → (optional `resumeSession`) → `run()` (blocks) → cleanup → destruct.
+**Lifecycle:** Construct → (optional `resumeSession`) → `run()` (blocks with xTickCore loop) → cleanup → destruct.
 
-**Depends on**: All other TUI components, `a0::AgentCore`, `a0::persistence::PersistenceStore`, `a0::skills::SkillManager`, FTXUI `ScreenInteractive`, `Loop`, `Component`
+**Depends on**: All other TUI components, `a0::DrivenProvider`, `a0::DrivenCore`, `a0::persistence::PersistenceStore`, `a0::skills::SkillManager`, FTXUI `ScreenInteractive`, `Loop`, `Component`
 
 ---
 
@@ -16,34 +16,51 @@ The `AgentTui` class is the facade for the TUI sub-module. It owns all panels (M
 namespace a0::tui {
 
 /// Main TUI orchestrator. Owns the FTXUI screen, loop, and all panels.
-/// Constructed with references to agent components, then run() enters the event loop.
+/// Constructed with API key + model, creates DrivenProvider and DrivenCore internally,
+/// then run() enters the event loop with a tick-driven polling loop.
 class AgentTui {
 public:
-    /// \param core         AgentCore for processGoalStreaming.
+    /// \param apiKey       DeepSeek API key for DrivenProvider.
+    /// \param model        Model identifier (e.g. "deepseek-chat").
+    /// \param skillMgr     SkillManager for DrivenCore tool dispatch.
     /// \param persistence  PersistenceStore for session list/resume.
-    /// \param skills       SkillManager for tool schema display (future).
+    /// \param agentId      DB agent ID for session creation (optional).
     /// \param b1Status     Function to query b1 connection status (optional).
-    /// \param noPermissions If true, auto-approve tool execution.
-    AgentTui(::a0::AgentCore* core,
-             ::a0::persistence::PersistenceStore* persistence,
-             ::a0::skills::SkillManager* skills,
-             std::function<bool()> b1Status = nullptr,
-             bool noPermissions = false);
+    AgentTui(const std::string& apiKey,
+             const std::string& model,
+             a0::skills::SkillManager* skillMgr,
+             a0::persistence::PersistenceStore* persistence,
+             int64_t agentId = 0,
+             std::function<bool()> b1Status = nullptr);
 
     virtual ~AgentTui();
 
     /// Enter the FTXUI event loop. Blocks until user quits (Ctrl+Q / :q / /quit).
     /// During the loop:
+    ///   - Runs FTXUI Loop with 16ms sleep between iterations
+    ///   - Calls xTickCore() after each iteration to drain DrivenCore events
     ///   - Handles user input via InputPanel callbacks
     ///   - Dispatches streaming responses to MessagePanel
     ///   - Updates StatusBar on state changes
     ///   - Processes dialog interactions
+    /// \param testMode  If true, uses FixedSize(80,24) screen for automated tests.
     /// \retval 0  Normal exit.
-    /// \retval -1 FTXUI error.
-    int run();
+    int run(bool testMode = false);
 
-    /// Request graceful shutdown. Posts quit task to FTXUI event loop.
+    /// Request graceful shutdown. Posts Exit() to FTXUI screen.
     void shutdown();
+
+    /// Access the FTXUI component tree for embedding.
+    ftxui::Component component() const { return m_mainComponent; }
+
+    /// Set external FTXUI screen (for embedding in larger layouts).
+    void setScreen(ftxui::ScreenInteractive* screen);
+
+    /// Clear screen and end current session.
+    void clearScreen();
+
+    /// Get the current screen pointer.
+    ftxui::ScreenInteractive* screenPtr() const { return m_screen; }
 
     /// Resume an existing session by UUID.
     /// Loads messages from persistence into the message panel.
@@ -54,13 +71,18 @@ public:
     /// Get current session UUID.
     std::string currentSessionId() const;
 
+    /// Programmatic input submission (used by tests).
+    void submitInput(const std::string& input);
+
 private:
     // Non-owning dependencies
-    ::a0::AgentCore* m_core;
-    ::a0::persistence::PersistenceStore* m_persistence;
-    ::a0::skills::SkillManager* m_skills;
+    a0::persistence::PersistenceStore* m_persistence;
+    int64_t m_agentId = 0;
     std::function<bool()> m_b1Status;
-    bool m_noPermissions;
+
+    // Owned providers and core
+    std::unique_ptr<a0::DrivenProvider> m_provider;
+    std::unique_ptr<a0::DrivenCore> m_drivenCore;
 
     // Owned panels
     std::unique_ptr<MessagePanel> m_messagePanel;
@@ -68,20 +90,38 @@ private:
     std::unique_ptr<StatusBar> m_statusBar;
     std::unique_ptr<DialogManager> m_dialogMgr;
     std::unique_ptr<SessionManager> m_sessionMgr;
+    std::unique_ptr<MarkdownRenderer> m_markdown;
 
     // Session state
     std::string m_sessionUuid;
     int64_t m_sessionDbId = 0;
     AgentState m_agentState = AgentState::Idle;
-    bool m_streaming = false;
-    int m_streamingEntryIndex = -1;
 
     // FTXUI objects
-    ftxui::ScreenInteractive* m_screen;     // non-owning (created on heap by run)
-    ftxui::Component m_mainComponent;        // owned by ScreenInteractive
+    ftxui::ScreenInteractive* m_screen = nullptr;
+    ftxui::Component m_mainComponent;
+
+    // Mouse drag tracking for copy-on-select
+    bool m_mouseDown = false;
+    bool m_mouseMoved = false;
+
+    // Bracketed paste handling
+    bool m_pasteActive = false;
+    std::string m_pasteBuffer;
+    int m_pasteCounter = 0;
+    std::unordered_map<int, std::string> m_pastedContents;
+
+    // Accumulated streaming text for the current assistant message
+    std::string m_streamingText;
+    int m_streamingEntryIndex = -1;
+
+    // Helpers
+    std::string xExpandPastePlaceholders(const std::string& input);
+    void xProcessPasteBuffer();
+    void xTickCore();
 
     // Layout
-    int xBuildLayout();
+    void xBuildLayout();
     ftxui::Component xBuildMainContainer();
 
     // Input dispatch
@@ -89,17 +129,15 @@ private:
     int xHandleInterrupt();
     int xHandleCommand(const std::string& cmd);
 
-    // Goal processing
-    int xProcessGoal(const std::string& goal);
+    // DrivenCore event dispatch
+    void xHandleEvent(const a0::mpsc::AppCoreEvent& ev);
 
-    // Streaming callbacks — called from background threads (DeepSeek SSE parser)
-    // All callbacks must post to Screen via Post(Task{...}) for thread safety.
+    // Streaming callbacks — called from main thread via xTickCore()
     void xOnToken(const std::string& token);
-    void xOnToolStart(const std::string& name, const nlohmann::json& params);
+    void xOnToolStart(const std::string& name, const std::string& arguments);
     void xOnToolEnd(const std::string& name, const std::string& output, bool success);
     void xOnComplete(const std::string& fullOutput);
     void xOnError(const std::string& error);
-    void xOnInterrupted();
 
     // Internal commands
     int xCmdSessions();
@@ -120,6 +158,8 @@ private:
 graph TB
     subgraph "AgentTui (Facade)"
         AT[AgentTui]
+        DP[DrivenProvider]
+        DC[DrivenCore]
     end
 
     subgraph "Panels"
@@ -131,12 +171,9 @@ graph TB
         MR[MarkdownRenderer]
     end
 
-    subgraph "Agent Core (in-process)"
-        Core[AgentCore]
-        DP[DeepSeekProvider]
-        SR[SkillRunner]
-        PS[PersistenceStore]
+    subgraph "Agent Components (shared references)"
         SK[SkillManager]
+        PS[PersistenceStore]
     end
 
     subgraph "FTXUI"
@@ -151,6 +188,12 @@ graph TB
         DB[(SQLite)]
     end
 
+    AT --> DP
+    DP --> DC
+    AT --> DC
+    DC --> SK
+    DC --> PS
+
     AT --> Screen
     AT --> Loop
     AT --> Layout
@@ -163,16 +206,7 @@ graph TB
     AT --> SM
     AT --> MR
 
-    AT -->|processGoalStreaming| Core
-    Core --> DP
-    Core --> SR
-    Core --> SK
-    Core --> PS
-
-    DP -->|SSE tokens| LLM
-    DP --> AT
-    SR -->|tool callbacks| AT
-
+    DP -->|HTTPS| LLM
     SM --> PS
     PS --> DB
 
@@ -193,7 +227,8 @@ sequenceDiagram
     participant SM as SessionManager
     participant PS as PersistenceStore
 
-    main->>AT: AgentTui(core, persistence, skills, ...)
+    main->>AT: AgentTui(apiKey, model, skillMgr, persistence, agentId, b1Status)
+    Note over AT: Creates DrivenProvider + DrivenCore internally
     alt --resume <uuid>
         main->>AT: resumeSession("abc-123")
         AT->>SM: resume("abc-123", outDbId)
@@ -205,15 +240,17 @@ sequenceDiagram
         AT->>AT: m_messagePanel->loadHistory(...)
     end
     main->>AT: run()
-    AT->>FTXUI: ScreenInteractive::Fullscreen()
+    AT->>FTXUI: ScreenInteractive::Fullscreen() or FixedSize
     AT->>AT: xBuildLayout()
     AT->>FTXUI: Loop(&screen, mainComponent)
-    AT->>FTXUI: loop.Run()  -- blocks until quit
-    Note over FTXUI: User types, streams, etc. via callbacks
+    loop Every 16ms
+        AT->>FTXUI: loop.RunOnce()
+        AT->>AT: xTickCore()
+    end
     AT-->>main: 0
 ```
 
-### 4.2 Submit → Stream → Complete
+### 4.2 Submit → xTickCore → Complete
 
 ```mermaid
 sequenceDiagram
@@ -222,62 +259,45 @@ sequenceDiagram
     participant AT as AgentTui
     participant SB as StatusBar
     participant MP as MessagePanel
-    participant Core as AgentCore
-    participant DP as DeepSeekProvider
-    participant SR as SkillRunner
-    participant FTXUI as Screen
+    participant DC as DrivenCore
 
     User->>IP: type & submit
     IP->>AT: xHandleSubmit("find log files")
 
-    AT->>AT: xHandleCommand or xProcessGoal
-
-    AT->>SM: create(uuid)
-    AT->>SB: setSessionId(uuid)
-    AT->>SB: setAgentState(Thinking)
-    AT->>MP: append(User, "find log files")
-    AT->>MP: beginStreaming(Assistant)
-    AT->>SB: setMessageCount(N)
-    AT->>IP: setEnabled(false)
-
-    AT->>Core: processGoalStreaming(goal, onToken, onToolStart, onToolEnd, onComplete, onError)
-
-    Core->>DP: completeStreaming(messages, schemas, onToken)
-    DP->>DP: parse SSE stream
-
-    loop each token from DeepSeek
-        DP->>AT: xOnToken("I'll")
-        AT->>FTXUI: Post(Task{...})
-        FTXUI->>MP: streamUpdate(idx, "I'll")
-        MP->>FTXUI: (re-render)
-
-        DP->>AT: xOnToken(" search")
-        AT->>FTXUI: Post(Task{...})
-        FTXUI->>MP: streamUpdate(idx, "I'll search")
+    alt command (/sessions, /help, etc.)
+        AT->>AT: xHandleCommand(...)
+    else goal input
+        Note over AT: Create session on first input
+        AT->>SM: create("tui-<timestamp>", agentId)
+        AT->>SB: setSessionId(uuid)
+        AT->>SB: setAgentState(Thinking)
+        AT->>MP: append(User, "find log files")
+        AT->>IP: setEnabled(false)
+        AT->>DC: submitGoal(expanded)
+        AT->>AT: xTickCore()  — immediate first tick
     end
 
-    rect rgb(255, 240, 230)
-        Note right of Core: Tool call
-        SR->>AT: xOnToolStart("glob", {pattern:"*.log"})
-        AT->>FTXUI: Post(Task{...})
-        FTXUI->>MP: appendToolCall("glob", Pending)
-        FTXUI->>SB: setAgentState(Executing)
-
-        SR->>AT: xOnToolEnd("glob", "3 files", true)
-        AT->>FTXUI: Post(Task{...})
-        FTXUI->>MP: updateToolCall(idx, Completed, "3 files")
-        FTXUI->>SB: setAgentState(Thinking)
+    Note over AT,DC: Event loop drains DrivenCore events
+    loop xTickCore() — each loop iteration
+        DC->>AT: events vector via tick()
+        alt LlmToken
+            AT->>MP: beginStreaming / streamUpdate
+        alt ToolStart
+            AT->>MP: appendToolCall(name, Running)
+            AT->>SB: setAgentState(Executing)
+        alt ToolEnd
+            AT->>MP: appendToolCall(name, Completed/Failed, output)
+            AT->>SB: setAgentState(Thinking)
+        alt Complete
+            AT->>MP: endStream
+            AT->>SB: setAgentState(Idle)
+            AT->>IP: setEnabled(true)
+        alt Error
+            AT->>MP: append(Error, message)
+            AT->>SB: setAgentState(Idle)
+            AT->>IP: setEnabled(true)
+        end
     end
-
-    DP->>AT: xOnComplete("Found 3 log files matching *.log")
-    AT->>FTXUI: Post(Task{...})
-    FTXUI->>MP: endStream(idx)
-    FTXUI->>SB: setAgentState(Idle)
-    FTXUI->>SB: setMessageCount(N+1)
-
-    AT->>IP: setEnabled(true)
-    AT->>IP: clear()
-    AT->>IP: focus()
 ```
 
 ### 4.3 Interrupt
@@ -287,16 +307,14 @@ sequenceDiagram
     participant User
     participant IP as InputPanel
     participant AT as AgentTui
-    participant DP as DeepSeekProvider
-    participant SR as SkillRunner
+    participant DC as DrivenCore
     participant MP as MessagePanel
     participant SB as StatusBar
 
     Note over AT: Streaming in progress
     User->>IP: Ctrl+C
     IP->>AT: xHandleInterrupt()
-    AT->>DP: cancel()
-    AT->>SR: cancel running tool
+    AT->>DC: cancel()
     AT->>MP: append(System, "Interrupted")
     AT->>SB: setAgentState(Idle)
     AT->>IP: setEnabled(true)
@@ -474,24 +492,29 @@ window.getAnimationState = function() {
 | Method | Test Case | Expected |
 |--------|-----------|----------|
 | `run` | Normal lifecycle | Returns 0, terminal restored |
-| `shutdown` | During streaming | Loop exits, streaming cancelled |
+| `run` | Test mode | FixedSize(80,24) screen used |
+| `shutdown` | During execution | Loop exits, DrivenCore cancel called |
+| `setScreen` | External screen set | screenPtr() returns correct pointer |
+| `clearScreen` | Active session | Session ended, m_screen = nullptr |
 | `resumeSession` | Valid UUID | Messages loaded, sessionId set |
 | `resumeSession` | Invalid UUID | -1, no change |
 | `currentSessionId` | After resume | Returns the resumed UUID |
 | `currentSessionId` | Before any session | Empty string |
-| `xHandleSubmit` | Normal text | Forwards to processGoal, state = Thinking |
+| `submitInput` | Text input | Forwards to xHandleSubmit |
+| `xHandleSubmit` | Normal text | Session created, submitGoal called, state = Thinking |
 | `xHandleSubmit` | `/sessions` | Triggers dialog |
 | `xHandleSubmit` | `/quit` | Triggers shutdown |
 | `xHandleSubmit` | Empty input | No-op |
-| `xHandleInterrupt` | During streaming | Cancel called, state = Idle, system msg appended |
+| `xHandleInterrupt` | During execution | cancel() called, state = Idle, system msg appended |
 | `xHandleInterrupt` | While idle | No-op |
-| `xOnToken` | Token received | Post to FTXUI, streamUpdate called |
+| `xOnToken` | Token received | streamUpdate called on MessagePanel |
 | `xOnToolStart` | Tool begins | appendToolCall called, state = Executing |
-| `xOnToolEnd` | Tool succeeds | updateToolCall called with Completed |
-| `xOnToolEnd` | Tool fails | updateToolCall called with Failed |
+| `xOnToolEnd` | Tool succeeds | appendToolCall called with Completed |
+| `xOnToolEnd` | Tool fails | appendToolCall called with Failed |
 | `xOnComplete` | Response done | endStream called, state = Idle, input re-enabled |
-| `xOnError` | Error occurs | Error message appended, state = Error |
-| `xOnInterrupted` | Aborted | Clean message appended |
+| `xOnError` | Error occurs | Error message appended, state = Idle |
+| `xTickCore` | Events pending | tick() called, events dispatched |
+| `xTickCore` | Core still busy | RequestAnimationFrame posted |
 
 ### Integration Tests
 
@@ -501,7 +524,7 @@ window.getAnimationState = function() {
 | INT‑TUI‑02 | Session resume | Quit TUI, relaunch with `--resume` | Previous messages visible, can continue |
 | INT‑TUI‑03 | `/sessions` -> resume | Type `/sessions`, select a session | Session loads, messages displayed |
 | INT‑TUI‑04 | Interrupt during tool | Ctrl+C while tool running | Tool cancelled, system message shown |
-| INT‑TUI‑05 | `--no-permissions` | Launch with flag | All tool calls auto-approved |
+| INT‑TUI‑05 | Bracketed paste | Paste large text (>20 chars) | `[ PASTED #1 ]` placeholder inserted |
 
 ---
 
@@ -514,13 +537,15 @@ auto tuiCmd = app.add_subcommand("tui", "Interactive terminal UI");
 std::string resumeUuid;
 bool noPermissions = false;
 tuiCmd->add_option("--resume", resumeUuid, "Resume session by UUID");
-tuiCmd->add_flag("--no-permissions", noPermissions, "Auto-approve tools");
 
 // In dispatch:
-if (*tuiCmd) {
+{
     AgentStack stack = buildAgentStack(args);
-    AgentTui tui(stack.core, stack.persistence, stack.skills,
-                 [&]() { return b1Alive; }, noPermissions);
+    int agentId = stack.core ? stack.core->agentDbId() : 0;
+    AgentTui tui(apiKey, "deepseek-chat",
+                 &stack.skillMgr, &stack.persistence,
+                 agentId,
+                 [&]() { return b1Fd >= 0; });
     if (!resumeUuid.empty())
         tui.resumeSession(resumeUuid);
     return tui.run();

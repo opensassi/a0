@@ -39,6 +39,8 @@ public:
     void setMaxParallel(int n);
 
 private:
+    void xRebuildBasePrompt();
+
     ToolRunner* m_toolRunner;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
@@ -48,6 +50,7 @@ private:
     std::string m_skillsDir;
     std::string m_basePrompt;
     std::unordered_map<std::string, std::string> m_globalVars;
+    int m_maxParallel = 4;
 };
 ```
 
@@ -62,6 +65,16 @@ static ToolRunner* selectRunner(const Tool& tool, ToolRunner* host, DockerToolRu
 /// Execute a tool by SkillTool definition.
 static json runTool(const SkillTool& skillTool, const json& params,
                     ToolRunner* hostRunner, DockerToolRunner* dockerRunner);
+```
+
+**Internal helper (file-static):**
+```cpp
+/// Execute a tool with streaming output by SkillTool definition.
+static a0::StreamHandle runToolStreaming(const SkillTool& skillTool,
+                                          const json& params,
+                                          a0::StreamCallback onChunk,
+                                          ToolRunner* hostRunner,
+                                          DockerToolRunner* dockerRunner);
 ```
 
 ## 3. expandPrompt()
@@ -102,10 +115,25 @@ graph TB
 ## 4a. Streaming Execution
 
 `DefaultSkillRunner::executeStreaming()` routes streaming tool invocations:
-1. Calls `SkillManager::executeToolStreaming(qn, params, onChunk, ...)`
-2. For system tools: synchronous handler execution, single onChunk call, complete
-3. For command tools with `streaming=true`: delegates to `ToolRunner::runStreaming()` or `DockerToolRunner::runStreaming()` with chunk callbacks
-4. For command tools without streaming: falls through to synchronous `executeToolWithMeta`
+
+### executeStreaming() flow
+
+```
+1. m_depResolver->missingDependencies(prompt) — if missing, return empty handle
+2. If prompt.composeFile set: m_composeMgr->startEnvironment()
+3. Check params for direct tool invocation (_tool + streaming flags):
+   a. If _tool matches a SkillTool: route through SkillManager::executeToolStreaming()
+   b. If not: fall through to full LLM pipeline
+4. Full LLM pipeline (sync, on background thread):
+   a. expandPrompt(prompt, params)
+   b. m_provider->complete(systemPrompt, expanded)
+   c. runValidators(prompt, llmResult)
+   d. Fire output via onChunk callback
+   e. If composeFile and not persistent: stopEnvironment()
+5. Returns StreamHandle immediately; LLM runs on background thread
+```
+
+For command tools with streaming: delegates to `runToolStreaming()` → `ToolRunner::runStreaming()` or `DockerToolRunner::runStreaming()` with chunk callbacks
 
 ## 5. Data Flow
 
@@ -144,6 +172,8 @@ sequenceDiagram
 | System tool with no handler | Returns error from SkillManager::executeToolWithMeta |
 | Validator returns `"ERROR:..."` | Short-circuit: `"VALIDATOR_ERROR: ERROR:..."` returned |
 | InferenceProvider throws | Exception propagates to caller |
+| executeStreaming with missing deps | Returns empty StreamHandle (done immediately) |
+| runToolStreaming with invalid tool | Delegates error to underlying runner |
 
 ## 7. Testing Requirements
 
@@ -154,7 +184,12 @@ sequenceDiagram
 | `expandPrompt` | `{{tool:system:bash}}` | 2-part alias resolution | Bash tool output injected |
 | `expandPrompt` | Unknown tool | `{{tool:nonexistent x=y}}` | `"ERROR: tool not found: nonexistent"` |
 | `runValidators` | Empty chain | `validators == []` | Returns input unchanged |
+| `runValidators` | Sequential chain | Multiple validators | Each validators output piped to next |
+| `runValidators` | Parallel chain | `parallelValidators = true` | DependencyGraph::executeBatches used |
 | `runValidators` | Validator returns error | Validator returns `"ERROR: fail"` | `"VALIDATOR_ERROR: ERROR: fail"` |
 | `execute` | Missing deps | Skill with dep missing | `"Missing dependencies: dep1"` |
 | `execute` | No compose, no validators | Basic skill | LLM response returned |
 | `runTool` | Command tool | SkillTool with command field | ToolRunner executed, output captured |
+| `runToolStreaming` | Command tool streaming | SkillTool with command field | StreamHandle with chunk callbacks |
+| `executeStreaming` | Full LLM pipeline | Prompt with no direct tool | LLM runs on background thread, output via onChunk |
+| `executeStreaming` | Direct tool invocation | Params with `_tool` field | Routes through executeToolStreaming |

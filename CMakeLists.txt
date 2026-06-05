@@ -29,6 +29,10 @@ set(LIB_SOURCES
     src/tool_runner.cpp
     src/skill_runner.cpp
     src/deepseek_provider.cpp
+    src/response_decoder.cpp
+    src/driven_provider.cpp
+    src/driven_core.cpp
+    src/app_core_thread.cpp
     src/context_manager.cpp
     src/dependency_resolver.cpp
     src/docker_security_filter.cpp

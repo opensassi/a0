@@ -141,7 +141,8 @@ public:
 
     virtual int registerAgent(const BuildFingerprint& fp) = 0;
 
-    virtual int64_t createSession(int64_t rootId,
+    virtual int64_t createSession(const std::string& uuid,
+                                   int64_t rootId,
                                    int64_t parentId,
                                    int agentId) = 0;
     virtual void endSession(int64_t sessionId) = 0;
@@ -186,7 +187,15 @@ public:
                                       const std::string& paramsJson,
                                       const std::string& outputJson) = 0;
     virtual std::vector<InvocationRow> loadInvocations(int type,
-                                                        const std::string& name) const = 0;
+                                                         const std::string& name) const = 0;
+
+    // --- Session context ---
+    virtual int saveSessionContext(const SessionContextRow& row) = 0;
+    virtual SessionContextRow loadSessionContext(int64_t sessionId) const = 0;
+};
+
+class NullStore : public PersistenceStore {
+    // No-op implementations for testing (all methods return 0 or empty).
 };
 ```
 
@@ -222,9 +231,19 @@ struct InvocationRow {
     std::string toolName, paramsJson, outputJson;
     int64_t timestamp;
 };
+
+struct SessionContextRow {
+    int64_t sessionId;
+    std::string sessionUuid;
+    std::string originalCwd;
+    std::string worktreePath;
+    std::string gitRepoRoot;
+    std::string gitBranch;
+    std::string gitCommit;
+};
 ```
 
-### 2.5 SQLite Store
+### 2.5 PersistenceStore (Updated Interface)
 
 ```cpp
 namespace a0::persistence {
@@ -235,7 +254,10 @@ public:
     ~SqliteStore() override;
 
     int registerAgent(const BuildFingerprint& fp) override;
-    int64_t createSession(int64_t rootId, int64_t parentId, int agentId) override;
+    int64_t createSession(const std::string& uuid,
+                           int64_t rootId,
+                           int64_t parentId,
+                           int agentId) override;
     void endSession(int64_t sessionId) override;
     int64_t appendMessage(int64_t sessionId,
                             std::optional<int64_t> subSessionId,
@@ -250,6 +272,10 @@ public:
                                        std::optional<int64_t> subSessionId = std::nullopt) override;
     int64_t findSessionByUuid(const std::string& uuid) const override;
     void flush() override;
+
+    // --- Session context ---
+    int saveSessionContext(const SessionContextRow& row) override;
+    SessionContextRow loadSessionContext(int64_t sessionId) const override;
 
 private:
     class Impl;
@@ -461,6 +487,9 @@ sequenceDiagram
 | `ensureSkill` | Duplicate | Returns existing id |
 | `appendInvocation` | Valid messageId + skillId | Returns invocation id |
 | `loadInvocations` | By type + name | Returns matching rows |
+| `saveSessionContext` | Valid SessionContextRow | Stores context, returns 0 |
+| `loadSessionContext` | Existing sessionId | Returns SessionContextRow with matching fields |
+| `loadSessionContext` | Nonexistent sessionId | Returns empty/default SessionContextRow |
 
 ### ReplayEngine
 

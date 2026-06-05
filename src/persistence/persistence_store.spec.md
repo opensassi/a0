@@ -45,11 +45,24 @@ struct InvocationRow {
     int64_t timestamp;
 };
 
+struct SessionContextRow {
+    int64_t sessionId;
+    std::string sessionUuid;
+    std::string originalCwd;
+    std::string worktreePath;
+    std::string gitRepoRoot;
+    std::string gitBranch;
+    std::string gitCommit;
+};
+
 class PersistenceStore {
 public:
     virtual ~PersistenceStore() = default;
     virtual int registerAgent(const BuildFingerprint& fp) = 0;
-    virtual int64_t createSession(int64_t rootId, int64_t parentId, int agentId) = 0;
+    virtual int64_t createSession(const std::string& uuid,
+                                   int64_t rootId,
+                                   int64_t parentId,
+                                   int agentId) = 0;
     virtual void endSession(int64_t sessionId) = 0;
     virtual int64_t appendMessage(int64_t sessionId,
                                    std::optional<int64_t> subSessionId,
@@ -91,10 +104,14 @@ public:
                                       const std::string& outputJson) = 0;
     virtual std::vector<InvocationRow> loadInvocations(int type,
                                                         const std::string& name) const = 0;
+
+    // --- Session context ---
+    virtual int saveSessionContext(const SessionContextRow& row) = 0;
+    virtual SessionContextRow loadSessionContext(int64_t sessionId) const = 0;
 };
 
 class NullStore : public PersistenceStore {
-    // No-op implementations for testing
+    // No-op implementations for testing (all methods return 0 or empty)
 };
 
 } // namespace a0::persistence

@@ -2,9 +2,11 @@
 
 ## 1. Overview
 
-Entry-point module. Parses CLI flags, loads `.env` files, resolves the DeepSeek API key through a priority chain, instantiates all concrete components (skill manager with registered handlers, runners, providers, Docker managers), wires them into `DefaultAgentCore`, and runs the interactive loop.
+Entry-point module. Parses CLI flags, loads `.env` files, resolves the DeepSeek API key through a priority chain, instantiates all concrete components (skill manager with registered handlers, runners, providers, Docker managers), wires them into `DefaultAgentCore`, and runs the interactive TUI or headless run loop.
 
 All C++ tool handlers are registered directly onto `SkillManager` via `xRegisterSystemHandlers()`. `SkillManager` holds `ToolRunner`/`DockerToolRunner` pointers for command-based tool execution.
+
+The TUI path (`cmdTui`) creates an `AgentStack` for shared infra but then constructs `AgentTui` directly with `DrivenProvider`/`DrivenCore`, bypassing `DefaultAgentCore` for the interactive loop. The headless `cmdRun` path uses `DefaultAgentCore` directly.
 
 ## 2. Component Specifications
 
@@ -13,40 +15,30 @@ All C++ tool handlers are registered directly onto `SkillManager` via `xRegister
 ```cpp
 /// Registers all C++ system tool handlers on SkillManager.
 /// Called once during AgentStack construction.
+/// Handler keys use hyphen-separated format: system-<comp>-<tool>.
 static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
-                                     a0::DockerSecurityFilter* dockerFilter,
                                      InferenceProvider* provider) {
-    // Core handlers: 3-part keys (system:comp:tool)
-    mgr.registerHandler("system:bash:bash", [](const json& p) { return a0::xBash(p); });
-    mgr.registerHandler("system:fs:read", [](const json& p) { return a0::xRead(p); });
-    mgr.registerHandler("system:fs:glob", [](const json& p) { return a0::xGlob(p); });
-    mgr.registerHandler("system:fs:grep", [](const json& p) { return a0::xGrep(p); });
-    mgr.registerHandler("system:fs:edit", [](const json& p) { return a0::xEdit(p); });
-    mgr.registerHandler("system:fs:write", [](const json& p) { return a0::xWrite(p); });
+    // Core handlers: hyphen-separated 3-part keys (system-<comp>-<tool>)
+    mgr.registerHandler("system-bash-bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
+    mgr.registerHandler("system-fs-read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
+    mgr.registerHandler("system-fs-glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
+    mgr.registerHandler("system-fs-grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
+    mgr.registerHandler("system-fs-edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
+    mgr.registerHandler("system-fs-write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
 
-    // Git wildcard: any "system:git:<subcmd>" routes through xGitCommand
-    mgr.registerHandler("system:git:*", [](const json& p) {
-        return a0::xGitCommand(p.value("_subcommand", ""), p);
-    });
-
-    // Docker wildcard
-    mgr.registerHandler("system:docker:*", [dockerFilter](const json& p) {
-        return a0::xDockerCommand(p.value("_subcommand", ""), p, dockerFilter);
-    });
-
-    // Docker compose wildcard
-    mgr.registerHandler("system:docker_compose:*", [](const json& p) {
-        return a0::xDockerComposeCommand(p.value("_subcommand", ""), p);
+    // Git wildcard: ctx.subcommand provides the resolved CLI subcommand
+    mgr.registerHandler("system-git-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
+        return a0::xGitCommand(ctx.subcommand, p);
     });
 
     // Meta handlers (capture SkillManager + InferenceProvider)
-    mgr.registerHandler("system:meta:show_skills", [&mgr](const json& p) {
+    mgr.registerHandler("system-meta-show_skills", [&mgr](const json& p, const a0::skills::HandlerContext&) {
         return a0::xShowSkills(p, &mgr);
     });
-    mgr.registerHandler("system:meta:show_skill_tools", [&mgr](const json& p) {
+    mgr.registerHandler("system-meta-show_skill_tools", [&mgr](const json& p, const a0::skills::HandlerContext&) {
         return a0::xShowSkillTools(p, &mgr);
     });
-    mgr.registerHandler("system:meta:tools_for_prompt", [&mgr, provider](const json& p) {
+    mgr.registerHandler("system-meta-tools_for_prompt", [&mgr, provider](const json& p, const a0::skills::HandlerContext&) {
         return a0::xToolsForPrompt(p, &mgr, provider);
     });
 }
@@ -74,16 +66,20 @@ int main(int argc, char* argv[]);
 //   2. SkillManager(skillsDir, a0Dir + "/store", &persistence)
 //   3. SubprocessToolRunner, DeepSeekProvider, etc.
 //   4. skillMgr.setToolRunner(&toolRunner)
-//      skillMgr.setDockerRunner(dockerRunner)
-//      skillMgr.setDockerSecurityFilter(&dockerFilter)
-//   5. xRegisterSystemHandlers(skillMgr, &dockerFilter, &provider)  // now passes HandlerContext
+//      if (dockerRunner) skillMgr.setDockerRunner(dockerRunner)
+//   5. xRegisterSystemHandlers(skillMgr, &provider)  // no DockerSecurityFilter arg
 //   6. DefaultSkillRunner(toolRunner, provider, &skillMgr, ...)
 //      skillRunner.setMaxParallel(maxParallel)
 //   7. DefaultAgentCore(toolRunner, skillRunner, ..., &skillMgr, ...)
 //      core.setMaxParallel(maxParallel)
 //      core.setExternalRepo(externalRepo)
-//      core.setSkillArgs(skillArgs)
-//   8. core.init(skillsDir, a0Dir)       // new 2-arg overload
+//   8. core.init(skillsDir, a0Dir)
+//      core.ensureSession() + core.sessionDbId() + core.setSession()
+//
+// TUI path (cmdTui) additionally:
+//   - Creates AgentTui(apiKey, model, &skillMgr, &persistence, agentId, b1Status)
+//   - AgentTui constructs DrivenProvider + DrivenCore internally
+//   - No DefaultAgentCore used for TUI rendering loop
 ```
 
 ## 3. Log File Propagation
@@ -123,12 +119,12 @@ struct AgentStack {
     DefaultContextManager context;
     DefaultDependencyResolver depResolver;
 
-    a0::docker::DockerContainerManager* containerMgr;
-    a0::docker::DockerComposeManager* composeMgr;
-    a0::docker::DockerToolRunnerImpl* dockerRunner;
+    a0::docker::DockerContainerManager* containerMgr = nullptr;
+    a0::docker::DockerComposeManager* composeMgr = nullptr;
+    a0::docker::DockerToolRunnerImpl* dockerRunner = nullptr;
     a0::DockerSecurityFilter dockerFilter;
-    DefaultSkillRunner* skillRunner;
-    DefaultAgentCore* core;
+    DefaultSkillRunner* skillRunner = nullptr;
+    DefaultAgentCore* core = nullptr;
 
     // Constructor:
     //   AgentStack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
@@ -136,14 +132,16 @@ struct AgentStack {
     //              maxParallel=4, externalRepo="https://github.com/opensassi/a0")
     //
     // Wire-up:
+    //   provider.setMockUrl(mockUrl)
     //   skillMgr.setToolRunner(&toolRunner)
-    //   skillMgr.setDockerRunner(dockerRunner)
-    //   xRegisterSystemHandlers(skillMgr, ...)
-    //   skillRunner → DefaultSkillRunner(..., skillMgr, ...)
+    //   if (dockerRunner) skillMgr.setDockerRunner(dockerRunner)
+    //   xRegisterSystemHandlers(skillMgr, &provider)  // no DockerSecurityFilter
+    //   skillRunner → DefaultSkillRunner(toolRunner, provider, &skillMgr, ...)
     //   skillRunner.setMaxParallel(maxParallel)
-    //   core → DefaultAgentCore(..., skillMgr, ...)
+    //   core → DefaultAgentCore(toolRunner, skillRunner, ..., &skillMgr, ...)
     //   core.setMaxParallel(maxParallel)
     //   core.setExternalRepo(externalRepo)
+    //   skillRunner.setSkillsDir(skillsDir)
 };
 ```
 
@@ -190,7 +188,20 @@ graph TB
 
     M --> SR
     M --> CORE
+    M -->|run subcommand| CORE
+    M -->|tui subcommand| TUI
     M -->|--kill-all?| KA
+
+    subgraph TUI_Path
+        TUI[AgentTui]
+        TDP[DrivenProvider]
+        TDC[DrivenCore]
+    end
+
+    TUI --> TDP
+    TUI --> TDC
+    TDC --> SM
+    TDC --> PS
 
     SM --> HANDLERS
     SM --> SL
@@ -229,7 +240,8 @@ sequenceDiagram
     participant PS as SqliteStore
     participant SR as DefaultSkillRunner
     participant CORE as DefaultAgentCore
-    participant User as User (stdin/stdout)
+    participant TUI as AgentTui
+    participant DC as DrivenCore
 
     OS->>M: argc, argv
     M->>M: CLI11 parse
@@ -240,7 +252,7 @@ sequenceDiagram
         Note over M,SM: SkillManager init + handler registration
         M->>SM: SkillManager(skillsDir, store, persistence)
         M->>SM: sm.setToolRunner(&toolRunner)
-        M->>SM: xRegisterSystemHandlers(sm, dockerFilter, provider)
+        M->>SM: xRegisterSystemHandlers(sm, provider)
         SM-->>M: ready (m_handlers populated)
     end
 
@@ -250,22 +262,20 @@ sequenceDiagram
         M->>CORE: DefaultAgentCore(toolRunner, sr, ..., sm, ...)
     end
 
-    alt interactive REPL
-        M->>CORE: init(skillsDir)
-        Note over CORE: loadAll → missingHandlers check → session ID
-        alt init fails
-            CORE-->>M: false
-            M->>OS: return 1
-        end
-        M->>CORE: run()
-        loop REPL
-            CORE->>User: result
-            User->>CORE: input
-        end
-        CORE-->>M: return
-    else run mode
-        M->>CORE: runSkill(skillName, params)
+    alt run mode
+        M->>CORE: init(skillsDir, a0Dir)
+        M->>CORE: ensureSession()
+        M->>CORE: runSkill(skillName, params) or processGoal(goal)
         CORE-->>User: JSON result
+    else tui mode (default)
+        M->>CORE: init(skillsDir, a0Dir)
+        M->>CORE: ensureSession() + setSession()
+        Note over M,TUI: TUI creates DrivenProvider + DrivenCore internally
+        M->>TUI: AgentTui(apiKey, model, &skillMgr, &persistence, agentId, b1Status)
+        TUI->>DC: submitGoal(goal) — on user input
+        DC->>DC: tick() — poll events each frame
+        TUI->>TUI: xTickCore() — drain events into MessagePanel
+        TUI-->>M: return 0
     end
     M->>OS: return 0
 ```
@@ -281,6 +291,7 @@ sequenceDiagram
 | `SkillManager::init` with missing handler | Fatal — prints all missing, returns false | Must register in xRegisterSystemHandlers |
 | cmdKillAll no PID files | No-op, returns 0 | |
 | `skillsDir` does not exist | `loadAll` returns -1, exit 1 | |
+| TUI mode without b1 | b1 launch skipped if `--no-b1` flag set | b1 status callback returns false |
 
 ## 8. Testing Requirements
 
@@ -288,8 +299,9 @@ sequenceDiagram
 |--------|-----------|
 | `loadEnvFile` | Valid file, missing file, malformed line, comment lines, duplicate keys |
 | `killByPidFile` | Valid PID, stale PID, missing file |
-| `xRegisterSystemHandlers` | All core handlers registered | Every handler listed in the function is present in m_handlers |
-| `xRegisterSystemHandlers` | Wildcard handlers | `system:git:*`, `system:docker:*`, `system:docker_compose:*` registered |
+| `xRegisterSystemHandlers` | All core handlers registered | Every handler listed in the function is present in m_handlers with HandlerContext signature |
+| `xRegisterSystemHandlers` | Wildcard handlers | `system-git-*` registered with ctx.subcommand resolution |
+| `xRegisterSystemHandlers` | Handler key format | Uses hyphen-separated `system-<comp>-<tool>` keys (not colon-separated) |
 | `main` (integration) | No flags, all flags, `--no-docker`, `--resume`, missing API key, init failure |
 | `main` (--kill-all) | `a0 --kill-all` → cmdKillAll called, b1/c2 cleaned up |
 | `main` (run mode) | `a0 run system:test --params '{}'` → skill executed, JSON printed |
@@ -302,6 +314,9 @@ sequenceDiagram
 | `main` (CLI flags) | `--external-repo` with existing dir → git fetch/checkout/reset executed |
 | `main` (CLI flags) | `--log-file /tmp/a0.log` → stderr redirected, child b1 receives derived `--log-file` |
 | `main` (CLI flags) | `terminal --terminal-id X --cwd /tmp` → terminal subcommand parsed, chdir to /tmp |
+| `main` (tui mode) | `a0 tui` → cmdTui constructs AgentTui with DrivenProvider/DrivenCore |
+| `cmdTui` | Session management | core.ensureSession() + setSession() called before TUI launch |
+| `cmdTui` | mockUrl propagation | Mock URL must be passed to DrivenProvider inside AgentTui |
 | `cmdTerminal` | b1 auto-launch when b1.sock missing → fork/exec b1, connect, register |
 | `cmdTerminal` | b1 already running → reuses existing b1, no second fork |
 | `xChildLog` | `/tmp/a.log` with suffix `"b1"` → returns `/tmp/a-b1.log` |

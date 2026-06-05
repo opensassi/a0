@@ -42,7 +42,31 @@ struct ToolCall {
 struct ToolSchema {
     std::string name;
     std::string description;
-    json inputSchema;
+    json inputSchema;  // JSON Schema object
+};
+```
+
+### `Message` struct
+```cpp
+struct Message {
+    std::string role;                 // "system", "user", "assistant", "tool"
+    std::string content;
+    std::string toolCallId;           // non-empty only for role=="tool"
+    std::vector<ToolCall> toolCalls;  // non-empty only for role=="assistant"
+
+    Message() = default;
+    Message(const std::string& r, const std::string& c)
+        : role(r), content(c) {}
+    Message(const std::string& r, const std::string& c, const std::string& tcid)
+        : role(r), content(c), toolCallId(tcid) {}
+};
+```
+
+### `CompletionResponse` struct
+```cpp
+struct CompletionResponse {
+    std::string content;               // text response (empty if tool_calls)
+    std::vector<ToolCall> toolCalls;   // tool calls (empty if text response)
 };
 ```
 
@@ -62,8 +86,6 @@ struct Skill {
     std::string prompt;
     std::vector<std::string> dependencies;
     std::vector<ValidatorBinding> validators;
-    std::string composeFile;
-    std::vector<std::string> aptDependencies;
 };
 ```
 
@@ -75,6 +97,15 @@ struct Prompt {
     std::string prompt;
     std::vector<std::string> dependencies;
     std::vector<ValidatorBinding> validators;
+    std::vector<std::string> chain;
+
+    std::string composeFile;
+    std::vector<std::string> aptDependencies;
+
+    // Component context for short-name resolution in tool templates
+    std::string ns;
+    std::string component;
+
     bool parallelValidators = false;   // run validators in parallel when independent
 };
 ```
@@ -103,23 +134,21 @@ public:
     /** @param name Tool name
      *  @return Tool if found, nullopt otherwise */
     virtual std::optional<Tool> getTool(const std::string& name) const = 0;
-    /** @param name Skill name
-     *  @return Skill if found, nullopt otherwise */
-    virtual std::optional<Skill> getSkill(const std::string& name) const = 0;
+    /** @param name Prompt/skill name
+     *  @return Prompt if found, nullopt otherwise */
+    virtual std::optional<Prompt> getPrompt(const std::string& name) const = 0;
     /** @return List of all registered tool names */
     virtual std::vector<std::string> listTools() const = 0;
-    /** @return List of all registered skill names */
-    virtual std::vector<std::string> listSkills() const = 0;
     /** @return List of all registered prompt names */
     virtual std::vector<std::string> listPrompts() const = 0;
     /** @param tool Tool to register
      *  @retval true  Added successfully
      *  @retval false Name conflict or invalid tool */
     virtual bool addTool(const Tool& tool) = 0;
-    /** @param skill Skill to register
+    /** @param prompt Prompt to register
      *  @retval true  Added successfully
-     *  @retval false Name conflict or invalid skill */
-    virtual bool addSkill(const Skill& skill) = 0;
+     *  @retval false Name conflict or invalid prompt */
+    virtual bool addPrompt(const Prompt& prompt) = 0;
 };
 ```
 
@@ -200,6 +229,15 @@ public:
      *  @return Generated completion text */
     virtual std::string complete(const std::string& systemPrompt,
                                   const std::string& userPrompt) = 0;
+    /** Tool-calling variant: sends message history + tool schemas.
+     *  @param systemPrompt  System-level instruction
+     *  @param messages      Conversation history including tool results
+     *  @param tools         JSON Schema tool definitions for function calling
+     *  @return CompletionResponse with content and/or tool_calls array */
+    virtual CompletionResponse complete(
+        const std::string& systemPrompt,
+        const std::vector<Message>& messages,
+        const std::vector<ToolSchema>& tools) = 0;
     /** @param url Mock endpoint URL (for testing) */
     virtual void setMockUrl(const std::string& url) = 0;
 };
@@ -276,6 +314,15 @@ public:
     /** Interactive REPL loop (blocking) */
     virtual void run() = 0;
 
+    /// Ensure a session exists, creating one if needed.
+    /// Returns true if a session is available (existing or newly created).
+    /// Callers that need a session UUID early (for logging, etc.)
+    /// should call this after init() instead of creating sessions manually.
+    virtual bool ensureSession() = 0;
+
+    /// Database row ID for the current session, or 0 if none.
+    virtual int64_t sessionDbId() const = 0;
+
     /// Streaming goal processing: processes a goal with streaming tool invocations.
     /// onChunk receives streaming output from tool invocations.
     virtual a0::StreamHandle processGoalStreaming(const std::string& goal,
@@ -296,8 +343,9 @@ public:
      *  @param stdinData   Optional stdin payload
      *  @return stdout+stderr of the command */
     virtual std::string execInContainer(const std::string& containerId,
-                                        const std::string& command,
-                                        const std::string& stdinData = "") = 0;
+                                         const std::string& command,
+                                         const std::string& stdinData = "",
+                                         int timeoutSecs = 30) = 0;
     /** Prune containers idle beyond the configured timeout */
     virtual void pruneIdleContainers() = 0;
 };
@@ -335,6 +383,16 @@ public:
 class DockerToolRunner : public ToolRunner {
 public:
     virtual ~DockerToolRunner() = default;
+};
+```
+
+### `CompatBridge` struct (skills sub-module)
+```cpp
+struct CompatBridge {
+    std::string toolName;
+    std::string since;
+    std::string bridgeCommand;
+    std::string description;
 };
 ```
 

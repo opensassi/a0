@@ -231,6 +231,31 @@ public:
     virtual ~DockerToolRunner() = default;
     // Constructor (in implementation) will take ContainerManager* and ComposeManager*.
 };
+
+// === Async / Event-Driven Interfaces ===
+// Full specifications in individual .spec.md files.
+
+// mpsc::Channel — header-only MPSC channel with eventfd wakeup (src/mpsc.h)
+//   Channel<T>::create() → pair<Sender<T>, Receiver<T>>
+//   Sender<T>: cloneable, thread-safe, send(value)
+//   Receiver<T>: move-only, poll_fd() for epoll, drain() non-blocking
+
+// ResponseDecoder — stateful SSE/JSON decoder (src/response_decoder.h/.cpp)
+//   feed(bytes) → decodes tokens/tool_calls, events() returns vector<AppCoreEvent>
+
+// DrivenProvider — async LLM provider (src/driven_provider.h/.cpp)
+//   curl_multi-based, startRequest()/startRequestStreaming() non-blocking
+//   tick() drives curl, returns decoded AppCoreEvent vector
+//   Designed for event-loop integration alongside DeepSeekProvider
+
+// DrivenCore — tick-driven state machine core (src/driven_core.h/.cpp)
+//   States: Idle → AwaitingLlm → ExecutingTools → Idle
+//   submitGoal(goal) → tick() drives provider + tool execution
+//   Replaces xRunForkedLoop() and processGoalStreaming()
+
+// AppCoreThread — thread-safe wrapper (src/app_core_thread.h/.cpp)
+//   Owns DrivenCore in dedicated thread with ppoll()-based event loop
+//   Commands via mpsc::Receiver<Command>, events via mpsc::Sender<AppCoreEvent>
 ```
 
 ---
@@ -244,18 +269,28 @@ graph TB
     User((User))
     DeepSeek[("DeepSeek API")]
 
-    subgraph "Agent Process"
+    subgraph "Agent Process (Legacy Core Path)"
         Core[AgentCore]
         Context[ContextManager]
+        SkillRunner[SkillRunner]
+        DepResolver[DependencyResolver]
+        DepGraph[DependencyGraph]
+    end
+
+    subgraph "Agent Process (DrivenCore Path)"
+        DC[DrivenCore]
+        DP[DrivenProvider]
+        ACT[AppCoreThread]
+        CHAN[mpsc CHANNELS]
+        DEC[ResponseDecoder]
+    end
+
+    subgraph "Shared Services"
         SkillMgr[SkillManager]
         SkillMgr_Handlers[m_handlers: xBash, xRead, xGitCommand, ...]
         ToolState[m_toolState: ToolState]
-        DepGraph[DependencyGraph]
         HostRunner[HostToolRunner]
         DockerRunner[DockerToolRunner]
-        SkillRunner[SkillRunner]
-
-        DepResolver[DependencyResolver]
         Persistence[PersistenceStore]
         ContainerMgr[ContainerManager]
         ComposeMgr[ComposeManager]
@@ -276,22 +311,35 @@ graph TB
     end
 
     User --> Core
+    User --> CHAN
+    CHAN --> DC
+    DC --> DP
+    DP --> DEC
+    DP --> DeepSeek
+    DC --> SkillMgr
+    ACT --> DC
+    ACT --> DP
+    ACT --> CHAN
+
     Core --> SkillMgr
     Core --> DepResolver
     Core --> HostRunner
     Core --> DockerRunner
     Core --> SkillRunner
     Core --> DepGraph
+    Core --> Persistence
+
     SkillMgr --> SkillMgr_Handlers
     SkillMgr --> HostRunner
     SkillMgr --> DockerRunner
     SkillMgr --> ToolState
+
     SkillRunner --> DepResolver
     SkillRunner --> DeepSeek
     SkillRunner --> SkillMgr
     SkillRunner --> HostRunner
     SkillRunner --> DockerRunner
-    Core --> Persistence
+
     Persistence --> DB
     SkillMgr --> SkillsDir
     SkillMgr --> SchemaJSON
@@ -304,7 +352,7 @@ graph TB
     DepGraph --> HostRunner
 ```
 
-**Caption**: `SkillManager` owns both the manifest index (loaded from `skills/`) and the `m_handlers` registry of C++ system tool handlers. It dispatches to `HostToolRunner`/`DockerToolRunner` for command-based tools. `DependencyGraph` batches tool invocations from the forked loop, parallelizing pure readers. `ToolState` is injected into handlers via `HandlerContext` for cross-invocation state. `SkillLoader` validates all `skill.json` manifests against `skills/schema.json` (Draft-07) at load time.
+**Caption**: Two parallel agent core paths exist. The **legacy path** (`AgentCore` → `SkillRunner` → `DeepSeekProvider`) is used by `cmdRun()` and the `run` skill subcommand. The **DrivenCore path** (`DrivenCore` + `DrivenProvider` + `ResponseDecoder`) is a tick-based state machine used by the TUI sub-module. Both paths share `SkillManager`, `PersistenceStore`, and the tool runners. `DrivenCore` replaces both `xRunForkedLoop()` and `processGoalStreaming()` with a single `submitGoal/tick` interface. `AppCoreThread` wraps `DrivenCore` in a dedicated thread with `ppoll()` event loop for thread-safe CLI usage.
 
 ---
 
@@ -436,7 +484,82 @@ xRunForkedLoop turn 2 → handler get("browser:page") → reuse handle
 processGoal() end    → next processGoal() clears again
 ```
 
-### 4.2 Docker Tool Execution (Containerized)
+### 4.2 DrivenCore Tick-Based Execution
+
+```mermaid
+sequenceDiagram
+    participant UI as CLI / TUI
+    participant DC as DrivenCore
+    participant DP as DrivenProvider
+    participant DEC as ResponseDecoder
+    participant SM as SkillManager
+
+    UI->>DC: submitGoal("find log files")
+    DC->>DC: xBuildInitialMessages(goal)
+    DC->>DC: xBuildToolSchemas()
+    DC->>DP: startRequestStreaming(sys, msgs, tools)
+    DC->>DC: state = AwaitingLlm
+
+    loop tick cycle
+        UI->>DC: tick()
+        DC->>DP: tick()
+        DP->>DEC: feed(curl response bytes)
+        DEC-->>DP: [LlmToken, ToolStart, ToolEnd, Complete]
+        DP-->>DC: AppCoreEvent vector
+        DC->>DC: xHandleLlmEvents(events)
+        DC-->>UI: forwarded AppCoreEvent vector
+    end
+
+    rect rgb(255, 240, 230)
+        Note over SM,DC: Tool call phase
+        DC->>DC: xExecuteTools()
+        DC->>SM: executeTool("glob", params)
+        SM-->>DC: result
+        DC->>DC: xStartLlmRequest(includeTools=true)
+        DC->>DP: startRequestStreaming(...)
+    end
+
+    rect rgb(230, 255, 230)
+        Note over DP,DC: LLM returns text
+        DP-->>DC: Complete("found 3 files")
+        DC->>DC: xFinishGoal(text)
+        DC->>DC: state = Idle
+    end
+```
+
+### 4.2b AppCoreThread DrivenCore Wrapper
+
+```mermaid
+sequenceDiagram
+    participant UI as CLI / TUI
+    participant ACT as AppCoreThread
+    participant DC as DrivenCore
+    participant DP as DrivenProvider
+
+    UI->>ACT: start(cmdRcvr, evtSender)
+    ACT->>ACT: spawn thread → xRun()
+
+    UI->>ACT: cmdSender.send(SubmitGoal{"hello"})
+    ACT->>ACT: ppoll returns → drain commands
+    ACT->>DC: submitGoal("hello")
+
+    loop ppoll/tick
+        ACT->>ACT: ppoll(cmdFd, wakeupFd, providerTimeout)
+        ACT->>ACT: drain commands (if any)
+        ACT->>DC: tick()
+        DC->>DP: tick()
+        DP-->>DC: events
+        DC-->>ACT: events
+        ACT->>UI: evtSender.send(event)
+        ACT->>ACT: wakeupFn() (optional)
+    end
+
+    UI->>ACT: stop()
+    ACT->>ACT: write wakeupFd → poll exits
+    ACT->>ACT: join thread
+```
+
+### 4.2c Docker Tool Execution (Containerized)
 
 ```mermaid
 sequenceDiagram
@@ -490,6 +613,21 @@ sequenceDiagram
 | `SkillManager`       | `executeToolStreaming` system tool                          | Synchronous handler, single onChunk call             |
 | `SkillManager`       | `executeToolStreaming` command tool                         | Delegates to `ToolRunner::runStreaming`              |
 | `SkillManager`       | `toolState` accessor                                        | Returns reference to `m_toolState`                   |
+| `MPSC Channel`       | Single sender, single receiver                              | Message delivered via drain()                        |
+| `MPSC Channel`       | Multiple senders (threaded)                                 | All messages received, no data race                  |
+| `MPSC Channel`       | poll_fd readability                                         | eventfd readable after send                          |
+| `ResponseDecoder`    | SSE token chunk                                             | feed() produces LlmToken with correct text           |
+| `ResponseDecoder`    | SSE finish_reason:stop                                      | complete() returns true, Complete emitted            |
+| `ResponseDecoder`    | JSON non-streaming decode                                   | decodeJson() returns correct events                  |
+| `DrivenProvider`     | Non-streaming request completes                             | HTTP 200, response body decoded into events          |
+| `DrivenProvider`     | Streaming request emits tokens                              | tick() returns LlmToken events incrementally         |
+| `DrivenProvider`     | Cancel in-flight request                                    | active() returns false, no more events               |
+| `DrivenCore`         | submitGoal from idle                                        | Transitions to AwaitingLlm, starts request           |
+| `DrivenCore`         | LLM returns tool calls                                      | Transitions to ExecutingTools                        |
+| `DrivenCore`         | Max tool call turns exceeded                                | xFailGoal with error message                         |
+| `AppCoreThread`      | start() launches thread                                     | running() returns true                               |
+| `AppCoreThread`      | SubmitGoal command                                          | Core receives goal, events sent back                 |
+| `AppCoreThread`      | Shutdown command                                            | Thread exits, running() returns false                |
 | `SkillLoader`        | `validateAgainstSchema` valid manifest                      | Returns 0                                            |
 | `SkillLoader`        | `validateAgainstSchema` invalid manifest                    | Returns -1, errors populated                         |
 | `SkillLoader`        | Schema file missing                                         | Warning printed, validation passes through           |
@@ -820,11 +958,15 @@ project/
 │   ├── skill_runner.cpp/.h
 │   ├── deepseek_provider.cpp/.h
 │   ├── context_manager.cpp/.h
-
 │   ├── dependency_resolver.cpp/.h
 │   ├── trace.h
 │   ├── stream_registry.h/.cpp           # Streaming IPC support
 │   ├── docker_security_filter.h/.cpp    # Docker command filtering
+│   ├── mpsc.h                           # MPSC channel (multi-producer single-consumer)
+│   ├── response_decoder.h/.cpp          # SSE/JSON LLM response decoder
+│   ├── driven_provider.h/.cpp           # Async LLM provider (curl_multi-based)
+│   ├── driven_core.h/.cpp               # Tick-based state machine agent core
+│   ├── app_core_thread.h/.cpp           # Thread-safe DrivenCore wrapper with poll loop
 │   ├── docker/                          # Docker sub‑module (required)
 │   │   ├── technical-specification.md
 │   │   ├── container_manager.cpp/.h
@@ -913,7 +1055,12 @@ project/
 17. Add `--external-repo`, `--skill-arg`, `--max-parallel` CLI flags.
 18. Enable `-DENABLE_TRACE=ON` for debug builds; keep trace logs for diagnosis.
 19. Run E2E tests with `bash test/e2e/test_c2_dashboard_e2e.sh`; inspect logs in `/tmp/c2-e2e.log`.
-20. Commit and CI verifies all tests + coverage.
+20. Implement `mpsc::Channel` — header-only MPSC with eventfd wakeup.
+21. Implement `ResponseDecoder` — SSE/JSON LLM response decoder with mode auto-detection.
+22. Implement `DrivenProvider` — async curl_multi-based LLM provider with tick() API.
+23. Implement `DrivenCore` — tick-driven state machine agent core (replaces forked loop).
+24. Implement `AppCoreThread` — thread-safe DrivenCore wrapper with ppoll event loop.
+25. Commit and CI verifies all tests + coverage.
 
 ---
 

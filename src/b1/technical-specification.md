@@ -128,7 +128,7 @@ private:
     int m_c2Fd = -1;                     // -1 if not connected
     std::chrono::steady_clock::time_point m_lastC2Push;
     int m_listenFd = -1;
-    std::unordered_map<int64_t, int> m_streamOwners;  // streamId → peerFd
+    int m_c2ChildPid = -1;               // PID of forked c2 child
 
     int xHandleRegister(const ipc::Message& msg, int peerFd);
     int xHandleHeartbeat(const ipc::Message& msg, int peerPid);
@@ -144,9 +144,13 @@ private:
     int xSendToC2(const ipc::Message& msg);
     int xSendToAgent(int agentFd, const ipc::Message& msg);
     int xFindAgentFdBySession(const std::string& sessionUuid) const;
-    int xCheckExistingInstance();   // checks PID file, returns -1 if alive
+    int xFindAgentFdByStream(int64_t streamId) const;
+    int xCheckExistingInstance();
     void xCleanupStaleSocket();
     int xWritePidFile();
+
+    // streamId → agent fd mapping for routing STREAM_INPUT
+    std::unordered_map<int64_t, int> m_streamOwners;
 };
 
 } // namespace a0::b1
@@ -456,7 +460,19 @@ b1 --workdir <path> [--no-c2] [--c2-socket <path>]
 | INT‑B1‑06 | b1 registers with c2 | Start `b1`, verify c2 registration | c2 receives register message |
 | INT‑B1‑07 | Self-improvement loop | b1 invokes `a0 run system:rebuild` | Build succeeds, existing a0 instances notified |
 
-### 6.3 Mocking
+### 6.3 Error Handling / Edge Cases
+
+| Scenario | Behaviour |
+|----------|-----------|
+| c2 socket unreachable | `xLaunchC2IfNeeded` fork/execs new c2 via setsid(); `m_c2ChildPid` tracks the child |
+| c2 connection lost mid-operation | Next send returns -1 → fd closed, c2 auto-relaunch via `xLaunchC2IfNeeded` |
+| user_prompt from unknown agent | Forwarded to c2 with pid=0 |
+| prompt_reply for unknown session | Logged to stderr, dropped |
+| --log-file derivation | Child a0 terminal receives derived log path; if parent log is empty, no --log-file passed |
+| Terminal child redirect | Child stdout/stderr sent to `A0_LOG_DIR/a0-<sessionId>-<childPid>-term.log` or `/dev/null` if unset |
+| shutdown with live c2 child | SIGTERM with 2s grace, SIGKILL if still alive, then `waitpid` on `m_c2ChildPid` |
+
+### 6.4 Mocking
 
 All socket tests use a loopback Unix socket pair (socketpair(AF_UNIX)). No real a0 binary is needed — a mock echo script acts as the child. The `A0Launcher` tests use a minimal shell script as the "a0" binary.
 

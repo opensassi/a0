@@ -26,39 +26,50 @@ public:
 
     bool init(const std::string& skillsDir) override;
     bool init(const std::string& skillsDir, const std::string& a0Dir);
+    void setExternalRepo(const std::string& url) { m_externalRepoUrl = url; }
+    void setSkillArgs(const std::unordered_map<std::string, std::string>& args) { m_skillArgs = args; }
+    void setSessionId(const std::string& sessionId) { m_sessionId = sessionId; }
     json processGoal(const std::string& goal) override;
     json processGoal(const std::string& goal, const json& params);
     json runSkill(const std::string& skillName, const json& params);
     bool resumeSession(const std::string& sessionId) override;
+    bool ensureSession() override;
+    int64_t sessionDbId() const override { return m_sessionDbId; }
     std::string currentSessionId() const override;
     void run() override;
     a0::StreamHandle processGoalStreaming(const std::string& goal,
                                            a0::StreamCallback onChunk) override;
 
-    void setExternalRepo(const std::string& url);
-    void setSkillArgs(const std::unordered_map<std::string, std::string>& args);
-    void setMaxParallel(int n);
+    int agentDbId() const { return m_agentDbId; }
+    void setSession(const std::string& sessionId, int64_t sessionDbId,
+                    a0::SessionContext* sessionCtx = nullptr);
+    void setMaxParallel(int n) { m_maxParallel = n; }
 
 private:
+    std::string m_basePrompt;
+    int m_agentDbId = -1;
+    int64_t m_sessionDbId = 0;
+    int64_t m_nextSubSession = 1;
+
     a0::skills::SkillManager* m_skillMgr;
     ToolRunner* m_toolRunner;
+    a0::persistence::PersistenceStore* m_persistence;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
     SkillRunner* m_skillRunner;
     InferenceProvider* m_provider;
     ContextManager* m_context;
     DependencyResolver* m_depResolver;
-
-    a0::persistence::PersistenceStore* m_persistence;
     std::string m_sessionId;
     bool m_initialized;
+    a0::SessionContext* m_sessionCtx = nullptr;
 
     std::unordered_map<std::string, std::string> m_dispatch;
     std::unordered_set<std::string> m_accumulatedTools;
     int m_maxParallel = 4;
     std::string m_skillsDir;
-    std::string m_a0Dir;
     std::string m_externalRepoUrl = "https://github.com/opensassi/a0";
+    std::string m_a0Dir;
     std::unordered_map<std::string, std::string> m_skillArgs;
 
     void xPushToContext(const std::string& goal, const json& result);
@@ -103,21 +114,41 @@ graph TB
 1. skillMgr->loadAll()                    — load manifests from disk
 2. skillMgr->missingHandlers()            — validate all systemTool entries have handlers
    If non-empty: print all missing, return false (fatal)
-3. generateHexSessionId()
-4. buildBasePrompt()
-5. setGlobalVars: SESSION_ID, PROJECT_DIR, etc.
-6. BuildIdentity → persistence.registerAgent()
-
-[New in init(skillsDir, a0Dir) overload:]
-7. External repo clone:
+3. External repo clone:
    - If m_a0Dir non-empty and m_externalRepoUrl non-empty:
      - If external/a0 dir missing → git clone (depth 1, branch main)
      - If exists → git fetch origin main + checkout + reset --hard
    - Set global var "A0_SRC_DIR" = a0Dir/external/a0
-8. Skill args injection:
+4. Skill args injection:
    - For each (key, val) in m_skillArgs → toolState().set("args:"+key, val)
    - Also setGlobalVar(key, val)
+5. generateHexSessionId() (if m_sessionId empty)
+6. buildBasePrompt()
+7. setGlobalVars: SESSION_ID, PROJECT_DIR, etc.
+8. BuildIdentity → persistence.registerAgent()
 9. m_initialized = true
+```
+
+## 4a. ensureSession()
+
+```
+1. If m_sessionDbId > 0: return true (already exists)
+2. If !m_persistence || m_agentDbId <= 0: return false
+3. If m_sessionId empty: generateHexSessionId()
+4. m_persistence->createSession(m_sessionId, 0, 0, m_agentDbId) → m_sessionDbId
+5. m_skillRunner->setGlobalVar("SESSION_ID", m_sessionId)
+6. return m_sessionDbId > 0
+```
+
+## 4b. setSession()
+
+```
+Stores pre-created session info (called after init when session created early):
+1. m_sessionId = sessionId
+2. m_sessionDbId = sessionDbId
+3. m_sessionCtx = sessionCtx
+4. Update SESSION_ID global var
+5. If sessionCtx provided, update PROJECT_DIR global var from getcwd()
 ```
 
 ## 4a. processGoal() Changes
@@ -204,11 +235,13 @@ sequenceDiagram
 | `init()` with missing handler | Prints all missing handlers, returns `false` |
 | `processGoal()` called before `init()` | Throws `std::logic_error` |
 | Empty goal string | Returns JSON string `"no goal provided"` |
-
 | Missing dependencies after skill resolution | Returns `"Missing dependencies: dep1, dep2"` |
 | `resumeSession()` with non-existent session | Returns `false`, context remains empty |
+| `ensureSession()` without persistence or agent ID | Returns `false` |
 | Forked loop exceeds max turns | Returns `"ERROR: max tool call turns exceeded"` |
 | Cumulative message payload exceeds limit | Returns `"ERROR: cumulative message payload exceeds limit"` |
+| LLM returns empty response in forked loop | Returns `"ERROR: LLM returned empty response"` |
+| No tools available for goal | Returns `"No tools available to process goal: <goal>"` |
 
 ## 9. Testing Requirements
 
@@ -228,4 +261,12 @@ sequenceDiagram
 | `xRunForkedLoop` | tools_for_prompt injection | First turn auto-analysis | recommendedTools inserted into m_accumulatedTools |
 | `runSkill` | Valid skill | `system:test` with params | Skill executed, result returned |
 | `resumeSession` | Valid session | Existing session ID | Returns `true`, context rebuilt |
+| `resumeSession` | Non-existent session | Bogus UUID | Returns `false`, m_initialized = true |
+| `ensureSession` | Already exists | Already has m_sessionDbId > 0 | Returns `true`, no-op |
+| `ensureSession` | Creates new | Clean state with persistence | New session created, returns `true` |
+| `sessionDbId` | After ensureSession | | Returns valid DB ID |
+| `agentDbId` | After init | | Returns agent row ID |
+| `setSessionId` | Before init | UUID set | Used by init() if no session exists |
+| `setSession` | After init | UUID + dbId + ctx | Global vars updated, session tracked |
 | `run` | EOF | Ctrl+D | Exits cleanly |
+| `processGoalStreaming` | Streaming goal | Goal with streaming flag | Routes to SkillRunner::executeStreaming |

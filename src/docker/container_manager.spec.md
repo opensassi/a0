@@ -1,8 +1,9 @@
 # DockerContainerManager Spec
 
 ## 1. Overview
-Manages a pool of reusable Docker containers for tool execution. Each container is lazily created, cached by a pool key derived from tool priority and image, and pruned when idle or when the pool exceeds `m_maxIdle`.
+Manages a pool of reusable Docker containers for tool execution. Each container is lazily created, cached by a pool key derived from tool priority, session prefix, and image, and pruned when idle or when the pool exceeds `m_maxIdle`.
 
+**Namespace:** `a0::docker`
 **Base class:** `ContainerManager` (from `agent_interfaces.h`)
 **Dependencies:** `DockerCLIWrapper`, `DependencyInstaller`
 **Owns:** `unordered_map<string, ContainerPoolEntry> m_pool`
@@ -19,68 +20,39 @@ struct ContainerPoolEntry {
 
 class DockerContainerManager : public ContainerManager {
 public:
-    /**
-     * @param idleTimeout  Seconds before an idle container is evictable
-     * @param maxIdle      Maximum number of idle containers to retain
-     * @param defaultImage Default image when Tool specifies none
-     */
     DockerContainerManager(int idleTimeout,
                            int maxIdle,
                            const std::string& defaultImage);
 
-    /**
-     * @brief  Get or create a container for the given tool
-     * @param  tool Descriptor with image, priority, dependency info
-     * @return Container ID string
-     * @throws std::runtime_error on creation or dependency failure
-     */
     std::string acquireContainer(const Tool& tool) override;
-
-    /**
-     * @brief  Run a command inside an existing container
-     * @param  containerId Target container
-     * @param  command     Shell command to execute
-     * @param  stdinData   Optional stdin payload
-     * @return stdout + stderr output
-     * @throws std::runtime_error on exec failure
-     */
     std::string execInContainer(const std::string& containerId,
                                  const std::string& command,
                                  const std::string& stdinData = "",
                                  int timeoutSecs = 30) override;
-
-    /**
-     * @brief  Remove expired containers, then trim to maxIdle
-     * @retval void
-     */
     void pruneIdleContainers() override;
+
+    /// Set session prefix for pool key namespacing.
+    void setSessionPrefix(const std::string& prefix);
 
 private:
     /**
-     * @brief  Derive pool key from tool priority/image
+     * @brief  Derive pool key from tool priority/image + session prefix
      * @param  tool Source descriptor
      * @return Pool key string:
-     *         HIGH   → "high_pool"
-     *         MEDIUM → "medium_pool"
-     *         LOW    → "low_<name>_<image>"
+     *         HIGH   → "<pfx>high_pool"
+     *         MEDIUM → "<pfx>medium_pool"
+     *         LOW    → "<pfx>low_<name>_<image>"
      */
     std::string poolKeyForTool(const Tool& tool) const;
 
     /**
-     * @brief  Pull image and run "sleep infinity" container
-     * @param  poolKey Key for the pool entry
-     * @param  tool    Tool for image resolution
-     * @return Container ID
+     * @brief  Pull image, run "sleep infinity" container.
+     *         First checks if a container with this pool key name already exists
+     *         (from a prior session) and reuses it instead of creating anew.
      */
     std::string createContainer(const std::string& poolKey,
                                  const Tool& tool);
 
-    /**
-     * @brief  Diff installed vs required deps; install missing
-     * @param  containerId Container to install into
-     * @param  tool        Declares aptDependencies
-     * @param  entry       Updated in-place with new installedDeps
-     */
     void ensureDependencies(const std::string& containerId,
                              const Tool& tool,
                              ContainerPoolEntry& entry);
@@ -88,6 +60,7 @@ private:
     int m_idleTimeout;
     int m_maxIdle;
     std::string m_defaultImage;
+    std::string m_sessionPrefix;
     std::unordered_map<std::string, ContainerPoolEntry> m_pool;
 };
 ```
@@ -181,6 +154,10 @@ sequenceDiagram
 | `acquireContainer` | Image pull fails | Exception thrown, no side effects |
 | `acquireContainer` | Dep install fails | Exception thrown |
 | `execInContainer` | Normal execution | Returns command output |
-| `execInContainer` | Timeout (30s) | Exception thrown |
+| `execInContainer` | Timeout (30s) | `"ERROR: timeout"` returned |
+| `execInContainer` | Exec failure | `"ERROR: <msg>"` returned |
 | `pruneIdleContainers` | Expired entries | Removed from pool + Docker |
 | `pruneIdleContainers` | Pool > maxIdle | Oldest entries evicted |
+| `setSessionPrefix` | Session prefix set | Subsequent `poolKeyForTool` returns namespaced keys |
+| `createContainer` | Existing container by poolKey name | Reused instead of creating new |
+| `acquireContainer` | Container already exists by name | Reused and started |

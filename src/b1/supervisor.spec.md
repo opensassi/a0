@@ -45,7 +45,7 @@ private:
     int m_c2Fd = -1;
     std::chrono::steady_clock::time_point m_lastC2Push;
     int m_listenFd = -1;
-    std::unordered_map<int64_t, int> m_streamOwners;  // streamId → peerFd
+    int m_c2ChildPid = -1;
 
     int xHandleRegister(const ipc::Message& msg, int peerFd);
     int xHandleHeartbeat(const ipc::Message& msg, int peerPid);
@@ -61,9 +61,13 @@ private:
     int xSendToC2(const ipc::Message& msg);
     int xSendToAgent(int agentFd, const ipc::Message& msg);
     int xFindAgentFdBySession(const std::string& sessionUuid) const;
-    int xCheckExistingInstance();  // return -1 if another b1 is alive for this workdir
+    int xFindAgentFdByStream(int64_t streamId) const;
+    int xCheckExistingInstance();
     void xCleanupStaleSocket();
     int xWritePidFile();
+
+    // streamId → agent fd mapping for routing STREAM_INPUT
+    std::unordered_map<int64_t, int> m_streamOwners;
 };
 
 } // namespace a0::b1
@@ -143,12 +147,17 @@ sequenceDiagram
 
 `xHandleTerminalOpen` receives a `TERMINAL_OPEN` IPC from c2. It:
 
-1. Resolves the requested `cwd` to an absolute path
+1. Resolves the requested `cwd` to an absolute path via `realpath()`
 2. Resolves the a0 binary path from `/proc/self/exe` (same directory as b1)
 3. Derives child `--log-file` from `g_b1LogFile` if set (`/parent-b1.log` → `/parent-a0.log`)
-4. Forks a child process that:
+4. Redirects child stdout/stderr to a session-specific log file at `A0_LOG_DIR/a0-<sessionId>-<childPid>-term.log`, or to `/dev/null` if env vars are unset
+5. Forks a child process that:
    - Calls `setsid()` to detach
-   - `execlp`s `a0 --a0-dir <cwd>/.a0 [--log-file <path>] terminal --cwd <cwd> --terminal-id <id>`
+   - `execlp`s `a0 --a0-dir <cwd>/.a0 [--log-file <path>] terminal --cwd <cwd> [--terminal-id <id>]`
+
+### Shutdown
+
+`shutdown()` kills the c2 child process (`m_c2ChildPid`) with SIGTERM, waits up to 2s, then escalates to SIGKILL. Waits on the pid with `waitpid()` before returning.
 
 ### TRACE_LOG instrumentation
 
@@ -169,8 +178,9 @@ Critical relay points include TRACE_LOG calls (enabled via `-DENABLE_TRACE=ON`):
 | c2 socket unreachable | `xLaunchC2IfNeeded` fork/execs new c2 via setsid() |
 | user_prompt from unknown agent | Forwarded to c2 with pid=0 |
 | prompt_reply for unknown session | Logged to stderr, dropped |
-| c2 connection lost mid-operation | Next send returns -1 → fd closed, c2 auto-relaunch |
+| c2 connection lost mid-operation | Next send returns -1 → fd closed, c2 auto-relaunch via `xLaunchC2IfNeeded` |
 | --log-file derivation | Child a0 terminal receives derived log path; if parent log is empty, no --log-file passed |
+| shutdown with live c2 child | SIGTERM with 2s grace, SIGKILL if still alive, then `waitpid` |
 
 ## 7. Testing Requirements
 

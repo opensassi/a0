@@ -1,6 +1,6 @@
 # TUI Implementation — Session Summary
 
-## What Was Built
+## What Was Built (Previous Session)
 
 ### Source files in `src/tui/` (18 files)
 
@@ -16,6 +16,16 @@
 | `dialog_manager.h/.cpp` | Stack-based modal overlays via FTXUI Modal (help, confirm, list) |
 | `agent_tui.h/.cpp` | Facade: wires panels, mouse event routing, streaming callbacks, `/commands`, bracketed paste, copy-on-select |
 | `clipboard.h/.cpp` | Clipboard copy via OSC 52 + xclip/wl-clipboard fallback |
+
+### New files created in this session (7)
+
+| File | Purpose |
+|------|---------|
+| `src/mpsc.h` | Thread-safe MPSC channel with eventfd for poll() integration |
+| `src/response_decoder.h/.cpp` | SSE/JSON response parser — feed bytes, emit structured events |
+| `src/driven_provider.h/.cpp` | Async curl_multi-based LLM provider, replaces streaming in DeepSeekProvider |
+| `src/driven_core.h/.cpp` | State-machine tool-calling loop: Idle → AwaitingLlm → ExecutingTools |
+| `src/app_core_thread.h/.cpp` | poll()-based event loop wrapping DrivenCore for future headless/separate-thread use |
 
 ### C++ Test files (75 assertions in 5 files)
 
@@ -41,32 +51,15 @@
 | `test/agent_e2e/scenarios/` | — | JSON scenario files (simple_tool_call, multi_turn_workflow, tool_error) |
 | `test/agent_e2e/run.sh` | — | Orchestrator script |
 
-### Modified files (project-wide)
+### Files modified in this session
 
 | File | Change |
 |------|--------|
-| `CMakeLists.txt` (root) | FTXUI + MD4C FetchContent, `add_subdirectory(src/tui)`, TUI test targets |
-| `src/main.cpp` | TUI is now default mode (`a0` = `a0 tui`). `--log-dir` flag with `xAbsPath()` resolution. `xChildRedirectStdio()` for sub-process stderr isolation. `cmdRepl` removed, replaced by `cmdTui`. `xRedirectStderr()` helper with O_EXCL + .N suffix. Default `~/.a0/logs` log dir. Log redirect moved before `init()`. Exit on redirect failure. |
-| `src/tui/agent_tui.h` | Added `setScreen()`/`clearScreen()`, `submitInput()`, paste tracking members (`m_pasteActive`, `m_pasteBuffer`, `m_pasteCounter`, `m_pastedContents`), `xExpandPastePlaceholders()`, `xProcessPasteBuffer()` |
-| `src/tui/agent_tui.cpp` | TakeFocus fix (InputPanel child instead of root), bracketed paste enable (`\x1b[?2004h`), paste marker detection in CatchEvent, `xProcessPasteBuffer()` (placeholder or raw), `xExpandPastePlaceholders()` (marker→content on submit), copy-on-select using FTXUI `GetSelection()` on mouse-up, Character routing to Input, `onChange` paste pruning callback. `xProcessGoal()` now calls `processGoalStreaming()` with poller-based streaming completion. Paste cursor fix: trailing space after `[ PASTED #N ]`. Interrupt cancels handle. |
-| `src/tui/input_panel.h` | Added `setOnChange()`, `insertText()` |
-| `src/tui/input_panel.cpp` | Removed `\r`/`\n` from submit trigger (only `Event::Return` submits), enabled `multiline` in InputOption, added `on_change` for paste tracking, `insertText()` fires onChange |
-| `src/tui/status_bar.cpp` | Removed timer thread (data race), replaced with render-time expiry check (`isFlashExpired()`) |
-| `test/e2e/mock_deepseek_server.py` | Enhanced with `--scenario` flag for stateful multi-turn conversations |
-| `src/agent_interfaces.h` | Added `ensureSession()` and `sessionDbId()` to `AgentCore` interface |
-| `src/agent_core.h/.cpp` | `ensureSession()` implementation — centralized session creation with correct `agentDbId` |
-| `src/b1/supervisor.cpp` | c2 and terminal child forks now redirect stdout+stderr to `/dev/null` or log file |
-| `src/agent_core.h` | Added `setSessionId()` for pre-init session ID (log naming) |
-| `src/skill_runner.cpp` | `executeStreaming()` now runs full LLM pipeline on background thread instead of returning empty handle |
-| `src/deepseek_provider.cpp` | Added TRACE_LOG for curl errors in `complete()`, SSE parser for tool_calls, `completeStreaming()` implementation |
-| `src/agent_interfaces.h` | Added `completeStreaming()` to `InferenceProvider` interface |
-| `src/command_runner.h/.cpp` | Added `cancelFn` to `StreamHandle::State` for HTTP-based cancellation |
-| `src/agent_core.cpp` | `processGoalStreaming()`: multi-turn tool-calling loop with streaming SSE, tool execution, and conversation history tracking |
-| `test/unit/test_deepseek_provider.cpp` | Added streaming unit tests with live mock server |
-| `test/unit/test_agent_integration.cpp` | Streaming integration test with live mock server |
-| `test/e2e/mock_deepseek_server.py` | SSE streaming mode when `stream: true` in request payload |
-| `test/agent_e2e/test_streaming.py` | New: mock server SSE test + TUI streaming response test |
-| `test/tui/mock/mock_agent_core.h` | `processGoalStreaming()` thread now sets `exitCode` and `done` flags |
+| `CMakeLists.txt` (root) | Added `response_decoder.cpp`, `driven_provider.cpp`, `driven_core.cpp`, `app_core_thread.cpp` to `LIB_SOURCES` |
+| `src/tui/agent_tui.h` | Replaced `AgentCore* m_core`, `SkillManager* m_skills`, `StreamHandle`, streaming state with `DrivenProvider` + `DrivenCore`. Removed mpsc sender/receiver — DrivenCore is in-process, called synchronously via `xTickCore()`. |
+| `src/tui/agent_tui.cpp` | `xHandleSubmit` now calls `m_drivenCore->submitGoal()` + `xTickCore()` instead of `m_core->processGoalStreaming()`. Renderer wrapper calls `xTickCore()` on each FTXUI frame. Interrupt calls `m_drivenCore->cancel()`. Session creation uses agentDbId for FK constraint. |
+| `src/main.cpp` | Updated `cmdTui` to construct `AgentTui(apiKey, model, skillMgr, persistence, agentId, b1Status)` — no more `AppCoreThread`, sharedWakeup, or mpsc channels for TUI path. Mock URL passed to DrivenProvider via setMockUrl (in-progress). |
+| `test/unit/test_tui_integration.cpp` | Updated for new `AgentTui` constructor (apiKey, model, skillMgr, persistence, agentId, b1Status). Removed mpsc channel injection tests. |
 
 ---
 
@@ -79,7 +72,7 @@
 Instead of AgentTui manually wrapping dialogs, `DialogManager::setMainComponent()` takes the main container and wraps it with `Modal(dialogContent, &active)`. The dialog manager owns the full component tree.
 
 ### xBuildLayout called in constructor
-The component tree and callbacks are set up in `AgentTui`'s constructor, not in `run()`. This allows `component()` to be available immediately for test usage. Callback methods that access `m_screen` check `if (!m_screen) return;` to handle the time before `run()`.
+The component tree and callbacks are set up in `AgentTui`'s constructor, not in `run()`. This allows `component()` to be available immediately for test usage.
 
 ### CatchEvent for Enter instead of InputOption::on_enter
 `InputOption::on_enter` fires deep inside FTXUI's Input event handler, during event processing. Mutating the content buffer from that context caused crashes. `CatchEvent(input, handler)` intercepts `Event::Return` at the container level after the Input has fully processed the key event.
@@ -87,8 +80,8 @@ The component tree and callbacks are set up in `AgentTui`'s constructor, not in 
 ### Enter key matching uses only Event::Return (not \r/\n characters)
 The original CatchEvent checked for `\r` and `\n` Character events in addition to `Event::Return`. This caused pasted multi-line text to submit on every line break. The fix: only `Event::Return` (bare Enter) triggers submit. Shift+Enter inserts a newline via the Input's built-in multiline support. Pasted `\n` is blocked by the outer CatchEvent during bracketed paste mode and accumulated into the paste buffer.
 
-### Session creation centralized in AgentCore::ensureSession()
-All entry points (`cmdTui`, `cmdRun`, `AgentTui::xProcessGoal`) now call `core->ensureSession()` instead of creating sessions directly or via `SessionManager::create()` with `agentId = 0`. This fixed the `FOREIGN KEY constraint failed` crash.
+### Session creation uses agentDbId
+`xHandleSubmit` creates sessions via `m_sessionMgr->create(uuid, m_agentId)` where `m_agentId` comes from `AgentStack.core->agentDbId()`. This ensures the FOREIGN KEY constraint on the `sessions` table is satisfied (agent row must exist). Passing 0 caused the `FOREIGN KEY constraint failed` crash.
 
 ### Children redirected to /dev/null by default
 When neither `--log-file` nor `--log-dir` is specified, all forked children (b1, c2, terminal) redirect stdout+stderr to `/dev/null` via `xChildRedirectStdio("")`. This prevents garbage text from sub-processes corrupting the TUI display.
@@ -106,332 +99,124 @@ The original approach called `xclip -o -selection primary` on mouse-up to read X
 FTXUI's `ScreenInteractive::SelectionChange()` fires on every selection change including mid-drag. Using it would call `copyToClipboard()` (which spawns xclip/popen and writes OSC 52 to stdout) on every mouse-move during a drag, causing performance issues and racing with FTXUI's render writes to stdout. Instead, track drag state in the CatchEvent's mouse handler and call `GetSelection()` only on mouse-up.
 
 ### Bracketed paste with numbered placeholders
-FTXUI v6.1.9 doesn't natively support bracketed paste (DEC mode 2006). Enable it manually with `\x1b[?2004h`. Detect paste markers in the outer CatchEvent: `\x1b[200~` starts paste mode (accumulate all events, block children), `\x1b[201~` processes the buffer. Pastes >20 chars are collapsed to `[ PASTED #N ]` with full content stored in `m_pastedContents[id]`. On submit, `xExpandPastePlaceholders()` replaces each marker with stored content. Manual user-typed `[ PASTED #N ]` also expands. Small pastes (≤20 chars) insert raw text.
+FTXUI v6.1.9 doesn't natively support bracketed paste (DEC mode 2006). Enable it manually with `\x1b[?2004h`. Detect paste markers in the outer CatchEvent: `\x1b[200~` starts paste mode (accumulate all events, block children), `\x1b[201~` processes the buffer. Pastes >20 chars are collapsed to `[ PASTED #N ]` with full content stored in `m_pastedContents[id]`. On submit, `xExpandPastePlaceholders()` replaces each marker with stored content. Small pastes (≤20 chars) insert raw text.
 
 ### Atomic paste placeholder deletion
-The `InputOption::on_change` callback fires on every keystroke. It scans the content buffer for all `[ PASTED #N ]` markers and prunes entries from `m_pastedContents` whose markers were deleted/modified. Backspacing into any character of the placeholder removes the entire stored content — the placeholder is atomic.
+The `InputOption::on_change` callback fires on every keystroke. It scans the content buffer for all `[ PASTED #N ]` markers and prunes entries from `m_pastedContents` whose markers were deleted/modified.
 
 ### Python PTY harness for E2E testing
-The E2E test harness uses `pty.openpty()` + `os.fork()` to create a real pseudoterminal, then `os.execve()` to launch `a0 tui --test-mode` inside it. The parent process writes keystrokes and SGR mouse sequences to the PTY master and reads rendered output (with ANSI stripping). This is more robust than bash/expect because:
-- Full byte-level control of the PTY (mouse sequences, paste markers, control characters)
-- No race conditions from expect's line-oriented matching
-- Can send arbitrary escape sequences (SGR mouse, bracketed paste, DCS, OSC)
-- Can capture and assert on raw rendered output including ANSI formatting codes
-- Clean process lifecycle management (fork, waitpid, signal handling)
+The E2E test harness uses `pty.openpty()` + `os.fork()` to create a real pseudoterminal, then `os.execve()` to launch `a0 tui --test-mode` inside it. The parent process writes keystrokes and SGR mouse sequences to the PTY master and reads rendered output (with ANSI stripping).
 
 ### Log redirect moved before init; default log dir
-`xRedirectStderr()` now runs before `init()`, so all TRACE logs, cloning messages, and early initialization output are captured in the log file. When neither `--log-dir` nor `--log-file` is specified, stderr goes to `.a0/logs/` by default (created automatically). Uses `O_EXCL` + `.N` suffix (`.1`, `.2`...`.99`) to prevent file collisions when PIDs are reused across `--resume` runs. If the redirect fails (permissions, disk full, 100+ `.N` files), the command exits immediately with a FATAL message rather than silently leaking stderr into the TUI.
+`xRedirectStderr()` now runs before `init()`, so all TRACE logs, cloning messages, and early initialization output are captured in the log file. When neither `--log-dir` nor `--log-file` is specified, stderr goes to `.a0/logs/` by default.
 
 ### InputPanel disable via component swap
-`InputPanel::setEnabled(false)` can't rely on FTXUI v6.1.9's `ComponentBase` (no `Enable()`/`Disable()`). Instead, the active component is swapped: when enabled, `component()` returns the real FTXUI Input; when disabled, it returns a `Renderer` showing "Waiting for response...". The outer CatchEvent checks `isEnabled()` before routing character events. `focus()` is a no-op when disabled.
+`InputPanel::setEnabled(false)` can't rely on FTXUI v6.1.9's `ComponentBase` (no `Enable()`/`Disable()`). Instead, the active component is swapped: when enabled, `component()` returns the real FTXUI Input; when disabled, it returns a `Renderer` showing "Waiting for response...".
 
 ### Scrollback via windowed rendering + yframe
-The `MessagePanel` renders a sliding window of `VISIBLE_ENTRIES` (8) messages. `Up`/`Down` arrows, `PageUp`/`PageDown`, `Home`/`End` scroll the window. A scroll indicator shows `↑ N more` / `↓ N more` when not at top/bottom. The content is wrapped in `yframe` + `vscroll_indicator` for the visual frame. Auto-scroll resumes when the user scrolls to the bottom.
+The `MessagePanel` renders a sliding window of `VISIBLE_ENTRIES` (8) messages.
 
-### Streaming completion via event-loop poller introduces render starvation (DEPRECATED)
-The watcher thread pattern (`handle.wait()` then `m_screen->Post`) was unreliable — `Screen::Post` from a background thread didn't consistently wake up FTXUI's event loop `task_receiver_->Receive()`. Replaced with a self-re-posting `std::function` that runs entirely on the event loop thread: it checks `isDone()`, re-posts if not done, or calls `xOnComplete`/`xOnError` directly when done.
+### DrivenCore integrated into FTXUI thread (single-thread approach)
+DrivenCore runs inside the TUI's FTXUI event loop, NOT a separate thread. `xTickCore()` is called from a Renderer wrapper on every FTXUI frame. When the core is busy, `RequestAnimationFrame()` is called to keep the FTXUI render loop active. This is a simplification over the planned two-thread architecture — the AppCoreThread exists as infrastructure but the current TUI path owns DrivenCore directly.
 
-**However, this approach has a fatal flaw:** FTXUI's event loop processes ALL pending posted tasks before calling `Render()` in each loop iteration. A re-posting poller thus starves the renderer — the frame with the user entry and streaming placeholder is never drawn because the poller fills the task queue faster than the renderer can execute.
+### curl_multi used for async HTTP
+DrivenProvider uses `curl_multi` for non-blocking HTTP. `startRequestStreaming()` sets up curl handles; `tick()` drives `curl_multi_perform()` and collects events. The write callback stores raw response data, which is fed to `ResponseDecoder` for SSE/JSON parsing.
 
-Further, this approach embeds the TUI event loop inside the agent core's execution path, creating a fundamental coupling between UI rendering and LLM request handling. The same agent core should work identically in headless and TUI modes.
+### CURLOPT_POSTFIELDS stores a dangling pointer if body is local
+`curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str())` stores a pointer, not a copy. If `body` is a local string that goes out of scope, curl reads garbage. Fixed by storing the body in the `EasyHandle` struct before setting curl options.
 
-### App Architecture: TUI thread and App Core thread must be separate
-The current architecture embeds `AgentCore` inside the TUI's event loop thread. `xProcessGoal()` runs on the FTXUI thread, which calls `processGoalStreaming()`, which may spawn background threads for HTTP requests. This creates several problems:
-- Render starvation from poller re-posting (above)
-- Duplicated tool-calling loops for sync vs streaming paths
-- No persistence in the streaming path
-- Headless mode had to be removed (couldn't share code)
-
-**Correct architecture:** The application core (agent, LLM provider, tool execution, persistence) runs in its own thread with its own event loop driven by `poll`/`epoll`. The TUI is a separate thread that sends commands to the core via a thread-safe queue and receives events via another queue. This way:
-- Headless mode uses the same core with no UI thread
-- The TUI thread only does FTXUI rendering (no agent logic, no HTTP)
-- The core thread drives `curl_multi` (zero HTTP threads), `waitpid` for tools, and periodic timers — all from a single `poll()` loop
-- Persistence always writes, regardless of UI mode
-
-### Single tool-calling loop for sync and streaming
-The current code has two parallel implementations:
-- `xRunForkedLoop()` — the blocking tool-calling loop used by `processGoal()`
-- `executeStreaming()` multi-turn wrapper — the streaming loop
-
-These should be merged into one. The tool-calling loop yields back to the event loop between LLM calls. Streaming vs blocking is just whether optional `onToken`/`onToolStart`/`onToolEnd` callbacks are provided.
-
-### curl_multi instead of per-request threads
-The current `completeStreaming()` creates a new `std::thread` for each HTTP request, then calls `curl_easy_perform()` (synchronous). This is fighting libcurl's design — curl is fundamentally async via `curl_multi`. The event loop should register curl's sockets with `poll()` and drive the transfer in its main loop, with zero dedicated HTTP threads.
-
-### Paste cursor position: Event::End after insertText
-After `insertText()` appends content to the FTXUI Input's buffer, the internal cursor stays at its previous position (typically `0`). This causes subsequent typing to appear before the inserted paste marker instead of after it. Fix: send `Event::End` to the Input component after `+=`, which moves the cursor to end of buffer. A trailing space is appended after `[ PASTED #N ]` so user input is separated from the expanded paste content.
+### First LLM request omits tool schemas
+The initial LLM request in `DrivenCore::submitGoal` starts with `includeTools=false` (matching the old streaming path behavior). Tool schemas are only included in follow-up requests after tool execution. This avoids the mock server returning `tool_calls` instead of a content response.
 
 ---
 
-## Remaining Issues
+## Remaining Issues (All Caused by Current Changes)
 
-### 1. No color theme support
-Colors and styles are hardcoded in `styles.cpp`. No configuration file or environment variable overrides for light/dark themes. `roleDecorator()` and `style::*` constants should read from a `Theme` struct populated by `A0_TUI_THEME` env var.
+### 1. curl_multi transfer never completes — LLM response not rendered
+**Symptom**: test_tui_submit_goal_shows_response fails with timeout (15s). The mock server receives the tools_for_prompt request (via old DeepSeekProvider) but NOT the DrivenProvider's streaming request. The `curl_multi_perform` call from `DrivenProvider::tick()` does not establish the HTTP connection to the mock server.
 
-### 2. Visual selection highlight janks at component boundaries
-FTXUI's `HandleSelection` tracks a rectangular selection region. When the mouse crosses between rendered elements (e.g., StatusBar → MessagePanel → InputPanel), the selection rectangle snaps to the new component's bounding box, causing a visual jump. This is FTXUI's internal rendering behavior — we use `GetSelection()` on mouse-up for correct text extraction regardless of visual jank.
+**Trace evidence**: TRACE log shows `DrivenCore::submitGoal`, `DrivenProvider::startRequestStreaming`, and `DrivenProvider::tick` called, but the second `[MOCK] POST` never appears. The `curl_multi_perform` returns `running=0` immediately without initiating the connection.
 
-### 3. Paste placeholder deletion reliability via PTY
-The `onChange` callback correctly prunes stored content when a placeholder is deleted. However, testing this through the PTY with backspace events is timing-sensitive — rapid backspace delivery can race with the FTXUI event loop. In practice (real terminal, human typing), the per-keystroke delay is orders of magnitude larger than the FTXUI event loop latency, so this is not a practical issue.
+**Root cause investigation**: The `curl_multi` handle is initialized in `DrivenProvider` constructor (`curl_multi_init()`). The easy handle is created and configured in `startRequestStreaming`, then added to `m_multi` via `curl_multi_add_handle`. On the next `tick()`, `curl_multi_perform(m_multi, &running)` is called. `running` should be 1 (transfer in progress). But the connection is never established to the mock server — no TCP SYN packet reaches the mock port.
 
-### 4. [FIXED] DeepSeekProvider does not have completeStreaming()
-Added SSE parser, `completeStreaming()` implementation with libcurl, `cancelFn` support in `StreamHandle`, and mock server SSE support. Fixed in `src/deepseek_provider.cpp`, `src/command_runner.h/.cpp`.
+**Hypothesis**: curl may be trying HTTPS (TLS) even though the URL is HTTP. The URL set via `setMockUrl` is `http://127.0.0.1:PORT/v1/chat/completions` and the SSL verification skip check looks for "localhost" or "127.0.0.1" in `m_baseUrl`. This should work for plain HTTP.
 
-### 5. [FIXED] Poller-based completion doesn't work when no event loop is running
-Added background-thread fallback in `xProcessGoal()` when `m_screen` is null. Removed early-return guard to allow headless operation. Fixed in `src/tui/agent_tui.cpp`.
+**To fix**: Verify the URL is correctly set on the curl handle. Test with `curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L)` to see connection diagnostics. Or bypass curl_multi entirely and use a synchronous curl_easy_perform in a thread (like the old code did).
 
-### 6. [FIXED] Background thread Post to FTXUI Screen is unreliable
-Mitigated by removing the re-posting poller (see architecture refactoring plan below). The reliable approach is to separate the TUI and App Core threads entirely — no `Screen::Post` from non-UI threads.
+### 2. Interrupt doesn't render "Interrupted" message
+**Symptom**: test_tui_interrupt_streaming fails. After sending Ctrl+C during streaming, the TUI output shows `Thinking` instead of `Idle` or the "Interrupted" system message.
 
-### 7. App Core and TUI run on the same thread (architecture)
-The most significant remaining issue. `AgentCore` is embedded in the FTXUI thread. This causes render starvation, duplicated code paths, missing persistence in streaming, and prohibits headless mode. See the refactoring plan below.
+**Root cause**: `xHandleInterrupt` correctly calls `m_drivenCore->cancel()`, appends an "Interrupted" `MessageEntry`, and sets `m_agentState = AgentState::Idle`. But the FTXUI event loop doesn't re-render after these UI updates — the captured screen output still shows the pre-interrupt state.
 
----
+**To fix**: Call `m_screen->RequestAnimationFrame()` at the end of `xHandleInterrupt` to trigger a render cycle. Or ensure the setOnSubmit callback chain triggers a render via FTXUI's Post mechanism after the interrupt callback returns.
 
-## Architecture Refactoring Plan: Thread-Separated App Core
+### 3. Mock URL not propagated to DrivenProvider
+**Symptom**: When `--mock-api` is specified on the command line, it's passed to the old `DeepSeekProvider` via `stack.provider.setMockUrl(mockUrl)` in `AgentStack`. But the new `DrivenProvider` inside `AgentTui` doesn't receive this URL.
 
-### Problem Summary
+**Current behavior**: `DrivenProvider` connects to the real DeepSeek API (`https://api.deepseek.com/v1/chat/completions`) which requires a valid API key. Tests using mock servers fail because the provider ignores the mock URL.
 
-The application currently has no intentional threading model. `AgentCore` is embedded in the FTXUI event loop thread, and streaming was glued on top with a re-posting poller that starves the renderer. HTTP requests each get their own thread (fighting libcurl's async design). The tool-calling loop is duplicated between sync and streaming paths. Persistence is missing in the streaming path.
-
-### Target Architecture
-
-```
-Process
-│
-├─ App Core Thread (owns AgentCore, DrivenCore, curl_multi, tool execution, persistence)
-│   ├─ Event loop via poll/epoll
-│   │   ├─ curl_multi sockets (HTTP/SSE — 0 threads)
-│   │   ├─ SIGCHLD (tool subprocess completion)
-│   │   ├─ command queue (goals from TUI or CLI)
-│   │   └─ periodic timers (timeouts, retries)
-│   ├─ DrivenCore: single tool-calling loop implementation
-│   │   ├─ AppCoreEvent::LlmResponse (tokens or tool_calls)
-│   │   ├─ AppCoreEvent::ToolStart / ToolEnd
-│   │   ├─ AppCoreEvent::Complete (final response)
-│   │   └─ AppCoreEvent::Error
-│   ├─ Always persists to SQLite
-│   └─ Output: thread-safe mpsc queue of AppCoreEvent
-│
-├─ TUI Thread (only when `a0 tui`)
-│   ├─ FTXUI event loop (owns screen, panels)
-│   ├─ Sends Command::SubmitGoal to App Core's queue
-│   ├─ Each frame: drains AppCoreEvent queue and updates panels
-│   ├─ No agent logic, no HTTP, no curl
-│   └─ Lifetime: started by main.cpp, joined on exit
-│
-└─ CLI Mode (when `a0 run`, no TUI thread)
-    ├─ Reads stdin, sends Command::SubmitGoal to App Core
-    └─ Writes AppCoreEvent output to stdout
-```
-
-### Phase 1: DrivenCore + curl_multi
-
-**Replace** `DeepSeekProvider::complete()` and `DeepSeekProvider::completeStreaming()` with a single driven interface:
-
+**To fix**: Add a `setMockUrl(const std::string&)` method to `AgentTui` (which forwards to its internal `DrivenProvider`). Call it from `cmdTui` in `main.cpp` when `mockUrl` is not empty:
 ```cpp
-class DrivenProvider {
-public:
-    // Non-blocking. Sets up handles, returns immediately.
-    // Call tick() from the event loop to drive curl_multi.
-    void startRequest(const std::string& systemPrompt,
-                      const std::vector<Message>& messages,
-                      const std::vector<ToolSchema>& tools,
-                      bool stream);
-    
-    // Drive curl_multi progress. Called on each event loop iteration.
-    // Returns pending events (token, tool_call, complete, error).
-    std::vector<AppCoreEvent> tick();
-    
-    // Cancel in-flight request.
-    void cancel();
-    
-    // FDs to watch (from curl_multi_fdset).
-    int pollFd() const;
-};
-```
-
-**Move** the SSE parser and JSON parser into a shared response decoder:
-
-```cpp
-class ResponseDecoder {
-public:
-    enum class Mode { SSE, JSON };
-    void feed(const char* data, size_t len);
-    std::vector<AppCoreEvent> events();  // token, tool_call, finish_reason, error
-};
-```
-
-**Files:** `src/driven_provider.h/.cpp` (new), replaces `deepseek_provider.h/.cpp` completely.
-
-### Phase 2: DrivenCore — single tool-calling loop
-
-**Replace** `AgentCore::processGoal()` and `AgentCore::processGoalStreaming()` with a single state-machine-driven method:
-
-```cpp
-enum class CoreState { Idle, AwaitingLlm, ExecutingTools };
-enum class CoreEventType { Token, ToolCall, ToolResult, Complete, Error };
-struct CoreEvent { CoreEventType type; json data; };
-
-class DrivenCore {
-public:
-    // Thread-safe command queue
-    void submitGoal(const std::string& goal);
-    
-    // Drive the core. Call on each event loop iteration.
-    // Returns events for the UI layer to consume.
-    std::vector<CoreEvent> tick();
-    
-    // Accessors for tools, prompts, persistence.
-    
-private:
-    CoreState m_state = CoreState::Idle;
-    std::unique_ptr<DrivenProvider> m_provider;
-    // ...conversation history, tool state, etc.
-};
-```
-
-The tool-calling loop logic (from `xRunForkedLoop`) becomes a state machine:
-- `Idle` → on goal received: build messages, set `AwaitingLlm`, call `m_provider->startRequest()`
-- `AwaitingLlm` → on each `tick()`: call `m_provider->tick()`, forward events to output queue. On `finish_reason=="tool_calls"`: transition to `ExecutingTools`. On `finish_reason=="stop"`: transition to `Idle` with `Complete`.
-- `ExecutingTools` → execute tools via subprocess, collect results, add to history, transition to `AwaitingLlm`.
-
-**Files:** `src/driven_core.h/.cpp` (new), replaces `agent_core.h/.cpp` LLM-request parts.
-
-### Phase 3: App Core Thread
-
-**Create** an `AppCoreThread` that owns `DrivenCore` and runs its own `poll()` loop:
-
-```cpp
-class AppCoreThread {
-public:
-    using Sender = mpsc::Sender<Command>;
-    using Receiver = mpsc::Receiver<AppCoreEvent>;
-    
-    AppCoreThread();
-    
-    // Start the thread. Returns command sender and event receiver.
-    std::pair<Sender, Receiver> start();
-    
-    // Signal thread to exit, join.
-    void stop();
-    
-private:
-    void run();  // poll() loop
-    mpsc::Sender<Command> m_cmdSender;
-    mpsc::Receiver<AppCoreEvent> m_evtReceiver;
-    std::thread m_thread;
-};
-```
-
-`Command` variant:
-```cpp
-using Command = std::variant<SubmitGoal, Cancel, Shutdown>;
-```
-
-`AppCoreEvent` variant:
-```cpp
-using AppCoreEvent = std::variant<LlmToken, ToolStart, ToolEnd, Complete, Error>;
-```
-
-The `poll()` loop waits on:
-1. Command queue fd (goals from TUI)
-2. curl_multi fds (HTTP responses)
-3. SIGCHLD (tool subprocess completion)
-4. Periodic timer (ticks, timeouts)
-
-No background threads for HTTP. No background threads for tool execution (subprocess is forked, parent waits for SIGCHLD).
-
-### Phase 4: TUI Thread
-
-**Refactor** `AgentTui` to not own `AgentCore`. Instead, it owns a `mpsc::Sender<Command>` and receives `AppCoreEvent` via `mpsc::Receiver<AppCoreEvent>`.
-
-```cpp
-class AgentTui {
-public:
-    AgentTui(mpsc::Sender<Command> cmdSender,
-             mpsc::Receiver<AppCoreEvent> evtReceiver);
-    
-    int run(bool testMode = false);
-    
-private:
-    // On each FTXUI frame, drain event queue:
-    //   for each event in evtReceiver.tryReceive():
-    //     Token → m_messagePanel->streamUpdate(...)
-    //     ToolStart → m_messagePanel->appendToolCall(...)
-    //     ToolEnd → updateToolCall(...)
-    //     Complete → endStream(...)
-    //     Error → append error message
-    
-    // On Enter: cmdSender.send(SubmitGoal{input});
-    // On Ctrl+C: cmdSender.send(Cancel{});
-};
-```
-
-The FTXUI event loop's idle time is used to poll the event receiver. No `Screen::Post` from background threads. No agent logic. No curl.
-
-### Phase 5: CLI/Headless Mode
-
-**Reintroduce** `cmdRepl()` or `a0 run` mode using the same `AppCoreThread`:
-
-```cpp
-void cmdRepl() {
-    auto [cmdSender, evtReceiver] = appCore.start();
-    
-    std::thread inputThread([&]() {
-        std::string line;
-        while (std::getline(std::cin, line))
-            cmdSender.send(SubmitGoal{line});
-        cmdSender.send(Shutdown{});
-    });
-    
-    while (true) {
-        auto evt = evtReceiver.receive();  // blocking
-        if (auto* complete = std::get_if<Complete>(&evt)) {
-            std::cout << complete->text << std::endl;
-        } else if (std::get_if<Shutdown>(&evt)) {
-            break;
-        }
-    }
-    
-    inputThread.join();
-    appCore.stop();
+if (!mockUrl.empty()) {
+    tui.setMockUrl(mockUrl);
 }
 ```
 
-### File Changes Summary
+### 4. (Minor) Interrupt test expects old status text
+The interrupt test checks for `"Interrupted"` in the captured output. The current handler appends a message with `MessageRole::System` and content `"Interrupted"`. The message panel renders this with the role label `┌─ System` above the content. The test's `capture()` strips ANSI but should find the `Interrupted` text once #2 is fixed.
 
-| Action | File | Description |
-|--------|------|-------------|
-| DELETE | `src/deepseek_provider.h/.cpp` | Replaced by DrivenProvider |
-| DELETE | `src/deepseek_provider.spec.md` | Spec for replaced module |
-| CREATE | `src/driven_provider.h/.cpp` | curl_multi-based async provider |
-| CREATE | `src/driven_provider.spec.md` | Spec for new module |
-| CREATE | `src/driven_core.h/.cpp` | State-machine tool-calling loop |
-| MODIFY | `src/agent_interfaces.h` | Remove InferenceProvider, add CoreEvent types |
-| MODIFY | `src/skill_runner.h/.cpp` | Adapt to DrivenCore, remove executeStreaming |
-| MODIFY | `src/agent_core.h/.cpp` | Simplify to shell that wraps DrivenCore |
-| MODIFY | `src/tui/agent_tui.h/.cpp` | Remove AgentCore ownership, use mpsc queues |
-| MODIFY | `src/main.cpp` | Construct AppCoreThread, wire TUI or CLI |
-| MODIFY | `src/command_runner.h/.cpp` | Remove cancelFn (no longer needed) |
-| MODIFY | `CMakeLists.txt` | Add driven_provider_lib, driven_core_lib |
-| DELETE | `src/stream_registry.h/.cpp` | Replaced by mpsc event queues |
-| MODIFY | `test/unit/...` | All streaming tests adapt to new interfaces |
-| MODIFY | `test/agent_e2e/...` | E2E tests continue to work (PTY-based, no change) |
+---
 
-### Migration Order
+## Architecture Overview (Current State)
 
-1. Phase 1 (DrivenProvider + curl_multi) — build in parallel with existing code, leave old provider in place
-2. Phase 2 (DrivenCore state machine) — replace `executeStreaming()` and `xRunForkedLoop()` with single implementation
-3. Phase 3 (AppCoreThread + mpsc) — wrap DrivenCore in its own thread, move out of FTXUI
-4. Phase 4 (TUI refactor) — remove AgentCore from AgentTui, wire mpsc
-5. Phase 5 (CLI mode) — restore headless mode using same AppCoreThread
-6. Cleanup — remove old deepseek_provider, stream_registry, etc.
+```
+AgentTui (FTXUI event loop thread)
+├─ DrivenProvider (curl_multi, async HTTP)
+├─ DrivenCore (state machine: Idle → AwaitingLlm → ExecutingTools)
+│   └─ ResponseDecoder (feed bytes → events)
+├─ MessagePanel, InputPanel, StatusBar, DialogManager
+└─ SessionManager (PersistenceStore CRUD)
+```
+
+**Event flow**:
+1. User types + Enter → `setOnSubmit` → `xHandleSubmit`
+2. `xHandleSubmit` → appends user message, calls `m_drivenCore->submitGoal(goal)`
+3. `submitGoal` → `xBuildInitialMessages` (tools_for_prompt via old DeepSeekProvider), `xStartLlmRequest(false)` (DrivenProvider without tools)
+4. FTXUI frame render → `coreTicker` Renderer → `xTickCore()` → `m_drivenCore->tick()` → `m_provider->tick()` → `curl_multi_perform`
+5. Events (LlmToken, ToolStart, ToolEnd, Complete, Error) handled by `xHandleEvent`
+6. If core still busy after tick, `RequestAnimationFrame()` keeps the render loop going
+
+**File count**: 18 src/tui/ files + 7 new src/ files = 25 total
+
+---
 
 ## Test Results
 
-- **~140 tests total** (90 C++ + 23 Python E2E + 2 streaming + clipboard + paste)
-- C++: 39 test targets, all passing
-- Python E2E: 28+ tests across 6 files
-- Full C++ suite runs in ~3 seconds
-- Python E2E runs in ~3 minutes (PTY-based TUI tests dominate)
+| Suite | Status | Failures |
+|-------|--------|----------|
+| C++ unit tests (39 targets) | 39/39 PASS | — |
+| Python E2E (36 tests) | 25/28 PASS | test_tui_submit_goal_shows_response (curl_multi never connects), test_tui_interrupt_streaming (render not triggered), test_tui_osc_52_sequence (clipboard env) |
+
+All failures are caused by the current implementation changes. The three failures must all be fixed — none are pre-existing.
+
+---
+
+## Immediate Fixes Needed
+
+### Fix 1: Mock URL propagation
+Add `setMockUrl()` to `AgentTui` → `DrivenProvider`. Simplest change, affects all mock-based tests.
+
+### Fix 2: curl_multi transfer not completing
+The foundamental issue: `curl_multi` doesn't connect to the mock server. Possible causes:
+- URL not propagated (Fix 1 might fix this)
+- Multi handle initialized but curl_multi_socket_action needed instead of curl_multi_perform
+- SSL/TLS attempted on HTTP URL
+- Easy handle options lost when added to multi
+
+**Fallback**: If curl_multi can't be made to work, replace DrivenProvider with a simple synchronous curl_easy_perform on a background thread, matching the old DeepSeekProvider pattern.
+
+### Fix 3: Interrupt render trigger
+Add `RequestAnimationFrame()` in `xHandleInterrupt` after UI state updates.
+
+### Fix 4: Heartbeat mechanism
+If `RequestAnimationFrame()` from xTickCore doesn't keep FTXUI rendering, add a `Screen::Post([]{});` after `xHandleSubmit` to guarantee at least one render cycle after goal submission.

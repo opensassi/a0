@@ -6,6 +6,7 @@
 #include "session_manager.h"
 #include "markdown_renderer.h"
 #include "clipboard.h"
+#include "trace.h"
 
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_base.hpp"
@@ -19,16 +20,17 @@
 
 namespace a0::tui {
 
-AgentTui::AgentTui(::AgentCore* core,
-                   ::a0::persistence::PersistenceStore* persistence,
-                   ::a0::skills::SkillManager* skills,
-                   std::function<bool()> b1Status,
-                   bool noPermissions)
-    : m_core(core)
-    , m_persistence(persistence)
-    , m_skills(skills)
+AgentTui::AgentTui(const std::string& apiKey,
+                   const std::string& model,
+                   a0::skills::SkillManager* skillMgr,
+                   a0::persistence::PersistenceStore* persistence,
+                   int64_t agentId,
+                   std::function<bool()> b1Status)
+    : m_persistence(persistence)
+    , m_agentId(agentId)
     , m_b1Status(std::move(b1Status))
-    , m_noPermissions(noPermissions)
+    , m_provider(std::make_unique<a0::DrivenProvider>(apiKey, model))
+    , m_drivenCore(std::make_unique<a0::DrivenCore>(m_provider.get(), skillMgr, persistence))
     , m_messagePanel(std::make_unique<MessagePanel>())
     , m_inputPanel(std::make_unique<InputPanel>())
     , m_statusBar(std::make_unique<StatusBar>())
@@ -36,6 +38,7 @@ AgentTui::AgentTui(::AgentCore* core,
     , m_sessionMgr(std::make_unique<SessionManager>(persistence))
     , m_markdown(std::make_unique<MarkdownRenderer>())
 {
+    TRACE_LOG("AgentTui constructed");
     xBuildLayout();
 }
 
@@ -53,7 +56,6 @@ void AgentTui::clearScreen() {
 }
 
 int AgentTui::run(bool testMode) {
-    // OwnedScreen must outlive the Loop — declared here at function scope.
     ftxui::ScreenInteractive ownedScreen =
         testMode
             ? ftxui::ScreenInteractive::FixedSize(80, 24)
@@ -62,17 +64,20 @@ int AgentTui::run(bool testMode) {
         m_screen = &ownedScreen;
     }
 
-    // Enable bracketed paste mode so pasted text with newlines arrives
-    // wrapped in \x1b[200~ ... \x1b[201~ markers.
+    TRACE_LOG("AgentTui::run starting");
+
     std::cout << "\x1b[?2004h";
     std::flush(std::cout);
 
     m_inputPanel->component()->TakeFocus();
 
     auto loop = ftxui::Loop(m_screen, m_mainComponent);
-    loop.Run();
+    while (!loop.HasQuitted()) {
+        loop.RunOnce();
+        xTickCore();
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
 
-    // Disable bracketed paste on exit.
     std::cout << "\x1b[?2004l";
     std::flush(std::cout);
 
@@ -82,7 +87,37 @@ int AgentTui::run(bool testMode) {
 
 void AgentTui::shutdown() {
     if (m_screen) {
-        m_screen->ExitLoopClosure()();
+        m_screen->Exit();
+    }
+}
+
+void AgentTui::xTickCore() {
+    if (!m_drivenCore->idle()) {
+        auto events = m_drivenCore->tick();
+        for (auto& ev : events) {
+            xHandleEvent(ev);
+        }
+        // If the core is still busy after tick, request continued animation frames.
+        // This keeps the coreTicker Renderer running and draining events.
+        if (!m_drivenCore->idle() && m_screen) {
+            m_screen->RequestAnimationFrame();
+        }
+    }
+}
+
+void AgentTui::xHandleEvent(const mpsc::AppCoreEvent& ev) {
+    if (std::holds_alternative<mpsc::LlmToken>(ev)) {
+        xOnToken(std::get<mpsc::LlmToken>(ev).text);
+    } else if (std::holds_alternative<mpsc::ToolStart>(ev)) {
+        const auto& ts = std::get<mpsc::ToolStart>(ev);
+        xOnToolStart(ts.toolName, ts.arguments);
+    } else if (std::holds_alternative<mpsc::ToolEnd>(ev)) {
+        const auto& te = std::get<mpsc::ToolEnd>(ev);
+        xOnToolEnd(te.toolName, te.output, te.exitCode == 0);
+    } else if (std::holds_alternative<mpsc::Complete>(ev)) {
+        xOnComplete(std::get<mpsc::Complete>(ev).text);
+    } else if (std::holds_alternative<mpsc::Error>(ev)) {
+        xOnError(std::get<mpsc::Error>(ev).message);
     }
 }
 
@@ -93,6 +128,7 @@ int AgentTui::resumeSession(const std::string& uuid) {
 
     m_sessionUuid = uuid;
     m_sessionDbId = dbId;
+    m_statusBar->setSessionId(uuid);
 
     if (m_persistence) {
         auto msgs = m_persistence->loadMessages(dbId);
@@ -100,7 +136,6 @@ int AgentTui::resumeSession(const std::string& uuid) {
         m_statusBar->setMessageCount(msgs.size());
     }
 
-    m_statusBar->setSessionId(uuid);
     return 0;
 }
 
@@ -108,324 +143,170 @@ std::string AgentTui::currentSessionId() const {
     return m_sessionUuid;
 }
 
-void AgentTui::xBuildLayout() {
-    auto mainContainer = xBuildMainContainer();
-
-    m_inputPanel->setOnSubmit([this](const std::string& input) {
-        xHandleSubmit(input);
-    });
-
-    m_inputPanel->setOnInterrupt([this] {
-        xHandleInterrupt();
-    });
-
-    m_inputPanel->setOnChange([this](const std::string& content) {
-        // Prune stale paste entries: if a marker was deleted/modified by the
-        // user, remove its content so it won't be expanded on submit.
-        if (m_pastedContents.empty()) return;
-        std::unordered_map<int, std::string> valid;
-        for (auto& [id, stored] : m_pastedContents) {
-            std::string marker = "[ PASTED #" + std::to_string(id) + " ]";
-            if (content.find(marker) != std::string::npos) {
-                valid[id] = stored;
-            }
-        }
-        m_pastedContents = std::move(valid);
-    });
-
-    m_dialogMgr->setMainComponent(mainContainer);
-    auto wrapped = m_dialogMgr->component();
-
-    // Routes all Character events to the Input (so paste/keyboard always
-    // reaches the input box regardless of focus).
-    // Detects bracketed paste markers (\x1b[200~ / \x1b[201~) to capture
-    // multi-line paste content and collapse large pastes into placeholders.
-    // Tracks mouse drag for copy-on-select via FTXUI's GetSelection().
-    m_mainComponent = ftxui::CatchEvent(wrapped, [this](ftxui::Event event) -> bool {
-        auto& input = event.input();
-
-        // Bracketed paste start marker.
-        if (input == "\x1b[200~") {
-            m_pasteActive = true;
-            m_pasteBuffer.clear();
-            return true;
-        }
-
-        // Bracketed paste end marker.
-        if (input == "\x1b[201~") {
-            m_pasteActive = false;
-            xProcessPasteBuffer();
-            return true;
-        }
-
-        // While a paste is in progress, accumulate and block children.
-        if (m_pasteActive) {
-            m_pasteBuffer += input;
-            return true;
-        }
-
-        // Normal Character events — route to Input directly (only if enabled).
-        if (event.is_character()) {
-            if (m_inputPanel->isEnabled()) {
-                m_inputPanel->component()->OnEvent(event);
-            }
-            return true;
-        }
-
-        // Mouse events: track drag for copy-on-select.
-        if (event.is_mouse()) {
-            auto& mouse = event.mouse();
-            if (mouse.button == ftxui::Mouse::Left) {
-                if (mouse.motion == ftxui::Mouse::Pressed) {
-                    m_mouseDown = true;
-                    m_mouseMoved = false;
-                } else if (mouse.motion == ftxui::Mouse::Moved && m_mouseDown) {
-                    m_mouseMoved = true;
-                } else if (mouse.motion == ftxui::Mouse::Released && m_mouseDown) {
-                    m_mouseDown = false;
-                    if (m_mouseMoved && m_screen) {
-                        auto selected = m_screen->GetSelection();
-                        if (!selected.empty()) {
-                            copyToClipboard(selected);
-                        }
-                    }
-                }
-            }
-        }
-        return false;  // don't consume — let children handle
-    });
-}
-
-ftxui::Component AgentTui::xBuildMainContainer() {
-    return ftxui::Container::Vertical({
-        m_statusBar->component(),
-        m_messagePanel->component() | ftxui::flex,
-        m_inputPanel->component(),
-    });
-}
-
 void AgentTui::submitInput(const std::string& input) {
     xHandleSubmit(input);
 }
 
-std::string AgentTui::xExpandPastePlaceholders(const std::string& input) {
-    if (m_pastedContents.empty() || input.find("[ PASTED #") == std::string::npos) {
-        return input;
+// ============================================================================
+// Event handlers
+// ============================================================================
+
+void AgentTui::xOnToken(const std::string& token) {
+    if (m_streamingEntryIndex < 0) {
+        m_streamingText.clear();
+        m_streamingEntryIndex = m_messagePanel->beginStreaming(MessageRole::Assistant);
     }
-    std::string result = input;
-    for (auto& [id, content] : m_pastedContents) {
-        std::string marker = "[ PASTED #" + std::to_string(id) + " ]";
-        size_t pos = 0;
-        while ((pos = result.find(marker, pos)) != std::string::npos) {
-            result.replace(pos, marker.size(), content);
-            pos += content.size();
-        }
-    }
-    return result;
+
+    m_streamingText += token;
+    m_messagePanel->streamUpdate(m_streamingEntryIndex, m_streamingText);
+    m_statusBar->setMessageCount(m_messagePanel->count());
 }
 
-void AgentTui::xProcessPasteBuffer() {
-    if (m_pasteBuffer.empty()) return;
-
-    // Trim trailing newlines from the pasted text
-    while (!m_pasteBuffer.empty() &&
-           (m_pasteBuffer.back() == '\n' || m_pasteBuffer.back() == '\r')) {
-        m_pasteBuffer.pop_back();
-    }
-
-    if (m_pasteBuffer.size() <= 20) {
-        // Small paste: insert raw text into the input
-        m_inputPanel->insertText(m_pasteBuffer);
-    } else {
-        // Large paste: create a numbered placeholder
-        int id = ++m_pasteCounter;
-        m_pastedContents[id] = m_pasteBuffer;
-        m_inputPanel->insertText("[ PASTED #" + std::to_string(id) + " ] ");
-    }
-    m_pasteBuffer.clear();
+void AgentTui::xOnToolStart(const std::string& name, const std::string& /*arguments*/) {
+    m_agentState = AgentState::Executing;
+    m_statusBar->setAgentState(m_agentState);
+    m_messagePanel->appendToolCall(name, ToolState::Running);
+    m_inputPanel->setEnabled(false);
+    m_statusBar->setMessageCount(m_messagePanel->count());
 }
+
+void AgentTui::xOnToolEnd(const std::string& name, const std::string& output, bool success) {
+    ToolState state = success ? ToolState::Completed : ToolState::Failed;
+    m_messagePanel->appendToolCall(name, state, output);
+    if (m_agentState != AgentState::Thinking) {
+        m_agentState = AgentState::Thinking;
+        m_statusBar->setAgentState(m_agentState);
+    }
+}
+
+void AgentTui::xOnComplete(const std::string& fullOutput) {
+    if (m_streamingEntryIndex >= 0) {
+        m_messagePanel->streamUpdate(m_streamingEntryIndex, fullOutput);
+        m_messagePanel->endStream(m_streamingEntryIndex);
+        m_streamingEntryIndex = -1;
+        m_streamingText.clear();
+    }
+
+    m_agentState = AgentState::Idle;
+    m_statusBar->setAgentState(m_agentState);
+    m_inputPanel->setEnabled(true);
+    m_inputPanel->component()->TakeFocus();
+    m_statusBar->setMessageCount(m_messagePanel->count());
+}
+
+void AgentTui::xOnError(const std::string& error) {
+    if (m_streamingEntryIndex >= 0) {
+        m_messagePanel->streamUpdate(m_streamingEntryIndex, error);
+        m_messagePanel->endStream(m_streamingEntryIndex);
+        m_streamingEntryIndex = -1;
+        m_streamingText.clear();
+    }
+
+    MessageEntry errEntry;
+    errEntry.role = MessageRole::Error;
+    errEntry.content = error;
+    m_messagePanel->append(errEntry);
+
+    m_agentState = AgentState::Idle;
+    m_statusBar->setAgentState(m_agentState);
+    m_inputPanel->setEnabled(true);
+    m_inputPanel->component()->TakeFocus();
+    m_statusBar->setMessageCount(m_messagePanel->count());
+}
+
+// ============================================================================
+// Goal submission
+// ============================================================================
 
 int AgentTui::xHandleSubmit(const std::string& input) {
     if (input.empty()) return 0;
-    std::string expanded = xExpandPastePlaceholders(input);
-    if (expanded.empty()) return 0;
-    if (expanded[0] == '/') {
-        return xHandleCommand(expanded);
+
+    // Check for commands
+    if (input[0] == '/') {
+        return xHandleCommand(input);
     }
-    return xProcessGoal(expanded);
+
+    // Create session on first input
+    if (m_sessionUuid.empty()) {
+        std::string uuid = "tui-" + std::to_string(std::time(nullptr));
+        int64_t agentId = m_agentId > 0 ? m_agentId : 0;
+        m_sessionDbId = m_sessionMgr->create(uuid, agentId);
+        m_sessionUuid = uuid;
+        m_statusBar->setSessionId(uuid);
+        m_drivenCore->setSession(m_sessionDbId, uuid);
+    }
+
+    // Expand paste placeholders
+    std::string expanded = xExpandPastePlaceholders(input);
+
+    // Add user message to display
+    MessageEntry userEntry;
+    userEntry.role = MessageRole::User;
+    userEntry.content = expanded;
+    m_messagePanel->append(userEntry);
+
+    if (expanded != input) {
+        MessageEntry sysEntry;
+        sysEntry.role = MessageRole::System;
+        sysEntry.content = "(Paste expanded: " + std::to_string(expanded.size()) + " chars)";
+        m_messagePanel->append(sysEntry);
+    }
+
+    // Update state
+    m_agentState = AgentState::Thinking;
+    m_statusBar->setAgentState(m_agentState);
+    m_inputPanel->setEnabled(false);
+
+    // Submit goal to DrivenCore synchronously
+    m_drivenCore->submitGoal(expanded);
+
+    // Tick immediately to process the first batch of events
+    xTickCore();
+
+    // Trigger a re-render to show the user message and [thinking]
+    if (m_screen) {
+        m_screen->Post([]{});  // Wake FTXUI event loop
+    }
+
+    return 0;
 }
 
 int AgentTui::xHandleInterrupt() {
-    if (!m_streaming || !m_screen) return 0;
-    m_streamingHandle.cancel();
-    m_screen->Post([this] { xOnInterrupted(); });
+    if (m_agentState != AgentState::Idle) {
+        m_drivenCore->cancel();
+
+        if (m_streamingEntryIndex >= 0) {
+            m_messagePanel->streamUpdate(m_streamingEntryIndex, m_streamingText);
+            m_messagePanel->endStream(m_streamingEntryIndex);
+            m_streamingEntryIndex = -1;
+            m_streamingText.clear();
+        }
+
+        MessageEntry entry;
+        entry.role = MessageRole::System;
+        entry.content = "Interrupted";
+        m_messagePanel->append(entry);
+
+        m_agentState = AgentState::Idle;
+        m_statusBar->setAgentState(m_agentState);
+        m_inputPanel->setEnabled(true);
+        m_inputPanel->component()->TakeFocus();
+    }
     return 0;
 }
 
 int AgentTui::xHandleCommand(const std::string& cmd) {
     if (cmd == "/sessions") return xCmdSessions();
-    if (cmd == "/help") return xCmdHelp();
-    if (cmd == "/clear") return xCmdClear();
-    if (cmd == "/quit" || cmd == ":q") return xCmdQuit();
-    if (cmd == "/export") return xCmdExport();
+    if (cmd == "/help")      return xCmdHelp();
+    if (cmd == "/clear")     return xCmdClear();
+    if (cmd == "/quit" || cmd == "/exit") return xCmdQuit();
+    if (cmd == "/export")    return xCmdExport();
     return 0;
 }
 
-int AgentTui::xProcessGoal(const std::string& goal) {
-    if (!m_screen) return -1;
-
-    // Use session from AgentCore (created centrally by ensureSession).
-    // This avoids the FK crash from creating a session with agentId=0.
-    if (m_core) {
-        m_core->ensureSession();
-        m_sessionUuid = m_core->currentSessionId();
-        m_sessionDbId = m_core->sessionDbId();
-    }
-    if (m_sessionUuid.empty()) {
-        m_sessionUuid = "tui-" + std::to_string(std::time(nullptr));
-    }
-
-    m_agentState = AgentState::Thinking;
-    m_statusBar->setSessionId(m_sessionUuid);
-    m_statusBar->setAgentState(m_agentState);
-
-    MessageEntry userEntry;
-    userEntry.role = MessageRole::User;
-    userEntry.content = goal;
-    userEntry.timestamp = std::time(nullptr);
-    m_messagePanel->append(userEntry);
-
-    m_streamingEntryIndex = m_messagePanel->beginStreaming(MessageRole::Assistant);
-    m_streaming = true;
-
-    auto accumulated = std::make_shared<std::string>();
-
-    m_statusBar->setMessageCount(m_messagePanel->count());
-    m_inputPanel->setEnabled(false);
-    m_inputPanel->clear();
-
-    // Bridge callback: adapt the flat StreamCallback(data, direction) into
-    // the TUI's segmented callbacks (xOnToken, xOnToolStart, etc.).
-    auto onChunk = [this, accumulated](const std::string& data, const std::string& direction) {
-        if (direction == "stdout") {
-            *accumulated += data;
-            xOnToken(data);
-        } else if (direction == "tool") {
-            try {
-                auto j = nlohmann::json::parse(data);
-                std::string toolName = j.value("tool_start", "");
-                if (!toolName.empty()) {
-                    xOnToolStart(toolName, j.value("params", nlohmann::json::object()));
-                }
-            } catch (...) {}
-        } else if (direction == "tool_end") {
-            xOnToolEnd("", data, true);
-        } else if (direction == "tool_error") {
-            xOnToolEnd("", data, false);
-        }
-    };
-
-    m_streamingHandle = m_core->processGoalStreaming(goal, std::move(onChunk));
-
-    // Poll streaming completion from the event loop. Each iteration checks if
-    // the handle is done. If not, re-posts itself. If done, finalizes the output.
-    // This avoids threading issues with posting from background threads.
-    auto poller = std::make_shared<std::function<void()>>();
-    *poller = [this, accumulated, poller]() {
-        if (!m_streamingHandle.m_state || m_streamingHandle.isDone()) {
-            int rc = m_streamingHandle.wait();
-            std::string finalOutput = *accumulated;
-            if (rc == 0 && !finalOutput.empty())
-                xOnComplete(finalOutput);
-            else if (rc != 0)
-                xOnError("streaming process failed");
-            else
-                xOnComplete("");
-        } else if (m_screen) {
-            m_screen->Post(*poller);
-        }
-    };
-    if (m_screen)
-        m_screen->Post(*poller);
-
-    return 0;
-}
-
-void AgentTui::xOnToken(const std::string& token) {
-    if (!m_screen) return;
-    m_screen->Post([this, token] {
-        if (m_streamingEntryIndex >= 0) {
-            m_messagePanel->streamUpdate(m_streamingEntryIndex, token);
-        }
-    });
-}
-
-void AgentTui::xOnToolStart(const std::string& name, const nlohmann::json& /*params*/) {
-    if (!m_screen) return;
-    m_screen->Post([this, name] {
-        m_messagePanel->appendToolCall(name, ToolState::Running);
-        m_agentState = AgentState::Executing;
-        m_statusBar->setAgentState(m_agentState);
-    });
-}
-
-void AgentTui::xOnToolEnd(const std::string& name, const std::string& output, bool success) {
-    if (!m_screen) return;
-    m_screen->Post([this, name, output, success] {
-        auto state = success ? ToolState::Completed : ToolState::Failed;
-        m_messagePanel->appendToolCall(name, state, output);
-        m_agentState = AgentState::Thinking;
-        m_statusBar->setAgentState(m_agentState);
-    });
-}
-
-void AgentTui::xOnComplete(const std::string& fullOutput) {
-    if (!m_screen) return;
-    m_screen->Post([this, fullOutput] {
-        if (m_streamingEntryIndex >= 0) {
-            m_messagePanel->streamUpdate(m_streamingEntryIndex, fullOutput);
-            m_messagePanel->endStream(m_streamingEntryIndex);
-        }
-        m_streaming = false;
-        m_streamingEntryIndex = -1;
-        m_agentState = AgentState::Idle;
-        m_statusBar->setAgentState(m_agentState);
-        m_statusBar->setMessageCount(m_messagePanel->count());
-        m_inputPanel->setEnabled(true);
-        m_inputPanel->focus();
-    });
-}
-
-void AgentTui::xOnError(const std::string& error) {
-    if (!m_screen) return;
-    m_screen->Post([this, error] {
-        MessageEntry errEntry;
-        errEntry.role = MessageRole::Error;
-        errEntry.content = error;
-        m_messagePanel->append(errEntry);
-        m_streaming = false;
-        m_streamingEntryIndex = -1;
-        m_agentState = AgentState::Error;
-        m_statusBar->setAgentState(m_agentState);
-        m_inputPanel->setEnabled(true);
-    });
-}
-
-void AgentTui::xOnInterrupted() {
-    if (!m_screen) return;
-    if (m_streamingEntryIndex >= 0) {
-        m_messagePanel->endStream(m_streamingEntryIndex);
-    }
-    MessageEntry sysEntry;
-    sysEntry.role = MessageRole::System;
-    sysEntry.content = "Interrupted";
-    m_messagePanel->append(sysEntry);
-    m_streaming = false;
-    m_streamingEntryIndex = -1;
-    m_agentState = AgentState::Idle;
-    m_statusBar->setAgentState(m_agentState);
-    m_inputPanel->setEnabled(true);
-}
+// ============================================================================
+// Commands
+// ============================================================================
 
 int AgentTui::xCmdSessions() {
     auto sessions = m_sessionMgr->list(20);
@@ -462,6 +343,140 @@ int AgentTui::xCmdQuit() {
 int AgentTui::xCmdExport() {
     m_statusBar->showStatus("Export not yet implemented", 3);
     return 0;
+}
+
+// ============================================================================
+// Layout
+// ============================================================================
+
+void AgentTui::xBuildLayout() {
+    auto mainContainer = xBuildMainContainer();
+
+    // Wire input callbacks
+    m_inputPanel->setOnSubmit([this](const std::string& input) {
+        xHandleSubmit(input);
+    });
+
+    m_inputPanel->setOnInterrupt([this] {
+        xHandleInterrupt();
+    });
+
+    m_inputPanel->setOnChange([this](const std::string& content) {
+        if (m_pastedContents.empty()) return;
+        std::unordered_map<int, std::string> valid;
+        for (auto& [id, stored] : m_pastedContents) {
+            std::string marker = "[ PASTED #" + std::to_string(id) + " ]";
+            if (content.find(marker) != std::string::npos) {
+                valid[id] = stored;
+            }
+        }
+        m_pastedContents = std::move(valid);
+    });
+
+    m_dialogMgr->setMainComponent(mainContainer);
+    auto wrapped = m_dialogMgr->component();
+
+    // Renderer wrapper: tick DrivenCore before every frame
+    auto coreTicker = ftxui::Renderer(wrapped, [this, wrapped]() {
+        xTickCore();
+        return wrapped->Render();
+    });
+
+    // Outer CatchEvent for paste detection and mouse tracking
+    m_mainComponent = ftxui::CatchEvent(coreTicker, [this](ftxui::Event event) -> bool {
+        auto& input = event.input();
+
+        // Bracketed paste start marker
+        if (input == "\x1b[200~") {
+            m_pasteActive = true;
+            m_pasteBuffer.clear();
+            return true;
+        }
+
+        // Bracketed paste end marker
+        if (input == "\x1b[201~") {
+            m_pasteActive = false;
+            xProcessPasteBuffer();
+            return true;
+        }
+
+        // During paste: accumulate and block children
+        if (m_pasteActive) {
+            m_pasteBuffer += input;
+            return true;
+        }
+
+        // Mouse events for copy-on-select
+        if (event.is_mouse()) {
+            auto& mouse = event.mouse();
+            if (mouse.button == ftxui::Mouse::Left) {
+                if (mouse.motion == ftxui::Mouse::Pressed) {
+                    m_mouseDown = true;
+                    m_mouseMoved = false;
+                } else if (mouse.motion == ftxui::Mouse::Moved && m_mouseDown) {
+                    m_mouseMoved = true;
+                } else if (mouse.motion == ftxui::Mouse::Released && m_mouseDown) {
+                    if (m_mouseMoved && m_screen) {
+                        std::string sel = m_screen->GetSelection();
+                        if (!sel.empty()) {
+                            copyToClipboard(sel);
+                            m_statusBar->showStatus("Copied!", 3);
+                        }
+                    }
+                    m_mouseDown = false;
+                }
+            }
+            return false;
+        }
+
+        return false;
+    });
+}
+
+ftxui::Component AgentTui::xBuildMainContainer() {
+    return ftxui::Container::Vertical({
+        m_statusBar->component(),
+        m_messagePanel->component() | ftxui::flex,
+        m_inputPanel->component(),
+    });
+}
+
+// ============================================================================
+// Bracketed paste
+// ============================================================================
+
+std::string AgentTui::xExpandPastePlaceholders(const std::string& input) {
+    if (m_pastedContents.empty() || input.find("[ PASTED #") == std::string::npos) {
+        return input;
+    }
+    std::string result = input;
+    for (auto& [id, content] : m_pastedContents) {
+        std::string marker = "[ PASTED #" + std::to_string(id) + " ]";
+        size_t pos = 0;
+        while ((pos = result.find(marker, pos)) != std::string::npos) {
+            result.replace(pos, marker.size(), content);
+            pos += content.size();
+        }
+    }
+    return result;
+}
+
+void AgentTui::xProcessPasteBuffer() {
+    if (m_pasteBuffer.empty()) return;
+
+    while (!m_pasteBuffer.empty() &&
+           (m_pasteBuffer.back() == '\n' || m_pasteBuffer.back() == '\r')) {
+        m_pasteBuffer.pop_back();
+    }
+
+    if (m_pasteBuffer.size() <= 20) {
+        m_inputPanel->insertText(m_pasteBuffer);
+    } else {
+        int id = ++m_pasteCounter;
+        m_pastedContents[id] = m_pasteBuffer;
+        m_inputPanel->insertText("[ PASTED #" + std::to_string(id) + " ] ");
+    }
+    m_pasteBuffer.clear();
 }
 
 } // namespace a0::tui

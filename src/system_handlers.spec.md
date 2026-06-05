@@ -8,7 +8,7 @@ Free-standing C++ functions that implement all built-in system tools. Previously
 
 **Registration:** All handlers are registered in `main.cpp` via `xRegisterSystemHandlers()`, which calls `SkillManager::registerHandler(qn, lambda)` for each handler.
 
-**Wildcard dispatch:** Git and Docker handlers use wildcard keys (`system:git:*`, `system:docker:*`). `SkillManager::executeToolWithMeta()` sets `params["_subcommand"]` to the tool name after the last colon.
+**Wildcard dispatch:** Git handler uses wildcard key `system:git:*`. `SkillManager::executeToolWithMeta()` sets `params["_subcommand"]` to the tool name after the last colon.
 
 ## 2. Component Specifications
 
@@ -23,18 +23,14 @@ HandlerResult xGrep(const json& params);
 HandlerResult xEdit(const json& params);
 HandlerResult xWrite(const json& params);
 
-// Git / Docker handlers
+// Git handler
 HandlerResult xGitCommand(const std::string& subcommand, const json& params);
-HandlerResult xDockerCommand(const std::string& subcommand, const json& params,
-                             DockerSecurityFilter* filter = nullptr);
-HandlerResult xDockerComposeCommand(const std::string& subcommand, const json& params);
-bool isDockerCommand(const std::string& command);
 
 // Meta handlers (require SkillManager + InferenceProvider)
-HandlerResult xShowSkills(const json& params, skills::SkillManager* skillMgr);
-HandlerResult xShowSkillTools(const json& params, skills::SkillManager* skillMgr);
+HandlerResult xShowSkills(const json& params, a0::skills::SkillManager* skillMgr);
+HandlerResult xShowSkillTools(const json& params, a0::skills::SkillManager* skillMgr);
 HandlerResult xToolsForPrompt(const json& params,
-                              skills::SkillManager* skillMgr,
+                              a0::skills::SkillManager* skillMgr,
                               InferenceProvider* provider);
 
 } // namespace a0
@@ -48,7 +44,7 @@ Registration in `main.cpp` follows these conventions:
 |---------|-----|---------|
 | Core tool (3-part) | `ns:comp:tool` | `system:fs:read` |
 | Component-alias tool | `ns:comp` | `system:bash` (resolved via 2-part alias in executeToolWithMeta) |
-| Git/docker wildcard | `ns:comp:*` | `system:git:*` (subcommand extracted from `_subcommand` param) |
+| Git wildcard | `ns:comp:*` | `system:git:*` (subcommand extracted from `_subcommand` param) |
 | Meta tool | `ns:comp:tool` | `system:meta:tools_for_prompt` (captures SkillManager + InferenceProvider) |
 
 ## 4. Handler Details
@@ -61,26 +57,24 @@ Registration in `main.cpp` follows these conventions:
 | `xRead` | `file_path`, `[offset]`, `[limit]` | Reads file with line numbers or lists directory entries. Detects binary files. |
 | `xGlob` | `pattern`, `[path]` | Recursive file pattern matching. Excludes node_modules, .git, etc. |
 | `xGrep` | `pattern`, `[path]`, `[include]` | Regex content search. Excludes binary and large files. |
-| `xEdit` | `file_path`, `old_string`, `new_string`, `[replace_all]` | Exact string replacement. Errors on not-found or multiple matches (unless replaceAll). |
+| `xEdit` | `file_path`, `old_string`, `new_string`, `[replace_all]` | Exact string replacement. Errors on not-found or multiple matches (unless replaceAll). Also accepts camelCase param names (`filePath`, `oldString`, `newString`, `replaceAll`). |
 | `xWrite` | `file_path`, `content` | Creates parent directories, writes file. |
 
-### Git/Docker Handlers
+### Git Handler
 
 | Handler | Dispatch | Description |
 |---------|----------|-------------|
-| `xGitCommand` | `system:git:*` via `_subcommand` | Builds `git <subcommand> --flag=value` from params, runs via CommandRunner. |
-| `xDockerCommand` | `system:docker:*` via `_subcommand` | Same pattern, but checks DockerSecurityFilter for destructive commands. |
-| `xDockerComposeCommand` | `system:docker_compose:*` via `_subcommand` | Same pattern for `docker compose <subcommand>`. |
+| `xGitCommand` | `system:git:*` via `_subcommand` | Builds `git <subcommand> --flag=value` from params, runs via CommandRunner. Uses `xBuildCommand` helper to convert JSON params to CLI flags with shell escaping. Supports boolean, string, and number flag types. |
 
 ### Meta Handlers
 
 | Handler | Dependencies | Description |
 |---------|-------------|-------------|
-| `xShowSkills` | `SkillManager*` | Navigates skill tree by path, lists prompts. |
-| `xShowSkillTools` | `SkillManager*` | Lists tools from manifests by component. |
+| `xShowSkills` | `SkillManager*` | Navigates skill tree by path (e.g. `/system`, `/local`), lists prompts for a component. |
+| `xShowSkillTools` | `SkillManager*` | Lists tools from manifests by component path. |
 | `xToolsForPrompt` | `SkillManager*`, `InferenceProvider*` | Builds inventory of all tools/skills, sends to LLM for analysis, validates returned JSON schemas against actual schemas, populates recommendedTools. |
 
-## 5. Bash Git/Docker Rejection
+## 5. Bash Git Rejection
 
 ```mermaid
 sequenceDiagram
@@ -108,10 +102,19 @@ sequenceDiagram
 | `xBash` | Git rejection | `{"command":"git status"}` | `"ERROR: git commands must use..."` |
 | `xRead` | Missing file_path | `{}` | `"ERROR: missing required..."` |
 | `xRead` | File not found | `{"filePath":"/no/such"}` | `"ERROR: file not found"` |
+| `xRead` | Directory listing | `{"file_path":"/tmp"}` | Directory entries listed, trailing `/` for subdirs |
+| `xRead` | Binary file | `{"file_path":"image.png"}` | `"Type: binary\nSize: ..."` |
+| `xRead` | Large file exceeded | `{"file_path":"big.log"}` | First 500 bytes + size info |
+| `xRead` | Offset exceeds file | `{"file_path":"f", "offset":9999}` | `"ERROR: offset ... exceeds file length"` |
 | `xEdit` | Single replace | Valid file + old/new | `"Edit applied successfully"` |
+| `xEdit` | Multiple matches (no replaceAll) | File with 2+ occurrences | `"Error: Found multiple matches..."` |
+| `xEdit` | replaceAll=true | File with 2+ occurrences | `"Edit applied successfully"` |
 | `xWrite` | New file | Valid path + content | `"Wrote file successfully"` |
 | `xGlob` | Glob pattern | Pattern + path | Matching files listed |
+| `xGlob` | Trailing `/` pattern | `"dirs/"` | Only directories matched |
 | `xGrep` | Pattern match | Pattern + path | Matching lines |
+| `xGrep` | Invalid regex | `"[invalid"` | `"ERROR: invalid regex pattern..."` |
+| `xGrep` | No matches | Non-existent pattern | `"No matches found for: ..."` |
 | `xGitCommand` | Status | Subcommand=status | Git status output |
-| `xDockerCommand` | Destructive blocked | Subcommand=kill + protected container | `"ERROR: container ... is system-managed"` |
 | `xToolsForPrompt` | Valid analysis | Prompt + SkillManager + provider | `HandlerResult` with output + recommendedTools |
+| `xToolsForPrompt` | No provider | Prompt + SkillManager + null | Fallback description, no LLM call |

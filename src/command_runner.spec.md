@@ -27,21 +27,30 @@ struct CommandResult {
 /// \param direction "stdout" or "stderr"
 using StreamCallback = std::function<void(const std::string& chunk, const std::string& direction)>;
 
-/// Handle returned by runStreaming(). May be polled, waited on, cancelled, or fed input.
-class StreamHandle {
-public:
+/// Handle for a running streaming process.
+struct StreamHandle {
+    int64_t streamId = 0;
+    int pid = 0;
+
+    /// Non-blocking check if process has exited.
     bool isDone() const;
+
+    /// Block until process exits. Returns exit code.
     int wait();
+
+    /// Send SIGTERM (2s grace), then SIGKILL.
     void cancel();
+
+    /// Write data to the process's stdin.
     void sendInput(const std::string& data);
-private:
-    friend class CommandRunner;
+
+    /// Internal state (shared with the reader thread)
     struct State {
+        std::mutex mutex;
+        int stdinFd = -1;
+        pid_t childPid = 0;
         std::atomic<bool> done{false};
         std::atomic<int> exitCode{-1};
-        pid_t childPid = -1;
-        int stdinFd = -1;
-        std::mutex mutex;
         std::thread thread;
     };
     std::shared_ptr<State> m_state;
@@ -191,6 +200,8 @@ sequenceDiagram
 | `runStreaming` fork failure | `StreamHandle::isDone()` returns true, `wait()` returns -1 |
 | `runStreaming` child killed by timeout | `onChunk` may receive partial data before kill |
 | `sendInput` after child done | No-op (data silently dropped) |
+| `cancel()` on running process | Sends SIGTERM to process group, waits 2s, then SIGKILL |
+| `wait()` after thread exited | Returns immediately with exit code; does not deadlock |
 
 ## 6. Edge Cases
 

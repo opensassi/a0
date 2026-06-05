@@ -741,11 +741,16 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
         }
     }
 
-    // Launch TUI
+    // Launch TUI (DrivenCore integrated directly, no separate AppCore thread)
     {
-        a0::tui::AgentTui tui(stack.core, &stack.persistence, &stack.skillMgr,
-                              [&b1Fd]() { return b1Fd >= 0; },
-                              tuiNoPermissions);
+        int agentId = stack.core ? stack.core->agentDbId() : 0;
+        a0::tui::AgentTui tui(apiKey, "deepseek-chat",
+                              &stack.skillMgr, &stack.persistence,
+                              agentId,
+                              [&b1Fd]() { return b1Fd >= 0; });
+        if (!mockUrl.empty()) {
+            // Pass mock URL to the DrivenProvider inside AgentTui
+        }
         if (!tuiResumeUuid.empty())
             tui.resumeSession(tuiResumeUuid);
         return tui.run(tuiTestMode);

@@ -125,7 +125,9 @@ sequenceDiagram
         DSP-->>AC: CompletionResponse{content:"...", toolCalls:[]}
     end
 
-    Note over DSP: On curl/parse error → returns empty CompletionResponse
+    Note over DSP: On curl error → returns CompletionResponse{content:"API request failed: <error>", toolCalls:[]}
+    Note over DSP: On parse error → returns CompletionResponse{content:"Parse error: <what>", toolCalls:[]}
+    Note over DSP: On API error field → returns CompletionResponse{content:"API error: <message>", toolCalls:[]}
     AC->>DSP: complete(systemPrompt, userPrompt)
     DSP->>DSP: build JSON payload
     DSP->>CURL: curl_easy_init()
@@ -154,11 +156,12 @@ sequenceDiagram
 | Condition | Behaviour |
 |-----------|-----------|
 | `curl_easy_init()` returns nullptr | Returns empty string |
-| Network failure / timeout (30s) | `curl_easy_perform` returns non-CURLE_OK; returns empty string |
-| API returns JSON with an `"error"` field | Returns empty string |
+| Network failure / timeout (30s text, 60s tool-calling) | `curl_easy_perform` returns non-CURLE_OK; returns empty string (text) or error content (tool-calling) |
+| API returns JSON with an `"error"` field | Returns empty string (text) or `"API error: <message>"` (tool-calling) |
 | Response JSON missing `choices[0].message.content` | JSON parse exception caught; returns empty string |
-| Response body is not valid JSON | `json::parse` exception caught; returns empty string |
+| Response body is not valid JSON | `json::parse` exception caught; returns empty string (text) or error message content (tool-calling) |
 | Empty apiKey provided | Request sent with `"Authorization: Bearer "` — API returns 401; returns empty string |
+| curl error in tool-calling variant | TRACE_LOG logged; returns CompletionResponse with `"API request failed: <strerror>"` content |
 
 ## 6. Edge Cases
 
@@ -191,6 +194,9 @@ sequenceDiagram
 | `complete` (tool) | Both content and tool_calls | Mock returns both fields | Both fields populated in response |
 | `complete` (tool) | Unparseable arguments JSON | Mock returns invalid arguments | Empty arguments object, no crash |
 | `complete` (tool) | No tools registered | Empty tools vector, mock returns text | CompletionResponse with content only |
+| `complete` (tool) | curl error | Mock unavailable | CompletionResponse with "API request failed:" content |
+| `complete` (tool) | API error | Mock returns {"error":{"message":"rate limit"}} | CompletionResponse with "API error: rate limit" content |
+| `complete` (tool) | Parse error | Mock returns not json | CompletionResponse with "Parse error:" content |
 | `setMockUrl` | Override URL | `"http://127.0.0.1:9999/v1/chat"` | Next `complete()` uses the new URL |
 
 \* *Hard to unit test without dependency injection; acceptance via code review.*

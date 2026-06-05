@@ -1,6 +1,6 @@
 # Technical Specification: Terminal UI (TUI) Sub-Module
 
-## For a0 Agent — Version 1.0
+## For a0 Agent — Version 2.0
 
 ---
 
@@ -13,7 +13,7 @@ This document specifies a **TUI (Terminal User Interface) sub-module** for the e
 **Key behaviors:**
 
 - **Split-panel layout** — scrollable message panel (top, flex-grow) + fixed input bar (bottom)
-- **Streaming responses** — LLM tokens arrive via in-process callback, posted to FTXUI's `Screen::Post(Task{})` for thread-safe re-render
+- **Streaming responses** — LLM tokens arrive via MPSC channel events, processed by `xTickCore()` and posted to FTXUI's `Screen::Post(Task{})` for thread-safe re-render
 - **Color-coded messages** — user (cyan), assistant (green), system (yellow), tool (blue), error (red)
 - **Tool execution visibility** — collapsible blocks showing tool name, status spinner, stdout/stderr output, and diffs
 - **Markdown rendering** — assistant messages rendered through MD4C into FTXUI elements (headings, bold/italic, code blocks, lists)
@@ -22,13 +22,14 @@ This document specifies a **TUI (Terminal User Interface) sub-module** for the e
 - **Ctrl+C interrupt** — cancels in-flight LLM request or tool execution
 - **Modal dialogs** — framework for permission prompts, confirmations, help overlay (future: permission prompts via SkillManager integration)
 - **Status bar** — session UUID, agent state (idle/thinking/executing/error), b1 connection status, message count
+- **Copy-on-select** — mouse drag selects text, copies to clipboard via OSC 52 / xclip / wl-clipboard
+- **Bracketed paste** — paste detection and multi-line input handling
 
 **Dependencies on other sub-modules:**
 
-- `AgentCore` / `SkillRunner` — for `processGoalStreaming()` with token/tool-lifecycle callbacks
-- `DeepSeekProvider` — extended with `completeStreaming()` (SSE-based token streaming)
+- `DrivenCore` / `DrivenProvider` — tick()-based async agent core (replaces `AgentCore::processGoalStreaming`)
 - `PersistenceStore` (SQLite) — for session list / resume via `loadMessages()`
-- `CommandRunner` — for streaming tool output capture (via `runStreaming`)
+- `SkillManager` — for tool schema generation and tool execution
 - **FTXUI v6.1.9** — terminal UI framework (via FetchContent)
 - **MD4C v0.5.2** — Markdown parser (via FetchContent or vendored)
 - `b1` supervisor — optional; when b1 is running, status bar shows connection state
@@ -107,69 +108,109 @@ namespace a0::tui {
 
 /// Main TUI orchestrator. Owns the FTXUI screen, loop, and all panels.
 /// Constructed with references to agent components, then run() enters the event loop.
+/// Owns DrivenProvider + DrivenCore internally (no AgentCore dependency).
 class AgentTui {
 public:
-    /// \param core       AgentCore for processGoalStreaming.
+    /// \param apiKey      DeepSeek API key for DrivenProvider.
+    /// \param model       Model name (e.g. "deepseek-chat").
+    /// \param skillMgr    SkillManager for tool schemas and execution.
     /// \param persistence PersistenceStore for session list/resume.
-    /// \param skills     SkillManager for tool schema display (future).
-    /// \param b1Status   Function to query b1 connection status (optional).
-    AgentTui(::a0::AgentCore* core,
+    /// \param agentId     Agent DB id for session creation.
+    /// \param b1Status    Function to query b1 connection status (optional).
+    AgentTui(const std::string& apiKey,
+             const std::string& model,
+             ::a0::skills::SkillManager* skillMgr,
              ::a0::persistence::PersistenceStore* persistence,
-             ::a0::skills::SkillManager* skills,
+             int64_t agentId = 0,
              std::function<bool()> b1Status = nullptr);
 
     virtual ~AgentTui();
 
     /// Enter the FTXUI event loop. Blocks until user quits (Ctrl+Q / :q).
+    /// \param testMode  If true, use FixedSize screen for testing.
     /// \retval 0  Normal exit.
     /// \retval -1 FTXUI error.
-    int run();
+    int run(bool testMode = false);
 
-    /// Request graceful shutdown. Posts quit to the event loop.
+    /// Request graceful shutdown.
     void shutdown();
 
+    /// The FTXUI main component (for test harness integration).
+    ftxui::Component component() const { return m_mainComponent; }
+
+    /// Set the FTXUI screen (for test harness).
+    void setScreen(ftxui::ScreenInteractive* screen);
+    void clearScreen();
+    ftxui::ScreenInteractive* screenPtr() const { return m_screen; }
+
     /// Resume an existing session by UUID.
-    /// Loads messages from persistence into the message panel.
-    /// \retval 0  Session loaded.
-    /// \retval -1 Session not found.
     int resumeSession(const std::string& uuid);
 
     /// Get current session UUID.
     std::string currentSessionId() const;
 
+    /// Submit input programmatically (for test harness).
+    void submitInput(const std::string& input);
+
 private:
-    ::a0::AgentCore* m_core;                    // non-owning
-    ::a0::persistence::PersistenceStore* m_persistence; // non-owning
-    ::a0::skills::SkillManager* m_skills;       // non-owning
+    ::a0::persistence::PersistenceStore* m_persistence;
+    int64_t m_agentId = 0;
     std::function<bool()> m_b1Status;
+    std::unique_ptr<::a0::DrivenProvider> m_provider;
+    std::unique_ptr<::a0::DrivenCore> m_drivenCore;
 
     std::unique_ptr<MessagePanel> m_messagePanel;
     std::unique_ptr<InputPanel> m_inputPanel;
     std::unique_ptr<StatusBar> m_statusBar;
     std::unique_ptr<DialogManager> m_dialogMgr;
     std::unique_ptr<SessionManager> m_sessionMgr;
+    std::unique_ptr<MarkdownRenderer> m_markdown;
 
     std::string m_sessionUuid;
     int64_t m_sessionDbId = 0;
     AgentState m_agentState = AgentState::Idle;
-    bool m_streaming = false;
 
     // FTXUI components (lifetime managed by the library)
     ftxui::ScreenInteractive* m_screen = nullptr;
     ftxui::Component m_mainComponent;
 
-    int xBuildLayout();
+    // Mouse drag tracking for copy-on-select
+    bool m_mouseDown = false;
+    bool m_mouseMoved = false;
+
+    // Bracketed paste handling
+    bool m_pasteActive = false;
+    std::string m_pasteBuffer;
+    int m_pasteCounter = 0;
+    std::unordered_map<int, std::string> m_pastedContents;
+
+    // Accumulated streaming text for the current assistant message
+    std::string m_streamingText;
+    int m_streamingEntryIndex = -1;
+
+    std::string xExpandPastePlaceholders(const std::string& input);
+    void xProcessPasteBuffer();
+    void xTickCore();
+
+    void xBuildLayout();
+    ftxui::Component xBuildMainContainer();
+
     int xHandleSubmit(const std::string& input);
     int xHandleInterrupt();
     int xHandleCommand(const std::string& cmd);
-    int xProcessGoal(const std::string& goal);
 
-    // Streaming callbacks — called from background threads
+    void xHandleEvent(const ::a0::mpsc::AppCoreEvent& ev);
     void xOnToken(const std::string& token);
-    void xOnToolStart(const std::string& name, const nlohmann::json& params);
+    void xOnToolStart(const std::string& name, const std::string& arguments);
     void xOnToolEnd(const std::string& name, const std::string& output, bool success);
     void xOnComplete(const std::string& fullOutput);
     void xOnError(const std::string& error);
+
+    int xCmdSessions();
+    int xCmdHelp();
+    int xCmdClear();
+    int xCmdQuit();
+    int xCmdExport();
 };
 
 } // namespace a0::tui
@@ -429,6 +470,29 @@ private:
 } // namespace a0::tui
 ```
 
+### 2.9 Clipboard
+
+```cpp
+namespace a0::tui {
+
+/// Copy text to the system clipboard.
+/// Uses OSC 52 escape sequence (works in Kitty, iTerm2, WezTerm, tmux).
+/// Falls back to `xclip` on X11 or `wl-clipboard` on Wayland.
+/// No-op when text is empty.
+void copyToClipboard(const std::string& text);
+
+} // namespace a0::tui
+```
+
+**Fallback logic:**
+
+1. Base64-encode the text
+2. Write OSC 52 sequence: `ESC ] 52 ; c ; <base64> BEL`
+3. If `WAYLAND_DISPLAY` is set → pipe to `wl-copy`
+4. Else if `xclip` exists → pipe to `xclip -selection clipboard -i`
+
+Custom inline base64 encoding (no external library).
+
 ---
 
 ## 3. System Architecture (C4 Diagram)
@@ -445,9 +509,8 @@ graph TB
         SM[SessionManager]
         MR[MarkdownRenderer]
 
-        AC[AgentCore]
-        DP[DeepSeekProvider]
-        SR[SkillRunner]
+        DC[DrivenCore]
+        DP[DrivenProvider]
         PS[PersistenceStore]
         SK[SkillManager]
     end
@@ -455,7 +518,6 @@ graph TB
     subgraph "External"
         LLM[DeepSeek API]
         B1[b1 Supervisor]
-        C2[c2 Web Dashboard]
     end
 
     subgraph "Storage"
@@ -473,24 +535,22 @@ graph TB
     AT --> SM
     AT --> MR
 
-    AT -->|processGoalStreaming| AC
-    AC --> DP
-    AC --> SR
-    AC --> SK
-    AC --> PS
+    AT -->|owns| DP
+    AT -->|owns| DC
+    DC -->|submitGoal / tick| DP
+    DP -->|curl_multi| LLM
+    DC -->|executeTool| SK
+
+    AT -->|xTickCore / xHandleEvent| DC
+    AT --> PS
     PS --> DB
 
-    DP -->|SSE streaming| LLM
-    SK -->|tool execution| SR
+    SM --> PS
 
     SB -.->|optional| B1
-    B1 -.-> C2
-
-    SM --> PS
-    MP --> MR
 ```
 
-**Caption**: The TUI sub-module runs in-process with AgentCore. User keyboard events flow from InputPanel → AgentTui → AgentCore::processGoalStreaming(). Token callbacks fire from DeepSeekProvider's SSE parser, posted via FTXUI's TaskQueue to MessagePanel for rendering. Tool lifecycle callbacks similarly update tool blocks. Session list/resume goes through PersistenceStore (SQLite). The b1/c2 pipeline is unaffected — the TUI is a local rendering layer, not an IPC peer.
+**Caption**: The TUI sub-module owns `DrivenProvider` + `DrivenCore` internally (no AgentCore dependency). User keyboard events flow `InputPanel → AgentTui → DrivenCore::submitGoal()`. The FTXUI Renderer wrapper calls `xTickCore()` each frame to drive the `DrivenCore` state machine via `tick()`. LLM tokens and tool events arrive via MPSC channel and are processed by `xHandleEvent()`, then posted via FTXUI's TaskQueue to MessagePanel for rendering. Session list/resume goes through PersistenceStore (SQLite).
 
 ---
 
@@ -503,9 +563,9 @@ sequenceDiagram
     participant User
     participant IP as InputPanel
     participant AT as AgentTui
-    participant AC as AgentCore
-    participant DP as DeepSeekProvider
-    participant SR as SkillRunner
+    participant DC as DrivenCore
+    participant DP as DrivenProvider
+    participant SK as SkillManager
     participant MP as MessagePanel
     participant SB as StatusBar
 
@@ -514,42 +574,49 @@ sequenceDiagram
     IP->>AT: onSubmit("find log files")
     AT->>SB: setAgentState(Thinking)
     AT->>MP: append(User, "find log files")
-    AT->>AC: processGoalStreaming with callbacks
+    AT->>DC: submitGoal("find log files")
 
-    AC->>SR: execute("find_log_files", params)
-    SR->>SR: expandPrompt, build messages
-    SR->>DP: complete(messages, schemas)
-
-    DP->>DP: SSE connection to DeepSeek API
+    loop tick cycle (FTXUI render callback)
+        AT->>DC: tick()
+        DC->>DP: tick()
+        DP-->>DC: [LlmToken, ToolStart, ToolEnd, Complete, Error]
+        DC-->>AT: [mpsc::AppCoreEvent...]
+        AT->>AT: xHandleEvent(event)
+    end
 
     rect rgb(230, 255, 230)
         Note over DP,AT: Token streaming phase
-        DP-->>AT: onToken("I'll")
+        DP-->>DC: LlmToken("I'll")
+        DC-->>AT: LlmToken("I'll")
         AT->>MP: streamUpdate("I'll")
-        MP-->>AT: (FTXUI re-render via Screen::Post)
-        DP-->>AT: onToken(" search")
+        DP-->>DC: LlmToken(" search")
+        DC-->>AT: LlmToken(" search")
         AT->>MP: streamUpdate("I'll search")
-        DP-->>AT: onToken(" using")
-        AT->>MP: streamUpdate("I'll search using")
-        Note right of DP: ...continues for each token...
+        Note right of DP: ...continues for each token via tick()
     end
 
     rect rgb(255, 240, 230)
-        Note over SR,MP: Tool call phase
-        SR->>AT: onToolStart("glob", {pattern:"*.log"})
+        Note over SK,MP: Tool call phase
+        DP-->>DC: ToolStart("glob", {pattern:"*.log"})
+        DC-->>AT: ToolStart("glob", "{\"pattern\":\"*.log\"}")
         AT->>MP: appendToolCall("glob", Pending)
         AT->>SB: setAgentState(Executing)
-        SR->>SR: execute tool "glob"
-        SR-->>AT: onToolEnd("glob", output, success)
+        DC->>DC: xExecuteTools()
+        DC->>SK: executeTool("glob", params)
+        SK-->>DC: result
+        DC->>DC: xStartLlmRequest(includeTools=True)
+        DC-->>AT: ToolEnd("glob", output, success)
         AT->>MP: updateToolCall(index, Completed, output)
         AT->>SB: setAgentState(Thinking)
     end
 
     rect rgb(230, 255, 230)
         Note over DP,MP: Second response streaming
-        DP-->>AT: onToken("Found")
+        DP-->>DC: LlmToken("Found")
+        DC-->>AT: LlmToken("Found")
         AT->>MP: streamUpdate("Found 3 log files")
-        DP-->>AT: onComplete("Found 3 log files matching *.log")
+        DP-->>DC: Complete("Found 3 log files matching *.log")
+        DC-->>AT: Complete("Found 3 log files matching *.log")
     end
 
     AT->>MP: endStream(index)
@@ -606,17 +673,15 @@ sequenceDiagram
     participant User
     participant IP as InputPanel
     participant AT as AgentTui
-    participant DP as DeepSeekProvider
-    participant SR as SkillRunner
+    participant DC as DrivenCore
     participant SB as StatusBar
 
     Note over AT: Streaming in progress
 
     User->>IP: Ctrl+C
     IP->>AT: onInterrupt()
+    AT->>DC: cancel()     // resets state machine, cancels provider
     AT->>SB: setAgentState(Idle)
-    AT->>DP: cancel()     // close SSE connection
-    AT->>SR: cancelTools() // kill running tool subprocesses
     AT->>AT: append system message "Interrupted"
     AT->>SB: setAgentState(Idle)
     AT->>IP: setEnabled(true)
@@ -699,6 +764,11 @@ a0 tui [--resume <uuid>] [--no-permissions]
 | `MarkdownRenderer` | `render` with bold/italic | Correct decorators applied |
 | `MarkdownRenderer` | `renderInline` | No block-level elements |
 | `MarkdownRenderer` | `render` with incomplete markdown | Graceful handling (no crash) |
+| `Clipboard` | Empty text | No output, no process spawned |
+| `Clipboard` | Text copied via OSC 52 | OSC 52 sequence written to stdout |
+| `Clipboard` | Base64 output correctness | Decoded string matches input |
+| `Clipboard` | Wayland fallback | `wl-copy` invoked when `WAYLAND_DISPLAY` set |
+| `Clipboard` | X11 fallback | `xclip` invoked when no Wayland |
 
 ### 6.2 Integration Tests
 
@@ -723,41 +793,49 @@ a0 tui [--resume <uuid>] [--no-permissions]
 
 ### 7.1 `main.cpp` Changes
 
-1. **CLI11 subcommand**: Add `App tuiCmd = app.add_subcommand("tui", "Interactive terminal UI");` with `--resume` and `--no-permissions` flags.
+1. **CLI11 subcommand**: Add `App tuiCmd = app.add_subcommand("tui", "Interactive terminal UI");` with `--resume`, `--no-permissions`, and `--test-mode` flags.
 
-2. **AgentStack reuse**: `AgentTui` is constructed using the same `AgentStack` pattern. Stack components (AgentCore, SkillManager, PersistenceStore, etc.) are wired identically to the existing `cmdRepl()` path, minus b1 launch (TUI will register with b1 if available, but doesn't depend on it):
+2. **Direct DrivenCore integration**: `AgentTui` is constructed with API key, model, SkillManager, and PersistenceStore — it **owns** `DrivenProvider` + `DrivenCore` internally. No AgentCore or streaming callbacks needed:
 
 ```cpp
-void cmdTui(const std::string& resumeUuid, bool noPermissions) {
-    AgentStack stack = buildAgentStack();
-    AgentTui tui(stack.core, stack.persistence, stack.skills,
-                 [&]() { return b1Alive; });
-    if (!resumeUuid.empty())
-        tui.resumeSession(resumeUuid);
-    tui.run();
+void cmdTui(...) {
+    // Full AgentStack built for tool/skill infrastructure
+    AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, ...);
+    stack.core->init(skillsDir, a0Dir);
+    stack.core->ensureSession();
+    int agentId = stack.core->agentDbId();
+
+    AgentTui tui(apiKey, "deepseek-chat",
+                 &stack.skillMgr, &stack.persistence,
+                 agentId,
+                 [&b1Fd]() { return b1Fd >= 0; });
+    if (!tuiResumeUuid.empty())
+        tui.resumeSession(tuiResumeUuid);
+    return tui.run(tuiTestMode);
 }
 ```
 
-3. **Streaming on AgentCore**: `AgentCore` gains a `processGoalStreaming()` overload accepting token/lifecycle callbacks. Internally routes through `SkillRunner::executeStreaming()` -> `DeepSeekProvider::completeStreaming()`.
+3. **AgentCore remains for run mode**: The `AgentStack` is still built for `cmdRun()`, but `cmdTui()` only uses SkillManager, PersistenceStore, and agentId from it. The DrivenCore inside AgentTui handles all LLM interaction via DrivenProvider (curl_multi-based) with no dependency on AgentCore or DeepSeekProvider.
 
-### 7.2 `DeepSeekProvider` Changes
+### 7.2 `DrivenProvider` (Replaces DeepSeekProvider Streaming)
 
-New method `completeStreaming()` that:
-- Opens a libcurl connection to DeepSeek's chat/completions endpoint with `Accept: text/event-stream`
-- Parses SSE `data:` lines incrementally (extracting `delta.content` chunks)
-- Calls `m_onToken(std::string)` for each content delta
-- Calls `m_onComplete(std::string)` when `[DONE]` signal received
-- Supports `cancel()` via a shared atomic flag
-- Timeout at 60s
+A new `DrivenProvider` class handles async LLM requests via `curl_multi`:
+- `startRequest()` / `startRequestStreaming()` — non-blocking, kicks off libcurl multi handle
+- `tick()` — drives `curl_multi_perform()`, returns decoded `mpsc::AppCoreEvent` tokens
+- `cancel()` — removes the curl easy handle, resets state
+- `timeoutMs()` — returns curl-derived poll timeout for event loop integration
+- Internally uses `ResponseDecoder` for SSE / JSON response parsing
+- Builds alongside existing `DeepSeekProvider` — does not replace it yet
 
-### 7.3 `SkillRunner` Changes
+### 7.3 `DrivenCore` (Replaces SkillRunner Streaming + ProcessGoalStreaming)
 
-`executeStreaming()` is no longer a stub. It:
-- Accepts token callback and tool lifecycle callbacks
-- Passes token callback through to `DeepSeekProvider::completeStreaming()`
-- Calls `onToolStart(name, params)` before tool execution
-- Calls `onToolEnd(name, output, success)` after tool execution
-- Falls back to non-streaming `execute()` when tool-calling loop requires sequential LLM rounds
+A new `DrivenCore` state machine replaces both `processGoalStreaming()` and the forked tool-calling loop:
+- States: `Idle → AwaitingLlm → ExecutingTools → Idle`
+- `submitGoal(goal)` — builds initial messages, starts `DrivenProvider::startRequestStreaming()`
+- `tick()` — drives provider, forwards events, executes tools when LLM returns tool calls
+- `cancel()` — resets to idle, cancels provider
+- Handles the full tool-calling loop internally (up to 25 turns)
+- Does not use `SkillRunner::executeStreaming()` — drives tools directly via `SkillManager`
 
 ### 7.4 Build System
 
@@ -804,7 +882,7 @@ src/tui/
 ├── technical-specification.md  # this document
 ├── styles.h                    # Color/decorator constants
 ├── styles.cpp
-├── agent_tui.h                 # Facade
+├── agent_tui.h                 # Facade (owns DrivenProvider + DrivenCore)
 ├── agent_tui.cpp
 ├── message_panel.h             # Scrollable message display
 ├── message_panel.cpp
@@ -818,6 +896,8 @@ src/tui/
 ├── session_manager.cpp
 ├── markdown_renderer.h         # MD4C -> FTXUI element
 ├── markdown_renderer.cpp
+├── clipboard.h                 # OSC 52 / xclip / wl-clipboard
+├── clipboard.cpp
 ```
 
 ---
@@ -841,22 +921,26 @@ src/tui/
 - Add `tui` subcommand to `main.cpp` with `--resume` flag
 - Integration test: `a0 tui` shows split-panel, typing echos in scrollback
 
-### Phase 3: Streaming LLM Integration
+### Phase 3: DrivenCore Integration
 
-- Add `completeStreaming()` to `DeepSeekProvider` -- libcurl SSE parsing, token callback, cancel support
-- Implement `processGoalStreaming()` on `AgentCore` with token/lifecycle callbacks
-- Wire `xHandleSubmit` to call `processGoalStreaming` instead of mock echo
-- Wire `xOnToken` -> `MessagePanel::streamUpdate()` via `Screen::Post(Task{})`
-- Wire `xOnComplete` -> `MessagePanel::endStream()`
-- Wire `xOnError` -> append error message, reset state
+- Implement `ResponseDecoder` -- SSE/JSON response parser producing `mpsc::AppCoreEvent` variants
+- Implement `DrivenProvider` -- `curl_multi`-based async LLM provider with `startRequest/tick/cancel`
+- Implement `DrivenCore` -- state machine with `submitGoal/tick/cancel`, full tool-calling loop
+- Wire `xHandleSubmit` to call `DrivenCore::submitGoal()` instead of mock echo
+- Wire FTXUI renderer callback to call `xTickCore()` → `DrivenCore::tick()` → `xHandleEvent()`
+- Wire `xOnToken` → `MessagePanel::streamUpdate()` via `Screen::Post(Task{})`
+- Wire `xOnComplete` → `MessagePanel::endStream()`
+- Wire `xOnError` → append error message, reset state
 - Integration test: streaming response appears token-by-token in TUI
 
 ### Phase 4: Tool Execution Visibility
 
-- Implement `xOnToolStart` -> `MessagePanel::appendToolCall(name, Pending, "")`
-- Implement `xOnToolEnd` -> `MessagePanel::updateToolCall(index, Completed, output)`
+- `DrivenCore::xExecuteTools()` calls `SkillManager::executeTool()` for each tool call
+- Tool events arrive as `ToolStart` / `ToolEnd` via `xHandleEvent()`
+- Map `ToolStart` → `MessagePanel::appendToolCall(name, Pending, "")`
+- Map `ToolEnd` → `MessagePanel::updateToolCall(index, Completed, output)`
 - Add tool output formatting (stdout rendering, error highlighting, diff display)
-- Wire `xHandleInterrupt` -> cancel SSE + kill tool subprocesses
+- Wire `xHandleInterrupt` → `DrivenCore::cancel()` (resets state machine)
 - Integration test: tool call visible as collapsible block with status/output
 
 ### Phase 5: Markdown Rendering

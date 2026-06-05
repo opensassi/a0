@@ -121,7 +121,7 @@ sequenceDiagram
 | Method | Test Case | Input | Expected Output |
 |--------|-----------|-------|----------------|
 | `run` | args mode | Tool{command:`"echo"`, inputMode:`"args"`}, params `{"msg":"hello"}` | `"--msg=hello"` (or similar) |
-| `run` | stdin mode | Tool{command:`"cat"`, inputMode:`"stdin"`}, params `"hello"` | `"hello"` |
+| `run` | stdin mode | Tool{command:`"cat"`}, inputMode:`"stdin"`}, params `"hello"` | `"hello"` |
 | `run` | Timeout | Tool{command:`"sleep 60"`} | `"ERROR: timeout"` |
 | `run` | Non-zero exit | Tool{command:`"false"`} | `"ERROR: command failed with exit code 1"` |
 | `run` | Output truncation | Tool producing 2 MB output | Output truncated to 1 MB + `"... (truncated)"` |
@@ -131,3 +131,5 @@ sequenceDiagram
 | `runStreaming` | Basic streaming | Tool{command:`"echo hello"`} | onChunk called with "hello\n", handle.isDone() true |
 | `runStreaming` | Stdin via sendInput | Tool{command:`"cat"`} | onChunk receives input echoed back |
 | `runStreaming` | Timeout | Tool{command:`"sleep 60"`} | handle.wait() returns, handle.isDone() true |
+| `ToolRunner::runStreaming` | Default impl (base class) | Tool with stdin mode | Delegates to CommandRunner::runStreaming |
+| `DockerToolRunnerImpl::runStreaming` | Docker streaming | Tool with dockerImage set | Container streaming via DockerToolRunner |

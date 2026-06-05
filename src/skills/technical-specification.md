@@ -481,7 +481,11 @@ private:
 
 Historical invocation records are stored in the SQLite `invocation` table (via `PersistenceStore`) rather than filesystem JSONL files. The `xLoadLogs` method queries `m_store->loadInvocations(type, component)` to retrieve records.
 
+Supports **compatibility bridges**: when a direct output comparison fails, each `CompatBridge` (from the candidate manifest) is tried to transform the historical output before re-comparing. If a bridge produces a match, validation passes with status `1` (bridge applied).
+
 ```cpp
+namespace a0::persistence { class PersistenceStore; }
+
 namespace a0::skills {
 
 /// Replays historical tool invocations against a candidate version.
@@ -491,7 +495,7 @@ namespace a0::skills {
 class ValidationEngine {
 public:
     /// \param store  Persistence store (SQLite) for invocation history.
-    ValidationEngine(a0::persistence::PersistenceStore* store);
+    explicit ValidationEngine(::a0::persistence::PersistenceStore* store);
 
     /// Validate a candidate version against historical logs.
     /// \param ns         Namespace of the component.
@@ -499,9 +503,9 @@ public:
     /// \param manifest   Candidate manifest to validate.
     /// \param commit     Candidate commit hash.
     /// \param[out] report  Human-readable validation report.
-    /// \retval 0  All invocations match.
-    /// \retval 1  All pass after applying compat bridges.
-    /// \retval -1 One or more invocations fail.
+    /// \retval 0  All invocations match, no bridges used.
+    /// \retval 1  All pass after applying compatibility bridges.
+    /// \retval -1 One or more invocations fail (details in report).
     int validate(SkillNamespace ns,
                  const std::string& component,
                  const SkillManifest& manifest,
@@ -509,7 +513,7 @@ public:
                  std::string& report);
 
 private:
-    a0::persistence::PersistenceStore* m_store;
+    ::a0::persistence::PersistenceStore* m_store;
 
     int xReplay(const InvocationRecord& record,
                 const SkillManifest& manifest,

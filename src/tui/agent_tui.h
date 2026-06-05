@@ -5,14 +5,14 @@
 #include <functional>
 #include <cstdint>
 #include <unordered_map>
-#include <thread>
+#include <vector>
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/screen_interactive.hpp"
 #include <ctime>
 #include "styles.h"
-#include "../agent_interfaces.h"
 #include "../persistence/persistence_store.h"
-#include "../skills/skills.h"
+#include "../driven_provider.h"
+#include "../driven_core.h"
 
 namespace a0::tui {
 
@@ -25,11 +25,12 @@ class MarkdownRenderer;
 
 class AgentTui {
 public:
-    AgentTui(::AgentCore* core,
-             ::a0::persistence::PersistenceStore* persistence,
-             ::a0::skills::SkillManager* skills,
-             std::function<bool()> b1Status = nullptr,
-             bool noPermissions = false);
+    AgentTui(const std::string& apiKey,
+             const std::string& model,
+             a0::skills::SkillManager* skillMgr,
+             a0::persistence::PersistenceStore* persistence,
+             int64_t agentId = 0,
+             std::function<bool()> b1Status = nullptr);
 
     virtual ~AgentTui();
 
@@ -48,11 +49,11 @@ public:
     void submitInput(const std::string& input);
 
 private:
-    ::AgentCore* m_core;
-    ::a0::persistence::PersistenceStore* m_persistence;
-    ::a0::skills::SkillManager* m_skills;
+    a0::persistence::PersistenceStore* m_persistence;
+    int64_t m_agentId = 0;
     std::function<bool()> m_b1Status;
-    bool m_noPermissions;
+    std::unique_ptr<a0::DrivenProvider> m_provider;
+    std::unique_ptr<a0::DrivenCore> m_drivenCore;
 
     std::unique_ptr<MessagePanel> m_messagePanel;
     std::unique_ptr<InputPanel> m_inputPanel;
@@ -64,14 +65,11 @@ private:
     std::string m_sessionUuid;
     int64_t m_sessionDbId = 0;
     AgentState m_agentState = AgentState::Idle;
-    bool m_streaming = false;
-    int m_streamingEntryIndex = -1;
-    a0::StreamHandle m_streamingHandle;
 
     ftxui::ScreenInteractive* m_screen = nullptr;
     ftxui::Component m_mainComponent;
 
-    // Mouse drag tracking for copy-on-select (mouse-up in CatchEvent)
+    // Mouse drag tracking for copy-on-select
     bool m_mouseDown = false;
     bool m_mouseMoved = false;
 
@@ -81,8 +79,13 @@ private:
     int m_pasteCounter = 0;
     std::unordered_map<int, std::string> m_pastedContents;
 
+    // Accumulated streaming text for the current assistant message
+    std::string m_streamingText;
+    int m_streamingEntryIndex = -1;
+
     std::string xExpandPastePlaceholders(const std::string& input);
     void xProcessPasteBuffer();
+    void xTickCore();
 
     void xBuildLayout();
     ftxui::Component xBuildMainContainer();
@@ -91,14 +94,12 @@ private:
     int xHandleInterrupt();
     int xHandleCommand(const std::string& cmd);
 
-    int xProcessGoal(const std::string& goal);
-
+    void xHandleEvent(const a0::mpsc::AppCoreEvent& ev);
     void xOnToken(const std::string& token);
-    void xOnToolStart(const std::string& name, const nlohmann::json& params);
+    void xOnToolStart(const std::string& name, const std::string& arguments);
     void xOnToolEnd(const std::string& name, const std::string& output, bool success);
     void xOnComplete(const std::string& fullOutput);
     void xOnError(const std::string& error);
-    void xOnInterrupted();
 
     int xCmdSessions();
     int xCmdHelp();
