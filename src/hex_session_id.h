@@ -3,16 +3,20 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
-#include <random>
+#include <fstream>
+#include <array>
+#include <cstdint>
 
 inline std::string generateHexSessionId() {
-    thread_local std::random_device rd;
-    thread_local std::mt19937 rng(rd());
-    thread_local std::uniform_int_distribution<int> dist(0, 255);
+    std::array<uint32_t, 4> buf{};
+    std::ifstream urandom("/dev/urandom", std::ios::binary);
+    if (urandom) {
+        urandom.read(reinterpret_cast<char*>(buf.data()), buf.size() * sizeof(uint32_t));
+    }
     std::ostringstream ss;
     ss << std::hex << std::setfill('0');
-    for (int i = 0; i < 16; i++) {
-        ss << std::setw(2) << dist(rng);
+    for (uint32_t val : buf) {
+        ss << std::setw(8) << val;
     }
     return ss.str();
 }

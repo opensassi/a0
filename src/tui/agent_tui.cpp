@@ -3,7 +3,6 @@
 #include "input_panel.h"
 #include "status_bar.h"
 #include "dialog_manager.h"
-#include "session_manager.h"
 #include "markdown_renderer.h"
 #include "clipboard.h"
 #include "trace.h"
@@ -16,34 +15,25 @@
 #include "ftxui/dom/elements.hpp"
 #include <ctime>
 #include <iostream>
+#include <thread>
 #include <utility>
 
 namespace a0::tui {
 
-AgentTui::AgentTui(a0::LlmProvider* provider,
-                   a0::skills::SkillManager* skillMgr,
-                   a0::persistence::PersistenceStore* persistence,
-                   int64_t agentId,
+AgentTui::AgentTui(mpsc::Sender<mpsc::Command> cmdSender,
+                   mpsc::Receiver<mpsc::AppCoreEvent> evtReceiver,
                    std::function<bool()> b1Status,
-                   int64_t sessionDbId,
-                   const std::string& sessionUuid)
-    : m_persistence(persistence)
-    , m_agentId(agentId)
+                   bool testMode)
+    : m_cmdSender(std::move(cmdSender))
+    , m_evtReceiver(std::move(evtReceiver))
     , m_b1Status(std::move(b1Status))
-    , m_provider(provider)
-    , m_drivenCore(std::make_unique<a0::DrivenCore>(m_provider, skillMgr, persistence))
-    , m_sessionUuid(sessionUuid)
-    , m_sessionDbId(sessionDbId)
+    , m_testMode(testMode)
     , m_messagePanel(std::make_unique<MessagePanel>())
     , m_inputPanel(std::make_unique<InputPanel>())
     , m_statusBar(std::make_unique<StatusBar>())
     , m_dialogMgr(std::make_unique<DialogManager>())
-    , m_sessionMgr(std::make_unique<SessionManager>(persistence))
     , m_markdown(std::make_unique<MarkdownRenderer>())
 {
-    if (m_sessionDbId > 0) {
-        m_drivenCore->setSession(m_sessionDbId, m_sessionUuid);
-    }
     TRACE_LOG("AgentTui constructed");
     xBuildLayout();
 }
@@ -55,15 +45,12 @@ void AgentTui::setScreen(ftxui::ScreenInteractive* screen) {
 }
 
 void AgentTui::clearScreen() {
-    if (!m_sessionUuid.empty()) {
-        m_sessionMgr->endCurrent();
-    }
     m_screen = nullptr;
 }
 
-int AgentTui::run(bool testMode) {
+int AgentTui::run() {
     ftxui::ScreenInteractive ownedScreen =
-        testMode
+        m_testMode
             ? ftxui::ScreenInteractive::FixedSize(80, 24)
             : ftxui::ScreenInteractive::Fullscreen();
     if (!m_screen) {
@@ -80,7 +67,7 @@ int AgentTui::run(bool testMode) {
     auto loop = ftxui::Loop(m_screen, m_mainComponent);
     while (!loop.HasQuitted()) {
         loop.RunOnce();
-        xTickCore();
+        drainEvents();
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
@@ -97,64 +84,42 @@ void AgentTui::shutdown() {
     }
 }
 
-void AgentTui::xTickCore() {
-    if (!m_drivenCore->idle()) {
-        TRACE_LOG("xTickCore: core not idle, ticking...");
-        auto events = m_drivenCore->tick();
-        TRACE_LOG("xTickCore: tick returned " << events.size() << " events");
+void AgentTui::drainEvents() {
+    auto events = m_evtReceiver.drain();
+    if (!events.empty()) {
         for (auto& ev : events) {
-            xHandleEvent(ev);
+            xHandleCoreEvent(ev);
         }
-        bool nowIdle = m_drivenCore->idle();
-        TRACE_LOG("xTickCore: core idle=" << nowIdle);
-        if (!nowIdle && m_screen) {
+        // Request re-render since we updated the message panel
+        if (m_screen) {
             m_screen->RequestAnimationFrame();
         }
     }
 }
 
-void AgentTui::xHandleEvent(const mpsc::AppCoreEvent& ev) {
+void AgentTui::xHandleCoreEvent(const mpsc::AppCoreEvent& ev) {
     if (std::holds_alternative<mpsc::LlmToken>(ev)) {
-        TRACE_LOG("AgentTui: LlmToken(\"" << std::get<mpsc::LlmToken>(ev).text << "\")");
         xOnToken(std::get<mpsc::LlmToken>(ev).text);
     } else if (std::holds_alternative<mpsc::ToolStart>(ev)) {
         const auto& ts = std::get<mpsc::ToolStart>(ev);
-        TRACE_LOG("AgentTui: ToolStart(" << ts.toolName << ")");
         xOnToolStart(ts.toolName, ts.arguments);
     } else if (std::holds_alternative<mpsc::ToolEnd>(ev)) {
         const auto& te = std::get<mpsc::ToolEnd>(ev);
-        TRACE_LOG("AgentTui: ToolEnd(" << te.toolName << ")");
         xOnToolEnd(te.toolName, te.output, te.exitCode == 0);
     } else if (std::holds_alternative<mpsc::Complete>(ev)) {
-        TRACE_LOG("AgentTui: Complete(\"" << std::get<mpsc::Complete>(ev).text << "\")");
         xOnComplete(std::get<mpsc::Complete>(ev).text);
     } else if (std::holds_alternative<mpsc::Error>(ev)) {
-        TRACE_LOG("AgentTui: Error(\"" << std::get<mpsc::Error>(ev).message << "\")");
         xOnError(std::get<mpsc::Error>(ev).message);
+    } else if (std::holds_alternative<mpsc::SessionReady>(ev)) {
+        const auto& sr = std::get<mpsc::SessionReady>(ev);
+        xOnSessionReady(sr.dbId, sr.uuid);
+    } else if (std::holds_alternative<mpsc::SessionList>(ev)) {
+        const auto& sl = std::get<mpsc::SessionList>(ev);
+        xOnSessionList(sl.entries);
+    } else if (std::holds_alternative<mpsc::SessionHistory>(ev)) {
+        const auto& sh = std::get<mpsc::SessionHistory>(ev);
+        xOnSessionHistory(sh.dbId, sh.uuid, sh.messages);
     }
-}
-
-int AgentTui::resumeSession(const std::string& uuid) {
-    int64_t dbId = 0;
-    int rc = m_sessionMgr->resume(uuid, dbId);
-    if (rc != 0) return -1;
-
-    m_sessionUuid = uuid;
-    m_sessionDbId = dbId;
-    m_statusBar->setSessionId(uuid);
-    m_drivenCore->setSession(dbId, uuid);
-
-    if (m_persistence) {
-        auto msgs = m_persistence->loadMessages(dbId);
-        m_messagePanel->loadHistory(msgs);
-        m_statusBar->setMessageCount(msgs.size());
-    }
-
-    return 0;
-}
-
-std::string AgentTui::currentSessionId() const {
-    return m_sessionUuid;
 }
 
 void AgentTui::submitInput(const std::string& input) {
@@ -195,12 +160,11 @@ void AgentTui::xOnToolEnd(const std::string& name, const std::string& output, bo
 
 void AgentTui::xOnComplete(const std::string& fullOutput) {
     if (m_streamingEntryIndex >= 0) {
-        m_messagePanel->streamUpdate(m_streamingEntryIndex, fullOutput);
+        m_messagePanel->streamUpdate(m_streamingEntryIndex, m_streamingText);
         m_messagePanel->endStream(m_streamingEntryIndex);
         m_streamingEntryIndex = -1;
         m_streamingText.clear();
     } else {
-        // Non-streaming response: append as a complete assistant message
         MessageEntry entry;
         entry.role = MessageRole::Assistant;
         entry.content = fullOutput;
@@ -234,6 +198,52 @@ void AgentTui::xOnError(const std::string& error) {
     m_statusBar->setMessageCount(m_messagePanel->count());
 }
 
+void AgentTui::xOnSessionReady(int64_t dbId, const std::string& uuid) {
+    m_sessionDbId = dbId;
+    m_sessionUuid = uuid;
+    m_statusBar->setSessionId(uuid);
+}
+
+void AgentTui::xOnSessionList(const std::vector<mpsc::SessionList::Entry>& sessions) {
+    std::vector<std::pair<std::string, std::string>> items;
+    for (const auto& s : sessions) {
+        std::string label = s.uuid.substr(0, 8) + " (" + std::to_string(s.messageCount) + " msgs)";
+        items.emplace_back(label, s.uuid);
+    }
+    if (items.empty()) {
+        items.emplace_back("(no sessions)", "");
+    }
+    m_dialogMgr->showList("Sessions", items, [this](const std::string& id) {
+        if (!id.empty()) {
+            m_cmdSender.send(mpsc::ResumeSession{id});
+        }
+    });
+}
+
+void AgentTui::xOnSessionHistory(int64_t dbId, const std::string& uuid,
+                                  const std::vector<mpsc::SessionMessage>& messages) {
+    if (!uuid.empty()) {
+        m_sessionDbId = dbId;
+        m_sessionUuid = uuid;
+        m_statusBar->setSessionId(uuid);
+        m_messagePanel->clear();
+
+        for (const auto& m : messages) {
+            MessageRole role = MessageRole::User;
+            if (m.role == "assistant") role = MessageRole::Assistant;
+            else if (m.role == "tool") role = MessageRole::Tool;
+            else if (m.role == "system") role = MessageRole::System;
+
+            MessageEntry entry;
+            entry.role = role;
+            entry.content = m.content;
+            entry.toolName = m.name;
+            m_messagePanel->append(entry);
+        }
+        m_statusBar->setMessageCount(messages.size());
+    }
+}
+
 // ============================================================================
 // Goal submission
 // ============================================================================
@@ -244,16 +254,6 @@ int AgentTui::xHandleSubmit(const std::string& input) {
     // Check for commands
     if (input[0] == '/') {
         return xHandleCommand(input);
-    }
-
-    // Create session on first input
-    if (m_sessionUuid.empty()) {
-        std::string uuid = "tui-" + std::to_string(std::time(nullptr));
-        int64_t agentId = m_agentId > 0 ? m_agentId : 0;
-        m_sessionDbId = m_sessionMgr->create(uuid, agentId);
-        m_sessionUuid = uuid;
-        m_statusBar->setSessionId(uuid);
-        m_drivenCore->setSession(m_sessionDbId, uuid);
     }
 
     // Expand paste placeholders
@@ -277,11 +277,8 @@ int AgentTui::xHandleSubmit(const std::string& input) {
     m_statusBar->setAgentState(m_agentState);
     m_inputPanel->setEnabled(false);
 
-    // Submit goal to DrivenCore
-    m_drivenCore->submitGoal(expanded);
-
-    // Tick immediately to process the first batch of events
-    xTickCore();
+    // Submit goal to core via MPSC
+    m_cmdSender.send(mpsc::SubmitGoal{expanded});
 
     // Trigger a re-render to show the user message and [thinking]
     if (m_screen) {
@@ -293,7 +290,7 @@ int AgentTui::xHandleSubmit(const std::string& input) {
 
 int AgentTui::xHandleInterrupt() {
     if (m_agentState != AgentState::Idle) {
-        m_drivenCore->cancel();
+        m_cmdSender.send(mpsc::Cancel{});
 
         if (m_streamingEntryIndex >= 0) {
             m_messagePanel->streamUpdate(m_streamingEntryIndex, m_streamingText);
@@ -324,7 +321,6 @@ int AgentTui::xHandleCommand(const std::string& cmd) {
     if (cmd == "/help")      return xCmdHelp();
     if (cmd == "/clear")     return xCmdClear();
     if (cmd == "/quit" || cmd == "/exit") return xCmdQuit();
-    if (cmd == "/export")    return xCmdExport();
     return 0;
 }
 
@@ -333,19 +329,8 @@ int AgentTui::xHandleCommand(const std::string& cmd) {
 // ============================================================================
 
 int AgentTui::xCmdSessions() {
-    auto sessions = m_sessionMgr->list(20);
-    std::vector<std::pair<std::string, std::string>> items;
-    for (const auto& s : sessions) {
-        items.emplace_back(s.uuid, s.uuid);
-    }
-    if (items.empty()) {
-        items.emplace_back("(no sessions)", "");
-    }
-    m_dialogMgr->showList("Sessions", items, [this](const std::string& id) {
-        if (!id.empty()) {
-            resumeSession(id);
-        }
-    });
+    m_cmdSender.send(mpsc::ListSessions{20});
+    m_statusBar->showStatus("Loading sessions...", 2);
     return 0;
 }
 
@@ -360,12 +345,8 @@ int AgentTui::xCmdClear() {
 }
 
 int AgentTui::xCmdQuit() {
+    m_cmdSender.send(mpsc::Shutdown{});
     shutdown();
-    return 0;
-}
-
-int AgentTui::xCmdExport() {
-    m_statusBar->showStatus("Export not yet implemented", 3);
     return 0;
 }
 
@@ -400,14 +381,13 @@ void AgentTui::xBuildLayout() {
     m_dialogMgr->setMainComponent(mainContainer);
     auto wrapped = m_dialogMgr->component();
 
-    // Renderer wrapper: tick DrivenCore before every frame
-    auto coreTicker = ftxui::Renderer(wrapped, [this, wrapped]() {
-        xTickCore();
+    // Renderer wrapper — NO core tick. Just render.
+    auto renderer = ftxui::Renderer(wrapped, [wrapped]() {
         return wrapped->Render();
     });
 
     // Outer CatchEvent for paste detection and mouse tracking
-    m_mainComponent = ftxui::CatchEvent(coreTicker, [this](ftxui::Event event) -> bool {
+    m_mainComponent = ftxui::CatchEvent(renderer, [this](ftxui::Event event) -> bool {
         auto& input = event.input();
 
         // Bracketed paste start marker

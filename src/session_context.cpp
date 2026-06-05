@@ -113,7 +113,7 @@ std::string SessionContext::containerName(const std::string& base) const {
 
 int SessionContext::xDetectGit(a0::skills::SkillManager* skillMgr, int& seq) {
     auto r1 = skillMgr->executeToolWithMeta("system-git-rev_parse",
-        {{"args", {"--is-inside-work-tree"}}}, &seq, "", 0);
+        {{"args", {"--is-inside-work-tree"}}}, &seq, "", -1);
     if (r1.output.find("true") == std::string::npos) {
         return -1;
     }
@@ -121,21 +121,21 @@ int SessionContext::xDetectGit(a0::skills::SkillManager* skillMgr, int& seq) {
     m_git.isRepo = true;
 
     auto r2 = skillMgr->executeToolWithMeta("system-git-rev_parse",
-        {{"args", {"--show-toplevel"}}}, &seq, "", 0);
+        {{"args", {"--show-toplevel"}}}, &seq, "", -1);
     m_git.repoRoot = r2.output;
     while (!m_git.repoRoot.empty() &&
            (m_git.repoRoot.back() == '\n' || m_git.repoRoot.back() == ' '))
         m_git.repoRoot.pop_back();
 
     auto r3 = skillMgr->executeToolWithMeta("system-git-rev_parse",
-        {{"args", {"--abbrev-ref", "HEAD"}}}, &seq, "", 0);
+        {{"args", {"--abbrev-ref", "HEAD"}}}, &seq, "", -1);
     m_git.currentBranch = r3.output;
     while (!m_git.currentBranch.empty() &&
            (m_git.currentBranch.back() == '\n' || m_git.currentBranch.back() == ' '))
         m_git.currentBranch.pop_back();
 
     auto r4 = skillMgr->executeToolWithMeta("system-git-rev_parse",
-        {{"args", {"HEAD"}}}, &seq, "", 0);
+        {{"args", {"HEAD"}}}, &seq, "", -1);
     m_git.commitHash = r4.output;
     while (!m_git.commitHash.empty() &&
            (m_git.commitHash.back() == '\n' || m_git.commitHash.back() == ' '))
@@ -150,7 +150,7 @@ int SessionContext::xCreateWorktree(a0::skills::SkillManager* skillMgr, int& seq
 
     auto r = skillMgr->executeToolWithMeta("system-git-worktree",
         {{"args", {"add", "-b", sessionBranch, m_worktreePath, "HEAD"}}},
-        &seq, "", 0);
+        &seq, "", -1);
 
     if (r.output.rfind("error:", 0) == 0 || r.output.rfind("ERROR:", 0) == 0) {
         return -1;

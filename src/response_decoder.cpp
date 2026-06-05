@@ -97,6 +97,23 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
         if (reason == "stop" || reason == "length") {
             m_complete = true;
 
+            // Emit ToolStart for any tool_calls in the message (non-streaming responses)
+            if (choice.contains("message") && choice["message"].contains("tool_calls") &&
+                choice["message"]["tool_calls"].is_array()) {
+                for (const auto& tc : choice["message"]["tool_calls"]) {
+                    std::string id = tc.value("id", "");
+                    std::string name;
+                    std::string args;
+                    if (tc.contains("function")) {
+                        name = tc["function"].value("name", "");
+                        args = tc["function"].value("arguments", "");
+                    }
+                    if (!name.empty()) {
+                        m_events.push_back(mpsc::ToolStart{name, args});
+                    }
+                }
+            }
+
             // Find the assistant message content for non-streaming complete
             if (choice.contains("message") && choice["message"].contains("content") &&
                 !choice["message"]["content"].is_null()) {

@@ -87,7 +87,7 @@ void DrivenCore::submitGoal(const std::string& goal) {
             "user", goal, "", "", "", "");
     }
 
-    xStartLlmRequest(false);
+    xStartLlmRequest(true);
     m_state = CoreState::AwaitingLlm;
 }
 

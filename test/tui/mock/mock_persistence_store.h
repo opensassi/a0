@@ -96,10 +96,21 @@ public:
 
     int64_t findSessionByUuid(const std::string& uuid) const override {
         auto it = uuidMap.find(uuid);
-        if (it != uuidMap.end()) return it->second;
-        return 0;
+        return it != uuidMap.end() ? it->second : 0;
     }
-
+    std::vector<SessionRow> loadSessions(int limit) const override {
+        std::vector<SessionRow> result;
+        for (const auto& [id, s] : sessions) {
+            if ((int)result.size() >= limit) break;
+            SessionRow row;
+            row.id = id;
+            row.uuid = s.uuid;
+            row.startedAt = 0;
+            row.messageCount = (int)s.messages.size();
+            result.push_back(row);
+        }
+        return result;
+    }
     void flush() override {}
 
     int64_t createStream(int64_t, const std::string&, const std::string&,

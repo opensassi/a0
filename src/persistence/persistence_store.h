@@ -99,6 +99,15 @@ public:
 
     virtual int64_t findSessionByUuid(const std::string& uuid) const = 0;
 
+    struct SessionRow {
+        int64_t id = 0;
+        std::string uuid;
+        int64_t startedAt = 0;
+        int messageCount = 0;
+    };
+
+    virtual std::vector<SessionRow> loadSessions(int limit = 20) const = 0;
+
     virtual void flush() = 0;
 
     // --- Streaming ---
@@ -161,6 +170,7 @@ public:
     }
     std::vector<Message> loadMessages(int64_t, std::optional<int64_t>) override { return {}; }
     int64_t findSessionByUuid(const std::string&) const override { return 0; }
+    std::vector<SessionRow> loadSessions(int) const override { return {}; }
     void flush() override {}
 
     int64_t createStream(int64_t, const std::string&, const std::string&,

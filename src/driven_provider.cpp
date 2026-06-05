@@ -125,6 +125,7 @@ void DrivenProvider::startRequestStreaming(const std::string& systemPrompt,
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)m_handle.requestBody.size());
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &m_handle.responseBody);
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
     curl_multi_add_handle(m_multi, curl);
     m_active = true;

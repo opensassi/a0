@@ -25,6 +25,7 @@ public:
     std::vector<Message> loadMessages(int64_t sessionId,
                                        std::optional<int64_t> subSessionId = std::nullopt) override;
     int64_t findSessionByUuid(const std::string& uuid) const override;
+    std::vector<SessionRow> loadSessions(int limit = 20) const override;
     void flush() override;
 
     int64_t createStream(int64_t sessionId,

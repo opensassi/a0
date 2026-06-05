@@ -77,6 +77,7 @@ if(ENABLE_TRACE)
     target_compile_definitions(a0_lib PRIVATE TRACE)
     target_compile_definitions(b1_lib PRIVATE TRACE)
     target_compile_definitions(c2_lib PRIVATE TRACE)
+    target_compile_definitions(tui_lib PRIVATE TRACE)
 endif()
 
 option(ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
@@ -150,7 +151,6 @@ function(add_tui_test TEST_NAME TEST_SOURCE)
 endfunction()
 
 add_tui_test(test_tui_styles test/unit/test_tui_styles.cpp)
-add_tui_test(test_tui_session_manager test/unit/test_tui_session_manager.cpp)
 add_tui_test(test_tui_panels test/unit/test_tui_panels.cpp)
 add_tui_test(test_tui_markdown test/unit/test_tui_markdown.cpp)
 

@@ -215,15 +215,15 @@ TEST(TuiMessagePanelTest, ClearResetsScrollState) {
 
 TEST(TuiMessagePanelTest, LoadHistory) {
     MessagePanel panel;
-    std::vector<a0::persistence::Message> msgs;
+    std::vector<a0::mpsc::SessionMessage> msgs;
 
-    a0::persistence::Message m1;
+    a0::mpsc::SessionMessage m1;
     m1.role = "user";
     m1.content = "hello";
     m1.createdAt = 1000;
     msgs.push_back(m1);
 
-    a0::persistence::Message m2;
+    a0::mpsc::SessionMessage m2;
     m2.role = "assistant";
     m2.content = "world";
     m2.createdAt = 1001;

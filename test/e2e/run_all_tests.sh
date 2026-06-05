@@ -94,15 +94,11 @@ echo ""
 echo "=== [4/4] TUI E2E tests (mock DeepSeek + --test-mode) ==="
 echo ""
 
-if command -v expect &>/dev/null; then
-    if bash "${PROJECT_ROOT}/test/e2e/test_tui_e2e.sh" 2>&1; then
-        pass_suite
-    else
-        fail_suite "tui-e2e"
-    fi
+cd "${PROJECT_ROOT}"
+if python3 -m pytest test/e2e/test_tui_e2e.py -v 2>&1; then
+    pass_suite
 else
-    echo "  SKIP: 'expect' not installed — skipping interactive TUI E2E tests"
-    echo "  Install with: apt install expect"
+    fail_suite "tui-e2e"
 fi
 
 echo ""

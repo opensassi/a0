@@ -17,6 +17,7 @@
 #include "stream_registry.h"
 #include "hex_session_id.h"
 #include "session_context.h"
+#include "app_core_thread.h"
 #include "tui/agent_tui.h"
 #include <cstdlib>
 #include <cstdio>
@@ -538,26 +539,36 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
     int64_t sessionDbId = stack.persistence.createSession(sid, 0, 0, agentId);
     stack.skillMgr.setRecordingSession(sessionDbId);
 
-    // Build DrivenCore
-    a0::DrivenCore core(&stack.llmProvider, &stack.skillMgr, &stack.persistence);
-    core.setSession(sessionDbId, sid);
+    // Build AppCoreThread
+    auto [cmdSender, cmdRcvr] = a0::mpsc::Channel<a0::mpsc::Command>::create();
+    auto [evtSender, evtRcvr] = a0::mpsc::Channel<a0::mpsc::AppCoreEvent>::create();
 
-    json params;
-    try { params = json::parse(runParamsStr); } catch (...) { params = json::object(); }
+    a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek" : "mock",
+                                 &stack.skillMgr, &stack.persistence);
+    if (!mockUrl.empty())
+        coreThread.setMockUrl(mockUrl);
+    coreThread.start(std::move(cmdRcvr), std::move(evtSender));
 
-    std::string skillName = runSkillName;
-    if (skillName.empty() && runPrompt.find(':') != std::string::npos) {
-        Prompt sp;
-        if (stack.skillMgr.getPrompt(runPrompt, sp) == 0)
-            skillName = runPrompt;
+    cmdSender.send(a0::mpsc::SetSession{sessionDbId, sid});
+    cmdSender.send(a0::mpsc::SubmitGoal{runPrompt});
+
+    // Poll for completion
+    std::string result;
+    while (result.empty()) {
+        auto events = evtRcvr.drain();
+        for (auto& ev : events) {
+            if (std::holds_alternative<a0::mpsc::Complete>(ev))
+                result = std::get<a0::mpsc::Complete>(ev).text;
+            else if (std::holds_alternative<a0::mpsc::Error>(ev))
+                result = "ERROR: " + std::get<a0::mpsc::Error>(ev).message;
+        }
+        if (result.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    if (!skillName.empty()) {
-        std::cerr << "runSkill is not yet implemented in the driven_core path" << std::endl;
-        return 1;
-    }
+    cmdSender.send(a0::mpsc::Shutdown{});
+    coreThread.stop();
 
-    std::string result = core.runSync(runPrompt);
     json out = json::object();
     out["status"] = "ok";
     out["session_id"] = sid;
@@ -699,19 +710,41 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
         }
     }
 
-    // Launch TUI
-    {
-        a0::tui::AgentTui tui(&stack.llmProvider,
-                              &stack.skillMgr, &stack.persistence,
-                              agentId,
-                              [&b1Fd]() { return b1Fd >= 0; },
-                              sessionDbId, sid);
-        if (!mockUrl.empty())
-            tui.setMockUrl(mockUrl);
-        if (!tuiResumeUuid.empty())
-            tui.resumeSession(tuiResumeUuid);
-        return tui.run(tuiTestMode);
-    }
+    // Create MPSC channels
+    auto [cmdSender, cmdRcvr] = a0::mpsc::Channel<a0::mpsc::Command>::create();
+    auto [evtSender, evtRcvr] = a0::mpsc::Channel<a0::mpsc::AppCoreEvent>::create();
+
+    // Start core thread
+    a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek" : "mock",
+                                 &stack.skillMgr, &stack.persistence);
+    if (!mockUrl.empty())
+        coreThread.setMockUrl(mockUrl);
+
+    // Start core thread (no wakeup yet — screen not created)
+    coreThread.start(std::move(cmdRcvr), std::move(evtSender), nullptr);
+
+    // Send session to core
+    cmdSender.send(a0::mpsc::SetSession{sessionDbId, sid});
+
+    // Launch TUI (no core references)
+    a0::tui::AgentTui tui(std::move(cmdSender), std::move(evtRcvr),
+                           [&b1Fd]() { return b1Fd >= 0; }, tuiTestMode);
+
+    // Wire wakeup — screen is created inside tui.run(), capture pointer for later
+    coreThread.setWakeupFn([tuiPtr = &tui]() {
+        if (auto* s = tuiPtr->screenPtr()) s->Post(ftxui::Task{[] {}});
+    });
+
+    // Resume session if requested (sends ResumeSession via MPSC)
+    if (!tuiResumeUuid.empty())
+        tui.cmdSender().send(a0::mpsc::ResumeSession{tuiResumeUuid});
+
+    int rc = tui.run();
+
+    // Cleanup
+    tui.cmdSender().send(a0::mpsc::Shutdown{});
+    coreThread.stop();
+    return rc;
 }
 
 // ---------------------------------------------------------------------------

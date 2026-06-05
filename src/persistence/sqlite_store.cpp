@@ -450,6 +450,29 @@ int64_t SqliteStore::findSessionByUuid(const std::string& uuid) const
     return id;
 }
 
+std::vector<SqliteStore::SessionRow> SqliteStore::loadSessions(int limit) const
+{
+    std::vector<SessionRow> result;
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT s.id, s.uuid, s.started_at, "
+                      "(SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) "
+                      "FROM session s ORDER BY s.started_at DESC LIMIT ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return result;
+    sqlite3_bind_int(stmt, 1, limit);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SessionRow row;
+        row.id = sqlite3_column_int64(stmt, 0);
+        if (const char* u = (const char*)sqlite3_column_text(stmt, 1))
+            row.uuid = u;
+        row.startedAt = sqlite3_column_int64(stmt, 2);
+        row.messageCount = sqlite3_column_int(stmt, 3);
+        result.push_back(row);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
 void SqliteStore::flush()
 {
     m_impl->exec("PRAGMA wal_checkpoint(TRUNCATE)");

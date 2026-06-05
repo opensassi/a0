@@ -7,7 +7,7 @@
 #include "ftxui/component/component.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "styles.h"
-#include "../persistence/persistence_store.h"
+#include "../mpsc.h"
 
 namespace a0::tui {
 
@@ -44,7 +44,7 @@ public:
     void clear();
     void scrollToBottom();
 
-    int loadHistory(const std::vector<::a0::persistence::Message>& messages);
+    int loadHistory(const std::vector<::a0::mpsc::SessionMessage>& messages);
 
     size_t count() const;
     void scrollUp(int n = 1);

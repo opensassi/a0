@@ -190,7 +190,7 @@ bool MessagePanel::isAtBottom() const {
     return m_impl->autoScroll || total == 0 || m_impl->m_scrollTop >= maxStart;
 }
 
-int MessagePanel::loadHistory(const std::vector<::a0::persistence::Message>& messages) {
+int MessagePanel::loadHistory(const std::vector<::a0::mpsc::SessionMessage>& messages) {
     for (const auto& pm : messages) {
         MessageEntry entry;
         if (pm.role == "user") entry.role = MessageRole::User;

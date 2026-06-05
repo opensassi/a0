@@ -58,6 +58,21 @@ void AppCoreThread::stop() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Helper: convert persistence::Message to mpsc::SessionMessage
+// ---------------------------------------------------------------------------
+
+static mpsc::SessionMessage xToSessionMsg(const a0::persistence::Message& m) {
+    mpsc::SessionMessage sm;
+    sm.role = m.role;
+    sm.content = m.content;
+    sm.toolCallId = m.toolCallId;
+    sm.name = m.name;
+    sm.resultJson = m.resultJson;
+    sm.createdAt = m.createdAt;
+    return sm;
+}
+
 void AppCoreThread::xRun() {
     TRACE_LOG("AppCoreThread started");
 
@@ -77,7 +92,7 @@ void AppCoreThread::xRun() {
     sigemptyset(&waitset);
 
     while (m_running.load()) {
-        struct pollfd fds[2];
+        struct pollfd fds[3];
         nfds_t nfds = 0;
 
         // Wakeup fd (written by stop())
@@ -97,13 +112,13 @@ void AppCoreThread::xRun() {
             nfds++;
         }
 
-        // Compute poll timeout
+        // Compute poll timeout — minimum 10ms to avoid busy-spin
         int timeoutMs = 100; // default 100ms idle poll
 
         if (provider.active()) {
             int provTimeout = provider.timeoutMs();
             if (provTimeout >= 0 && provTimeout < timeoutMs) {
-                timeoutMs = provTimeout;
+                timeoutMs = std::max(provTimeout, 10);
             }
         }
 
@@ -142,6 +157,43 @@ void AppCoreThread::xRun() {
                 core.cancel();
             } else if (std::holds_alternative<mpsc::Shutdown>(cmd)) {
                 m_running.store(false);
+            } else if (std::holds_alternative<mpsc::SetSession>(cmd)) {
+                const auto& ss = std::get<mpsc::SetSession>(cmd);
+                core.setSession(ss.sessionDbId, ss.sessionUuid);
+                m_evtSender.send(mpsc::SessionReady{ss.sessionDbId, ss.sessionUuid});
+            } else if (std::holds_alternative<mpsc::ListSessions>(cmd)) {
+                const auto& ls = std::get<mpsc::ListSessions>(cmd);
+                mpsc::SessionList sl;
+                if (m_persistence) {
+                    auto rows = m_persistence->loadSessions(ls.limit);
+                    for (const auto& r : rows) {
+                        mpsc::SessionList::Entry e;
+                        e.dbId = r.id;
+                        e.uuid = r.uuid;
+                        e.startedAt = std::to_string(r.startedAt);
+                        e.messageCount = r.messageCount;
+                        sl.entries.push_back(std::move(e));
+                    }
+                }
+                m_evtSender.send(std::move(sl));
+            } else if (std::holds_alternative<mpsc::ResumeSession>(cmd)) {
+                const auto& rs = std::get<mpsc::ResumeSession>(cmd);
+                mpsc::SessionHistory sh;
+                sh.uuid = rs.uuid;
+                sh.found = false;
+                if (m_persistence) {
+                    int64_t dbId = m_persistence->findSessionByUuid(rs.uuid);
+                    if (dbId > 0) {
+                        sh.dbId = dbId;
+                        sh.uuid = rs.uuid;
+                        sh.found = true;
+                        auto msgs = m_persistence->loadMessages(dbId);
+                        for (const auto& m : msgs)
+                            sh.messages.push_back(xToSessionMsg(m));
+                        core.setSession(dbId, rs.uuid);
+                    }
+                }
+                m_evtSender.send(std::move(sh));
             }
         }
 

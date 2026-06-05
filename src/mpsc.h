@@ -23,8 +23,19 @@ struct SubmitGoal {
 };
 struct Cancel {};
 struct Shutdown {};
+struct SetSession {
+    int64_t sessionDbId;
+    std::string sessionUuid;
+};
+struct ListSessions {
+    int limit = 20;
+};
+struct ResumeSession {
+    std::string uuid;
+};
 
-using Command = std::variant<SubmitGoal, Cancel, Shutdown>;
+using Command = std::variant<SubmitGoal, Cancel, Shutdown, SetSession,
+                             ListSessions, ResumeSession>;
 
 // ============================================================================
 // Event types — emitted by AppCore to UI/CLI
@@ -53,7 +64,41 @@ struct Error {
     std::string message;
 };
 
-using AppCoreEvent = std::variant<LlmToken, ToolStart, ToolEnd, Complete, Error>;
+/// Lightweight mirror of persistence::Message for MPSC transport.
+/// The TUI receives this read-only and never writes to persistence.
+struct SessionMessage {
+    std::string role;
+    std::string content;
+    std::string toolCallId;
+    std::string name;
+    std::string resultJson;
+    int64_t createdAt = 0;
+};
+
+struct SessionReady {
+    int64_t dbId;
+    std::string uuid;
+};
+
+struct SessionList {
+    struct Entry {
+        std::string uuid;
+        int64_t dbId = 0;
+        std::string startedAt;
+        int messageCount = 0;
+    };
+    std::vector<Entry> entries;
+};
+
+struct SessionHistory {
+    int64_t dbId = 0;
+    std::string uuid;
+    bool found = false;
+    std::vector<SessionMessage> messages;
+};
+
+using AppCoreEvent = std::variant<LlmToken, ToolStart, ToolEnd, Complete, Error,
+                                  SessionReady, SessionList, SessionHistory>;
 
 // ============================================================================
 // MPSC Channel — multi-producer single-consumer with eventfd wakeup

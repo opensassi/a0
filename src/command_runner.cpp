@@ -9,16 +9,17 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <atomic>
 
 namespace a0 {
 
-static volatile sig_atomic_t g_timeoutFired = 0;
+static std::atomic<int> g_timeoutFired{0};
 
 namespace {
 
 void alarmHandler(int)
 {
-    g_timeoutFired = 1;
+    g_timeoutFired.store(1, std::memory_order_relaxed);
 }
 
 } // anonymous namespace
@@ -253,7 +254,11 @@ StreamHandle CommandRunner::runStreaming(const std::string& cmd,
         alarm(0);
         close(outFd);
         close(errFd);
-        close(stdinPipe1);
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            ::close(stdinPipe1);
+            state->stdinFd = -1;
+        }
 
         // Wait for child
         int status;
@@ -345,12 +350,14 @@ CommandResult CommandRunner::xRunSingle(const std::string& cmd,
 
     // Set alarm for timeout
     if (timeoutSecs > 0) {
-        g_timeoutFired = 0;
+        g_timeoutFired.store(0, std::memory_order_relaxed);
+        std::atomic_signal_fence(std::memory_order_release);
         struct sigaction sa;
         memset(&sa, 0, sizeof(sa));
         sa.sa_handler = alarmHandler;
         sigaction(SIGALRM, &sa, nullptr);
         alarm(static_cast<unsigned int>(timeoutSecs));
+        std::atomic_signal_fence(std::memory_order_acquire);
     }
 
     // Read combined stdout+stderr
@@ -364,9 +371,10 @@ CommandResult CommandRunner::xRunSingle(const std::string& cmd,
 
     // Cancel alarm
     alarm(0);
+    std::atomic_signal_fence(std::memory_order_acquire);
 
     // Kill child on timeout BEFORE waitpid so waitpid returns immediately
-    if (g_timeoutFired) {
+    if (g_timeoutFired.load(std::memory_order_relaxed)) {
         kill(-pid, SIGKILL);
     }
 
@@ -374,7 +382,7 @@ CommandResult CommandRunner::xRunSingle(const std::string& cmd,
     int status;
     waitpid(pid, &status, 0);
 
-    if (g_timeoutFired) {
+    if (g_timeoutFired.load(std::memory_order_relaxed)) {
         result.timedOut = true;
         result.exitCode = -1;
         result.stderr = "timeout";

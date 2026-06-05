@@ -10,9 +10,7 @@
 #include "ftxui/component/screen_interactive.hpp"
 #include <ctime>
 #include "styles.h"
-#include "../llm_provider.h"
-#include "../driven_core.h"
-#include "../persistence/persistence_store.h"
+#include "../mpsc.h"
 
 namespace a0::tui {
 
@@ -20,22 +18,19 @@ class MessagePanel;
 class InputPanel;
 class StatusBar;
 class DialogManager;
-class SessionManager;
 class MarkdownRenderer;
 
 class AgentTui {
 public:
-    AgentTui(a0::LlmProvider* provider,
-             a0::skills::SkillManager* skillMgr,
-             a0::persistence::PersistenceStore* persistence,
-             int64_t agentId = 0,
+    AgentTui(mpsc::Sender<mpsc::Command> cmdSender,
+             mpsc::Receiver<mpsc::AppCoreEvent> evtReceiver,
              std::function<bool()> b1Status = nullptr,
-             int64_t sessionDbId = 0,
-             const std::string& sessionUuid = "");
+             bool testMode = false);
 
     virtual ~AgentTui();
 
-    int run(bool testMode = false);
+    int run();
+
     void shutdown();
 
     ftxui::Component component() const { return m_mainComponent; }
@@ -44,25 +39,20 @@ public:
     void clearScreen();
     ftxui::ScreenInteractive* screenPtr() const { return m_screen; }
 
-    int resumeSession(const std::string& uuid);
-    std::string currentSessionId() const;
-
     void submitInput(const std::string& input);
+    void drainEvents();
 
-    void setMockUrl(const std::string& url) { m_provider->setMockUrl(url); }
+    mpsc::Sender<mpsc::Command>& cmdSender() { return m_cmdSender; }
 
 private:
-    a0::persistence::PersistenceStore* m_persistence;
-    int64_t m_agentId = 0;
+    mpsc::Sender<mpsc::Command> m_cmdSender;
+    mpsc::Receiver<mpsc::AppCoreEvent> m_evtReceiver;
     std::function<bool()> m_b1Status;
-    a0::LlmProvider* m_provider;
-    std::unique_ptr<a0::DrivenCore> m_drivenCore;
 
     std::unique_ptr<MessagePanel> m_messagePanel;
     std::unique_ptr<InputPanel> m_inputPanel;
     std::unique_ptr<StatusBar> m_statusBar;
     std::unique_ptr<DialogManager> m_dialogMgr;
-    std::unique_ptr<SessionManager> m_sessionMgr;
     std::unique_ptr<MarkdownRenderer> m_markdown;
 
     std::string m_sessionUuid;
@@ -80,32 +70,36 @@ private:
     int m_pasteCounter = 0;
     std::unordered_map<int, std::string> m_pastedContents;
 
+    bool m_testMode = false;
     std::string m_streamingText;
     int m_streamingEntryIndex = -1;
 
     std::string xExpandPastePlaceholders(const std::string& input);
     void xProcessPasteBuffer();
-    void xTickCore();
 
     void xBuildLayout();
     ftxui::Component xBuildMainContainer();
+
+    void xHandleCoreEvent(const ::a0::mpsc::AppCoreEvent& ev);
 
     int xHandleSubmit(const std::string& input);
     int xHandleInterrupt();
     int xHandleCommand(const std::string& cmd);
 
-    void xHandleEvent(const a0::mpsc::AppCoreEvent& ev);
     void xOnToken(const std::string& token);
     void xOnToolStart(const std::string& name, const std::string& arguments);
     void xOnToolEnd(const std::string& name, const std::string& output, bool success);
     void xOnComplete(const std::string& fullOutput);
     void xOnError(const std::string& error);
+    void xOnSessionReady(int64_t dbId, const std::string& uuid);
+    void xOnSessionList(const std::vector<mpsc::SessionList::Entry>& sessions);
+    void xOnSessionHistory(int64_t dbId, const std::string& uuid,
+                           const std::vector<mpsc::SessionMessage>& messages);
 
     int xCmdSessions();
     int xCmdHelp();
     int xCmdClear();
     int xCmdQuit();
-    int xCmdExport();
 };
 
 } // namespace a0::tui

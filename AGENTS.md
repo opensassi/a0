@@ -35,48 +35,54 @@ All skills, scripts, and tooling are delivered via the npm package.
 - Session evaluation is read-only (generate) / write-once (export)
 - All skills, scripts, and AGENTS.md live in the npm package, not in the project
 
-## MCP Tools
+## Rules for Debugging Test Failures
 
-The following MCP servers are configured in `.opencode/opencode.json`:
+When a test fails, follow this process exactly. These rules MUST BE FOLLOWED IN ANY CASE OF A TEST FAILURE. Do not skip steps. Do not guess. Do not make multiple changes at once.
 
-### Playwright MCP — Headless Browser for Testing
+### Rule 1: Observe Before Changing
 
-Provides headless browser automation via accessibility snapshots (no vision model needed).
+Reproduce the failure exactly — run the SAME test command, not a modified version. Use the test's own infrastructure (fixtures, mocks, drivers) to avoid introducing new variables.
 
-- `browser_navigate` — navigate to a URL
-- `browser_snapshot` — capture accessibility tree of the page
-- `browser_click` / `browser_type` / `browser_hover` — interact with elements
-- `browser_evaluate` — run JS in page context
-- `browser_take_screenshot` — capture screenshots
-- `browser_console_messages` — read console output
-- `browser_network_requests` / `browser_network_request` — inspect network
-- `browser_fill_form` — fill multiple form fields at once
-- `browser_tabs` — manage tabs
-- `browser_wait_for` — wait for text or time
-- `browser_drag` / `browser_drop` — drag and drop
-- `browser_file_upload` — upload files
-- `browser_select_option` — select dropdown options
-- `browser_press_key` — press keyboard keys
+### Rule 2: Instrument, Don't Guess
 
-### GDB Debugger MCP — C/C++ Debugging
+Add targeted debug output at key code paths before forming any hypothesis. The following instrumentation tools are available:
 
-Provides process-level debugging for C/C++ applications.
+- **TRACE_LOG** — Add `TRACE_LOG("message")` at critical checkpoints. C++ `TRACE_LOG` writes to stderr, which is captured by the `--log-dir` mechanism at runtime. Enable TRACE with: `cmake -B build -DENABLE_TRACE=ON && cmake --build build`.
+  - **IMPORTANT**: Verify that TRACE is actually compiled into all relevant targets. `ENABLE_TRACE` must be added to `target_compile_definitions(<target> PRIVATE TRACE)` for each library that contains `TRACE_LOG` calls. The build system does NOT automatically propagate this to all targets.
+- **GDB backtrace** — Attach `gdb -batch -ex "thread apply all bt" -p <pid>` to see what every thread is doing. Do not just check the main thread.
+- **Strace** — Use `strace -p <pid> -f -e trace=ppoll,read,write,writev` to see syscall patterns (busy-waiting, blocking I/O, stuck in poll).
 
-- `gdb_start_session` — start a GDB debugging session
-- `gdb_set_breakpoint` — set breakpoints at functions, file:line, or addresses
-- `gdb_get_backtrace` — get stack backtrace for a thread
-- `gdb_get_variables` — get local variables for a stack frame
-- `gdb_evaluate_expression` — evaluate C/C++ expressions
-- `gdb_call_function` — call a function in the target process
-- `gdb_step` / `gdb_next` — step through code
-- `gdb_continue` — continue execution
-- `gdb_interrupt` — interrupt a running program
-- `gdb_get_registers` — view CPU registers
-- `gdb_list_breakpoints` / `gdb_delete_breakpoint` — manage breakpoints
-- `gdb_enable_breakpoint` / `gdb_disable_breakpoint` — toggle breakpoints
-- `gdb_select_frame` / `gdb_select_thread` — navigate execution context
-- `gdb_get_frame_info` — get current frame details
-- `gdb_get_threads` — list all threads
-- `gdb_get_status` — get session status
-- `gdb_execute_command` — execute arbitrary GDB commands
-- `gdb_stop_session` — stop a debugging session
+### Rule 3: Isolate the Failure Source
+
+Compare the failing path against a working path. For example, if `a0 run` works but `a0 tui` doesn't, the curl transfer code is identical — the difference is in event propagation, rendering, or thread coordination. Eliminate variables by testing the same components in different contexts.
+
+### Rule 4: One Change at a Time
+
+When a fix doesn't work, revert it before trying another approach. Making multiple changes simultaneously makes it impossible to know which one caused the result. Test each change individually.
+
+### Rule 5: Follow the Data
+
+Add trace output at every layer of the data flow: production → sending → receiving → processing → rendering. If events are produced but not displayed, trace every intermediate step:
+- Is the source producing data?
+- Is the transport delivering it?
+- Is the receiver processing it?
+- Is the display layer rendering it?
+
+If any layer is silent, that is the bug.
+
+### Rule 6: When the Architecture Seems Correct but the Test Fails, Re-read the Spec
+
+The concurrency model spec (`specs/concurrency-model.md`) and sub-module specs (`src/*/technical-specification.md`) define the intended architecture. If observed behavior contradicts the spec, the implementation is wrong — not the test. If the spec has been updated to match the implementation, verify both are consistent.
+
+### Rule 7: Clean Up Zombie Processes
+
+Failing tests often leave behind child processes that consume CPU or block ports. After each test iteration, verify that all child processes are dead:
+
+```bash
+pgrep -f "a0" | grep -v $$ | xargs kill -9 2>/dev/null
+pgrep -f "mock_deepseek" | xargs kill 2>/dev/null
+```
+
+### Rule 8: Document the Root Cause
+
+Once found, record the root cause in a bullet point with the file path and a one-line description. This builds a library of failure modes for future debugging sessions.

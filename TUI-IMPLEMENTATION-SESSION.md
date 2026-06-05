@@ -1,23 +1,22 @@
 # TUI Implementation — Session Summary
 
-## What Was Built (Previous Session)
+## What Was Built (Previous Sessions)
 
-### Source files in `src/tui/` (18 files)
+### Source files in `src/tui/` (18 original files)
 
 | File | Purpose |
 |------|---------|
-| `CMakeLists.txt` | Build config linking FTXUI + MD4C |
+| `CMakeLists.txt` | Build config linking FTXUI + MD4C (NO a0_lib/persistence_lib deps) |
 | `styles.h/.cpp` | Color decorators, role labels (User/Assistant/Tool/System/Error), style constants |
-| `session_manager.h/.cpp` | Session create/list/resume via PersistenceStore |
 | `input_panel.h/.cpp` | FTXUI Input wrapper with Enter submit + Ctrl+C interrupt via CatchEvent |
 | `status_bar.h/.cpp` | Top bar: session ID, agent state (Idle/Thinking/Executing/Error), b1 status, msg count |
 | `message_panel.h/.cpp` | Scrollable message panel: append, streaming, tool blocks, history loading |
 | `markdown_renderer.h/.cpp` | MD4C SAX-based markdown → FTXUI element tree (headings, code blocks, lists, etc.) |
 | `dialog_manager.h/.cpp` | Stack-based modal overlays via FTXUI Modal (help, confirm, list) |
-| `agent_tui.h/.cpp` | Facade: wires panels, mouse event routing, streaming callbacks, `/commands`, bracketed paste, copy-on-select |
+| `agent_tui.h/.cpp` | Facade: MPSC sender/receiver only, no core references, event dispatch |
 | `clipboard.h/.cpp` | Clipboard copy via OSC 52 + xclip/wl-clipboard fallback |
 
-### New files created in previous session (7)
+### Core infrastructure files (7)
 
 | File | Purpose |
 |------|---------|
@@ -25,50 +24,50 @@
 | `src/response_decoder.h/.cpp` | SSE/JSON response parser — feed bytes, emit structured events |
 | `src/driven_provider.h/.cpp` | Async curl_multi-based LLM provider base class |
 | `src/driven_core.h/.cpp` | State-machine tool-calling loop: Idle → AwaitingLlm → ExecutingTools |
-| `src/app_core_thread.h/.cpp` | poll()-based event loop wrapping DrivenCore for future headless/separate-thread use |
+| `src/app_core_thread.h/.cpp` | ppoll()-based event loop wrapping DrivenCore for background thread use |
+| `src/llm_provider.h` | Abstract async `LlmProvider` interface — replaces `InferenceProvider` |
+| `src/deepseek_provider.h/.cpp` | `DeepSeekProvider : DrivenProvider` — DeepSeek-specific URL/auth/payload |
 
-### New files created in current session (3)
+### Files deleted
+
+| File | Reason |
+|------|--------|
+| `src/tui/session_manager.h/.cpp` | Session ops moved to MPSC protocol (ListSessions/ResumeSession commands) |
+| `test/unit/test_tui_session_manager.cpp` | Deleted with SessionManager |
+
+### Test files created (this session)
 
 | File | Purpose |
 |------|---------|
-| `src/llm_provider.h` | Abstract async `LlmProvider` interface — replaces `InferenceProvider` |
-| `src/deepseek_provider.h/.cpp` | `DeepSeekProvider : DrivenProvider` — DeepSeek-specific URL/auth/payload |
-| `test/unit/test_driven_core_persistence.cpp` | 4 tests: user message persisted, assistant persisted, no session produces no persistence, session switch |
+| `test/e2e/conftest.py` | Python PTY harness: TuiDriver, AgentSubprocess, MockServer |
+| `test/e2e/test_tui_e2e.py` | 12 TUI E2E tests (PTY-based, replaces bash/expect) |
+| `test/e2e/test_agent_e2e.py` | 7 headless agent E2E tests (uses `a0 run` subcommand) |
 
-### Files modified in previous session
-
-| File | Change |
-|------|--------|
-| `CMakeLists.txt` (root) | Added `response_decoder.cpp`, `driven_provider.cpp`, `driven_core.cpp`, `app_core_thread.cpp` to `LIB_SOURCES` |
-| `src/tui/agent_tui.h` | Replaced `AgentCore* m_core`, `SkillManager* m_skills`, `StreamHandle`, streaming state with `DrivenProvider` + `DrivenCore`. Removed mpsc sender/receiver — DrivenCore is in-process, called synchronously via `xTickCore()`. |
-| `src/tui/agent_tui.cpp` | `xHandleSubmit` now calls `m_drivenCore->submitGoal()` + `xTickCore()` instead of `m_core->processGoalStreaming()`. Renderer wrapper calls `xTickCore()` on each FTXUI frame. Interrupt calls `m_drivenCore->cancel()`. Session creation uses agentDbId for FK constraint. |
-| `src/main.cpp` | Updated `cmdTui` to construct `AgentTui(apiKey, model, skillMgr, persistence, agentId, b1Status)` — no more `AppCoreThread`, sharedWakeup, or mpsc channels for TUI path. Mock URL passed to DrivenProvider via setMockUrl. |
-| `test/unit/test_tui_integration.cpp` | Updated for new `AgentTui` constructor. Removed mpsc channel injection tests. |
-
-### Files modified in current session
+### Files modified (this session)
 
 | File | Change |
 |------|--------|
-| `src/driven_provider.h/.cpp` | Refactored to implement `LlmProvider`. `xBuildPayload` + `xAddAuth` → `protected` pure virtual hooks. `m_apiKey/m_model/m_baseUrl` → `protected`. Constructor no longer sets DeepSeek-specific URL. |
-| `src/deepseek_provider.h/.cpp` | **New** `DeepSeekProvider : DrivenProvider`. Overrides `xBuildPayload` (OpenAI-compatible JSON) + `xAddAuth` (Bearer token). Reads `DEEPSEEK_API_KEY` env var. Sets `m_baseUrl` to DeepSeek endpoint. |
-| `src/driven_core.h/.cpp` | Constructor: `DrivenProvider*` → `LlmProvider*`. Added `runSync()` + `m_lastResult`. No `tools_for_prompt` call in `xBuildInitialMessages`. `xStartLlmRequest` uses `buildBasePrompt()` from disk instead of broken `getPrompt("system-base")`. |
-| `src/main.cpp` | `xRegisterSystemHandlers` no longer takes `InferenceProvider*`. `AgentStack` slimmed (removed `DefaultContextManager`, `DefaultDependencyResolver`, `DefaultSkillRunner*`, `DefaultAgentCore*`; added `DeepSeekProvider llmProvider`). `cmdRun` uses `DrivenCore::runSync()`. `runSkill` → stub error. `cmdTui` injects `&stack.llmProvider` + `sessionDbId`/`sid` into `AgentTui`. |
-| `src/tui/agent_tui.h/.cpp` | Constructor takes `LlmProvider*` instead of `apiKey+model`. Added `sessionDbId`/`sessionUuid` params. `m_provider` changed from `unique_ptr<DrivenProvider>` to raw `LlmProvider*` pointer. Constructor calls `m_drivenCore->setSession()` if sessionDbId > 0. `resumeSession()` now calls `m_drivenCore->setSession(dbId, uuid)`. |
-| `src/system_handlers.h` | Removed `xToolsForPrompt` declaration. Removed `InferenceProvider` forward declaration. |
-| `src/app_core_thread.h/.cpp` | Uses `DeepSeekProvider` subclass (new) instead of `DrivenProvider`. |
-| `CMakeLists.txt` | Removed `agent_core.cpp`, `skill_runner.cpp`, old `deepseek_provider.cpp` from `LIB_SOURCES`. Added new `deepseek_provider.cpp`. Added `test_driven_core_persistence` target. Removed old test targets referencing deprecated code. |
-| `test/unit/test_tui_integration.cpp` | Added `NullLlmProvider` mock. Added `InjectedSessionIsUsedOnFirstSubmit` + `ResumeSessionWiresDrivenCore` tests. Updated all `AgentTui` constructor calls to new signature `(provider, skillMgr, persistence, ...)`. |
-| `src/llm_provider.spec.md` | **New** — spec for abstract async `LlmProvider` interface |
-| `src/driven_provider.spec.md` | Rewritten — implements `LlmProvider`, protected pure virtual hooks |
-| `src/deepseek_provider.spec.md` | Rewritten (was old `InferenceProvider` implementation; now `DrivenProvider` subclass) |
-| `src/driven_core.spec.md` | Updated for `LlmProvider*`, `runSync()`, no `tools_for_prompt` |
-| `src/main.spec.md` | Rewritten — slim `AgentStack`, unified `DrivenCore` path |
-| `src/system_handlers.spec.md` | Rewritten — removed `xToolsForPrompt`, no `InferenceProvider` |
-| `src/app_core_thread.spec.md` | Updated — uses `DeepSeekProvider` subclass internally |
-| `src/agent_core.spec.md` | Added **DEPRECATED** header |
-| `src/skill_runner.spec.md` | Added **DEPRECATED** header |
-| `technical-specification.md` | Updated §2 (interface hierarchy), §5 (test tables), §8 (file layout) |
-| `src/tui/technical-specification.md` | Updated for `LlmProvider*` injection + session params |
+| `src/mpsc.h` | Added `SetSession`, `ListSessions`, `ResumeSession` to Command; `SessionReady`, `SessionList`, `SessionHistory`, `SessionMessage` to AppCoreEvent |
+| `src/app_core_thread.h/.cpp` | Handles `SetSession` (core.setSession + SessionReady), `ListSessions` (loadSessions + SessionList), `ResumeSession` (findSessionByUuid + loadMessages + SessionHistory). Minimum ppoll timeout 10ms to prevent busy-spin. |
+| `src/tui/agent_tui.h/.cpp` | Complete rewrite — no LlmProvider*, no DrivenCore, no PersistenceStore*, no SessionManager. Only `Sender<Command>` + `Receiver<AppCoreEvent>`. `drainEvents()` replaces `xTickCore()`. `xHandleSubmit` → `cmdSender.send(SubmitGoal{})`. Added `RequestAnimationFrame()` after drain to trigger re-render. |
+| `src/tui/message_panel.h/.cpp` | `loadHistory` uses `mpsc::SessionMessage` instead of `persistence::Message` |
+| `src/tui/CMakeLists.txt` | Removed `session_manager.cpp`. Removed `a0_lib` and `persistence_lib` link deps. |
+| `src/main.cpp` | Added `#include app_core_thread.h`. Both `cmdTui` and `cmdRun` create AppCoreThread + MPSC channels. AgentTui receives only MPSC handles. |
+| `src/persistence/persistence_store.h` | Added `SessionRow` struct and `loadSessions(limit)` virtual method |
+| `src/persistence/sqlite_store.h/.cpp` | Implemented `loadSessions()` with SQL subquery |
+| `src/response_decoder.cpp` | `xProcessJsonChunk`: emit `ToolStart` events from `finish_reason: "stop"` handler before early return (fixes non-streaming tool_calls responses) |
+| `src/driven_core.cpp` | Changed `xStartLlmRequest(false)` → `true` so tool schemas are sent on first request |
+| `src/command_runner.cpp` | `g_timeoutFired`: `volatile sig_atomic_t` → `std::atomic<int>` + `std::atomic_signal_fence`. `close(stdinPipe1)` wrapped in `lock_guard<mutex>`, sets `stdinFd = -1`. |
+| `src/session_context.cpp` | All `executeToolWithMeta` calls pass `subSessionId=-1` for init-phase recording |
+| `src/hex_session_id.h` | Replaced `std::mt19937` with `/dev/urandom` read into `std::array<uint32_t, 4>` |
+| `CMakeLists.txt` | Added `tui_lib` to `ENABLE_TRACE` target list; removed deprecated test targets |
+| `src/tui/technical-specification.md` | Complete rewrite v3.0 — thin-client TUI architecture, emphatic boundary enforcement |
+| `AGENTS.md` | Added 8-rule debugging protocol; removed MCP Tools section |
+| `test/e2e/run_e2e_tests.sh` | Replaced piped-a0 tests with pytest runner |
+| `test/e2e/test_tui_e2e.sh` | Replaced bash/expect test with pytest runner |
+| `test/e2e/run_all_tests.sh` | Updated Phase 4 to use Python pytest |
+| `test/unit/test_tui_integration.cpp` | Rewritten for new AgentTui constructor + MPSC event injection |
+| `test/tui/mock/mock_persistence_store.h` | Added `loadSessions` override |
 
 **Removed from build (kept on disk as reference):**
 `src/agent_core.h/.cpp`, `src/skill_runner.h/.cpp`, `src/deepseek_provider.h/.cpp` (old `InferenceProvider` implementation)
@@ -128,8 +127,49 @@ The E2E test harness uses `pty.openpty()` + `os.fork()` to create a real pseudot
 ### Scrollback via windowed rendering + yframe
 The `MessagePanel` renders a sliding window of `VISIBLE_ENTRIES` (8) messages.
 
-### DrivenCore integrated into FTXUI thread (single-thread approach)
-DrivenCore runs inside the TUI's FTXUI event loop, NOT a separate thread. `xTickCore()` is called from a Renderer wrapper on every FTXUI frame. When the core is busy, `RequestAnimationFrame()` is called to keep the FTXUI render loop active. This is a simplification over the planned two-thread architecture — the AppCoreThread exists as infrastructure but the current TUI path owns DrivenCore directly.
+### AppCoreThread wired as active (C2 architecture, this session)
+The TUI no longer owns DrivenCore directly. `AppCoreThread` runs on a background thread owning `DeepSeekProvider` + `DrivenCore`. All communication goes through MPSC channels (`Command` variants from TUI to core, `AppCoreEvent` variants from core to TUI). The TUI is a thin rendering client with zero core references. This was a deliberate architectural shift from the previous single-thread approach (C1) to the two-thread approach (C2), making the TUI just another client — consistent with the headless architecture where b1/c2 drive the same core.
+
+### TUI is a thin rendering client (no core references, this session)
+AgentTui holds zero core references:
+- NO `DrivenCore` or `DrivenProvider`
+- NO `LlmProvider` pointer
+- NO `SkillManager` pointer or call
+- NO `PersistenceStore` reference
+- NO `SessionManager` (deleted)
+- NO tool execution, NO LLM interaction, NO session management
+
+All core functionality (LLM calls, tool execution, session persistence, skill management) lives in AppCoreThread on the background thread. The TUI only renders FTXUI elements and forwards user keystrokes/mouse events via MPSC. This boundary is enforced by architecture — the TUI `CMakeLists.txt` does not link `a0_lib` or `persistence_lib`.
+
+### SessionManager deleted (this session)
+All session operations (list, resume) go through MPSC commands/events:
+- `/sessions` → `cmdSender.send(ListSessions{20})` → core loads from SQLite → `SessionList` event back to TUI
+- Session resume → `cmdSender.send(ResumeSession{uuid})` → core loads messages → `SessionHistory{dbId, uuid, messages}` event back to TUI
+- Session creation happens in main.cpp during bootstrap (before thread start), not in the TUI
+
+### drainEvents needs RequestAnimationFrame (this session)
+After processing MPSC events in the main loop, the TUI must call `m_screen->RequestAnimationFrame()` to request a re-render. Without this, message panel updates are silently dropped. The old `xTickCore()` called this when the core was busy, but `drainEvents()` didn't — events were processed but never displayed. This was the root cause of the TUI showing "Thinking" forever even though AppCoreThread completed both LLM requests and sent all events back via MPSC.
+
+### E2E tests migrated from bash/expect to Python pytest (this session)
+The old `test/e2e/run_e2e_tests.sh` piped input via `echo "goal" | timeout N a0` which broke when `a0` defaulted to TUI mode (piped stdin is ignored by FTXUI). Replaced with Python `TuiDriver` (PTY-based, uses `pty.openpty() + os.fork() + os.execve()`) and `AgentSubprocess` (uses `a0 run` subcommand correctly). Python provides better test structure (pytest fixtures, assertions), supports mouse events and bracketed paste, and requires zero external dependencies (uses Python `pty` module from stdlib). The Python `conftest.py` with `TuiDriver` and `MockServer` replaces both the bash/expect TUI test AND the piped-stdin agent tests.
+
+### conftest.py shared between TUI and agent E2E tests (this session)
+The `test/e2e/conftest.py` provides:
+- `MockServer` — context manager for the mock DeepSeek API server
+- `TuiDriver` — PTY-based driver for `a0 tui --test-mode` with keystroke injection and output capture
+- `AgentSubprocess` — headless runner using `a0 run <goal>` with stdout/stderr capture and assertions
+
+### tool_calls in non-streaming responses need explicit decoder handling (this session)
+The `ResponseDecoder::xProcessJsonChunk` returned early on `finish_reason: "stop"` without parsing `message.tool_calls` in the JSON response. For non-streaming responses (like the mock server returning plain JSON instead of SSE), the tool_calls were silently dropped. Fixed by emitting `ToolStart` events from within the `finish_reason` handler before emitting the `Complete` event.
+
+### curl_multi_wait with timeout=0 is needed for curl I/O progress
+`DrivenProvider::tick()` calls `curl_multi_wait(m_multi, nullptr, 0, 0, nullptr)` before each `curl_multi_perform()`. This single `poll()` syscall drives curl's internal async I/O including DNS resolution. Without it, `curl_multi_perform()` is stuck at `running=1` with empty `responseBody` — curl's internal socket buffers are never drained. The zero-timeout wait is NOT a no-op: curl internally processes socket state during the wait call even with timeout=0.
+
+### includeTools=true on first request (this session)
+Changed `xStartLlmRequest(false)` → `true` in `DrivenCore::submitGoal()` so the first LLM request includes tool schemas. Without this, the real DeepSeek API cannot make function calls on the first turn — the LLM sees tool names in the base prompt text but cannot use structured function calling. The mock server's `_legacy_respond` returns `tool_calls` fixture when `tools` is present.
+
+### ENABLE_TRACE must be explicitly added to each CMake target (this session)
+The `CMakeLists.txt` `option(ENABLE_TRACE)` guards `target_compile_definitions(... PRIVATE TRACE)` but only lists `a0_lib`, `b1_lib`, and `c2_lib`. `tui_lib` was missing, causing all `TRACE_LOG` calls in `src/tui/` to be silently compiled out. Debugging showed `AppCoreThread` events being sent but `AgentTui::drainEvents` never traced — the events were reaching the TUI but the re-render bug was obscured because the TRACE output was missing. Fixed by adding `tui_lib` to the ENABLE_TRACE target list.
 
 ### curl_multi used for async HTTP
 DrivenProvider uses `curl_multi` for non-blocking HTTP. `startRequestStreaming()` sets up curl handles; `tick()` drives `curl_multi_perform()` and collects events. The write callback stores raw response data, which is fed to `ResponseDecoder` for SSE/JSON parsing.
@@ -137,32 +177,8 @@ DrivenProvider uses `curl_multi` for non-blocking HTTP. `startRequestStreaming()
 ### CURLOPT_POSTFIELDS stores a dangling pointer if body is local
 `curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str())` stores a pointer, not a copy. If `body` is a local string that goes out of scope, curl reads garbage. Fixed by storing the body in the `EasyHandle` struct before setting curl options.
 
-### First LLM request omits tool schemas
-The initial LLM request in `DrivenCore::submitGoal` starts with `includeTools=false` (matching the old streaming path behavior). Tool schemas are only included in follow-up requests after tool execution. This avoids the mock server returning `tool_calls` instead of a content response. **Current issue:** this also prevents the real DeepSeek API from making tool calls — the LLM sees tool names in the base prompt text but can't use function calling.
-
-### curl_multi_perform needs curl_multi_wait before it to drive async DNS
-`DrivenProvider::tick()` calls `curl_multi_perform()` but curl's internal async DNS resolver has its own sockets that must be polled for DNS responses. Without `curl_multi_wait(m_multi, nullptr, 0, 0, nullptr)` before each `perform`, DNS resolution never completes and curl returns `CURLE_COULDNT_RESOLVE_HOST`. The zero-timeout `wait` is a single `poll()` syscall (~1µs) that drives curl's internal I/O non-blockingly. This affected both mock server and real DeepSeek API usage.
-
-### Non-streaming responses need explicit handling in xOnComplete
-`DrivenProvider` sends `"stream": true` in the request body, but the mock server returns plain JSON (not SSE). The `ResponseDecoder::xFlushBuffer` method detects JSON mode and emits a single `Complete` event with no preceding `LlmToken`. `AgentTui::xOnComplete` only handled the streaming path (`m_streamingEntryIndex >= 0`), so the response was silently dropped. Fixed by adding an `else` branch that appends the response as a `MessageEntry` directly.
-
-### BufferedSocket replaces one-byte-at-a-time IPC recv
-`recvMessage()` in `ipc_protocol.cpp` read one byte per `poll()` + `recv()` syscall — ~300 syscalls for a 150-byte REGISTER message. Replaced with `BufferedSocket`, a persistent per-connection buffered reader that reads up to 100 bytes per call and accumulates in a per-fd buffer. All callers updated: b1 supervisor (socket map per agent), c2 listener (map replaces vector), a0 terminal mode. `RecvResult` enum replaces magic integers: `RECV_OK` (0), `RECV_AGAIN` (1), `RECV_ERR` (-1). Callers previously closed connections on any non-zero return; they now distinguish `RECV_AGAIN` (retry) from `RECV_ERR` (close).
-
-### Concurrency model specification written
-Created `specs/concurrency-model.md` (840 lines, 10 sections) covering all 9 concurrency contexts across 3 processes (a0, b1, c2). Includes C4 container diagrams, mutex domain analysis, 4 sequence diagrams, and 4 identified issues. Reviewed by 7-expert panel producing 8 revisions.
-
-### LlmProvider abstract interface
-Replaces synchronous `InferenceProvider` with async tick-based contract. `DrivenCore` depends on `LlmProvider*` only, not on any concrete implementation.
-
-### DrivenProvider as universal base class
-The `curl_multi` machinery is universal. Provider-specific differences (URL format, auth header, payload schema) are abstracted via `xBuildPayload()` and `xAddAuth()` pure virtual hooks. Subclasses override these; all transport logic is inherited.
-
-### DeepSeekProvider as DrivenProvider subclass
-Minimal implementation — only config (DeepSeek URL, Bearer auth, OpenAI-compatible JSON format, `DEEPSEEK_API_KEY` env var resolution). All HTTP/curl/event-loop logic lives in the base class. Future providers follow the same pattern.
-
-### Unified code path (cmdRun + cmdTui)
-Both entry points use `DrivenCore` with `LlmProvider*`. `cmdRun` uses `runSync()` (synchronous poll loop). `cmdTui` uses `tick()` from the FTXUI render loop. No more divergent `AgentCore` vs `DrivenCore` paths.
+### Unified code path (cmdRun + cmdTui, this session)
+Both entry points use `AppCoreThread` with `LlmProvider*`. `cmdRun` creates `AppCoreThread`, sends `SetSession` + `SubmitGoal`, polls `evtReceiver` for `Complete`/`Error`, prints result, shuts down. `cmdTui` creates `AppCoreThread`, sends `SetSession`, runs `AgentTui::run()` (FTXUI loop draining MPSC events from background thread). No more divergent `AgentCore` vs `DrivenCore` paths. Both paths share the same `AppCoreThread` infrastructure.
 
 ### Base prompt from disk (buildBasePrompt)
 `DrivenCore::xStartLlmRequest` reads `prompts/base.md` via `a0::buildBasePrompt(m_skillMgr)`. The old path tried `m_skillMgr->getPrompt("system-base")` which failed because `skills/system/base/skill.json` was never created — the only copy of the base prompt lived in `prompts/base.md` (loaded by `AgentCore`/`SkillRunner` via a separate code path).
@@ -173,10 +189,10 @@ No separate LLM analysis call for intent/tool selection. The base prompt lists a
 ### Session injection into AgentTui
 `sessionDbId` + `sessionUuid` passed to `AgentTui` constructor to prevent duplicate session creation (main.cpp created one session, AgentTui's `xHandleSubmit` created a second). Constructor calls `m_drivenCore->setSession()` — previously missing, causing all goal-related messages to be persisted to session id 0 (lost).
 
-### resumeSession now wires DrivenCore
-`AgentTui::resumeSession()` was missing the `m_drivenCore->setSession(dbId, uuid)` call. New messages submitted after resume went to the wrong session or were lost. Fixed by adding the call after setting `m_sessionDbId`/`m_sessionUuid`.
+### resumeSession now goes through MPSC (this session)
+`AgentTui::resumeSession()` was removed. Session resumption sends `ResumeSession{uuid}` via cmdSender. The AppCoreThread processes it, loads history from persistence, sends back `SessionHistory{dbId, uuid, messages}` event, and calls `core.setSession()`. The TUI receives the event and loads history into the message panel.
 
-### xOnComplete streaming path overwrites accumulated text
+### xOnComplete streaming path uses m_streamingText, not fullOutput
 The SSE final chunk's `finish_reason:"stop"` event produces `Complete{""}` (empty text). `xOnComplete` calls `m_messagePanel->streamUpdate(index, fullOutput)` where `fullOutput==""`, overwriting the accumulated `m_streamingText` with empty string. The response vanishes from the TUI display while persisting correctly in the DB (DrivenCore's `xFinishGoal` uses `m_accumText` which runs before `xOnComplete`). **Fix:** use `m_streamingText` instead of `fullOutput` in the streaming branch.
 
 ---
@@ -186,26 +202,8 @@ The SSE final chunk's `finish_reason:"stop"` event produces `Complete{""}` (empt
 ### 1. c2 signal handler — async-signal-safety (RESOLVED)
 Section 7.4 of the concurrency spec flagged `dashboard.shutdown()` and `listener.shutdown()` as potentially non-async-signal-safe. Investigation confirmed neither shutdown function acquires any mutex: `DashboardServer::shutdown()` sets two booleans and closes a socket; `C2Listener::shutdown()` sets one boolean and closes a socket. Both are POSIX async-signal-safe. The concurrency spec should be updated to document this resolution.
 
-### 2. hex_session_id uses std::mt19937 (not CSPRNG)
-Section 4.2 of the concurrency spec notes that `hex_session_id` seeds `std::mt19937` from `std::random_device`. Sufficient for session UUIDs used as identifiers, but not suitable for security tokens. Should be documented with a note in the concurrency model spec.
-
-### 3. close(stdinPipe1) without lock in stream reader thread
-Spec §6.1 documents that `command_runner.cpp:256` closes `stdinPipe1` without holding `state->mutex`. If `sendInput()` is called concurrently, the write may go to a recycled fd. Mitigated in practice by the race window (close happens after pipe EOF, sendInput called before child exits). Fix: wrap in `lock_guard`.
-
 ### 4. DeepSeekProvider cross-thread access from skill executor (RESOLVED)
-`skill_runner.cpp:348` called `m_provider->complete()` from a background thread. `skill_runner.cpp` is no longer compiled. The new path uses `DrivenProvider`/`DrivenCore` single-threaded in the FTXUI event loop.
-
-### 5. g_timeoutFired read without std::atomic_signal_fence
-Spec §9.3 documents that `g_timeoutFired` (declared `volatile sig_atomic_t`) is read at `command_runner.cpp:348` without a matching volatile qualification. On some architectures the compiler may hoist the read before `alarm()`. Fix: replace with `std::atomic<int>` + `std::atomic_signal_fence`.
-
-### 6. xOnComplete streaming branch overwrites accumulated text
-`agent_tui.cpp` — `xOnComplete` passes `fullOutput` (from SSE final chunk's `Complete{""}`) to `streamUpdate()`, overwriting the accumulated response text with empty string. The response vanishes from the TUI display while persisting correctly in the DB. **Fix:** use `m_streamingText` instead of `fullOutput` in the streaming branch.
-
-### 7. includeTools=false prevents LLM tool calling
-`driven_core.cpp:90` — first LLM request omits tool schemas (`xStartLlmRequest(false)`). The LLM sees tool names in the base prompt text but cannot make API function calls without the `tools` parameter in the request. Combined with mock server legacy path returning `tool_calls` fixture when `tools` is present. **Fix:** change to `true` and update mock server.
-
-### 8. Session seq interleaving between init and goal phases
-SkillManager recording (from SessionContext git worktree init) and DrivenCore use independent `m_seq` counters targeting the same session, producing interleaved seq values in session export. **Fix:** use separate `subSessionId` for init-phase vs goal-phase messages.
+`skill_runner.cpp:348` called `m_provider->complete()` from a background thread. `skill_runner.cpp` is no longer compiled. The new path uses `DrivenProvider`/`DrivenCore` on the AppCoreThread background thread.
 
 ---
 
@@ -214,29 +212,35 @@ SkillManager recording (from SessionContext git worktree init) and DrivenCore us
 ```
 a0 binary (main.cpp)
 ├─ cmdRun:
-│   └─ DrivenCore::runSync() → DeepSeekProvider → LLM
+│   └─ AppCoreThread (background thread)
+│       ├─ DeepSeekProvider → DrivenCore
+│       └─ ppoll loop: ticks DrivenCore, sends events via MPSC
 │
 ├─ cmdTui (default):
-│   └─ AgentTui (FTXUI event loop thread)
-│       ├─ DrivenCore (state machine: Idle → AwaitingLlm → ExecutingTools)
-│       │   └─ LlmProvider* (injected: DeepSeekProvider)
-│       │       └─ ResponseDecoder (feed bytes → events)
-│       ├─ MessagePanel, InputPanel, StatusBar, DialogManager
-│       └─ SessionManager (PersistenceStore CRUD)
+│   ├─ MAIN THREAD: AgentTui (FTXUI render client)
+│   │   ├─ MessagePanel, InputPanel, StatusBar, DialogManager
+│   │   ├─ m_cmdSender (MPSC Sender<Command>)  ——→  SubmitGoal, Cancel, SetSession, ListSessions, ResumeSession
+│   │   └─ m_evtReceiver (MPSC Receiver<AppCoreEvent>)  ←——  LlmToken, ToolStart/End, Complete, Error, SessionReady/List/History
+│   └─ BACKGROUND THREAD: AppCoreThread
+│       ├─ DeepSeekProvider + DrivenCore
+│       └─ ppoll loop: drains commands, ticks core, sends events, calls wakeupFn
 
-Shared hierarchy: LlmProvider → DrivenProvider → DeepSeekProvider
-Both paths use DrivenCore with same LlmProvider interface.
+Communication: MPSC channels (thread-safe, eventfd-based, no shared state)
+TUI has ZERO core references: no DrivenCore, no LlmProvider, no SkillManager, no PersistenceStore
 ```
 
 **Event flow**:
 1. User types + Enter → `setOnSubmit` → `xHandleSubmit`
-2. `xHandleSubmit` → appends user message, calls `m_drivenCore->submitGoal(goal)`
-3. `submitGoal` → `xBuildInitialMessages` (no tools_for_prompt — base prompt from disk) → `xBuildToolSchemas` → `xStartLlmRequest(false)` (no tool schemas on first request)
-4. FTXUI frame render → `coreTicker` Renderer → `xTickCore()` → `m_drivenCore->tick()` → `m_provider->tick()` → `curl_multi_perform`
-5. Events (LlmToken, ToolStart, ToolEnd, Complete, Error) handled by `xHandleEvent`
-6. If core still busy after tick, `RequestAnimationFrame()` keeps the render loop going
+2. `xHandleSubmit` → appends user message, sends `cmdSender.send(SubmitGoal{goal})`
+3. FTXUI frame render → `drainEvents()` (no tick — core is on background thread)
+4. AppCoreThread drains `SubmitGoal`, calls `core.submitGoal()`, starts curl
+5. AppCoreThread ticks core → curl completes → events via `evtSender`
+6. AppCoreThread calls `wakeupFn()` → `screen->Post(Task{})`
+7. FTXUI event loop wakes → `RunOnce()` processes posted task, renders
+8. `drainEvents()` picks up MPSC events → `xHandleCoreEvent()`
+9. `RequestAnimationFrame()` forces re-render if events were processed
 
-**File count**: 18 src/tui/ files + 9 new src/ files = 27 total
+**File count**: 8 src/tui/ files + 7 core src/ files = 15 total (SessionManager deleted)
 
 ---
 
@@ -244,5 +248,6 @@ Both paths use DrivenCore with same LlmProvider interface.
 
 | Suite | Status | Failures |
 |-------|--------|----------|
-| C++ unit tests (33 targets) | 33/33 PASS | — |
-| Python E2E (39 tests) | 39/39 PASS | — |
+| C++ unit tests (32 targets) | 32/32 PASS | — |
+| Agent E2E (7 tests, Python pytest) | 7/7 PASS | — |
+| TUI E2E (12 tests, Python PTY) | 12/12 PASS | — |
