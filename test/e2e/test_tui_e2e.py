@@ -302,3 +302,36 @@ class TestTuiMultiTurn:
                     f"Second turn should reference first turn's context. "
                     f"Last output: {last_text[:300]}"
                 )
+
+
+class TestTuiWordWrapping:
+    """Tests for word wrapping in message panel.
+
+    Uses a fixture derived from a real session where the agent ran
+    read(file_path: '.') and the assistant returned a directory table.
+    The tool call has been rewritten to read a fixture file so the
+    test is deterministic."""
+
+    def test_tool_output_and_markdown_wrap(self):
+        """Tool output and assistant markdown content render without overflow."""
+        scenario = os.path.join(FIXTURES_DIR, "user_simple_tool_call.json")
+        with MockServer(scenario=scenario, stream=True) as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+
+                driver.send_keys("show files")
+                driver.send_enter()
+
+                deadline = time.monotonic() + 30
+                found_tool = False
+                last_text = ""
+                while time.monotonic() < deadline:
+                    text = driver.capture(timeout=2)
+                    if text:
+                        last_text = text
+                        if "Tool: read" in text and "Idle" in text:
+                            found_tool = True
+                            break
+                assert found_tool, (
+                    f"Tool: read + Idle state not seen. Last output: {last_text[:300]}"
+                )

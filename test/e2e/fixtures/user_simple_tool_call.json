@@ -1,0 +1,20 @@
+{
+  "name": "simple_tool_call",
+  "description": "simple_tool_call",
+  "analysis": null,
+  "turns": [
+    {
+      "tool_calls": [
+        {
+          "name": "read",
+          "arguments": {
+            "file_path": "/home/pc/projects/opensassi/a0/test/e2e/fixtures/user_simple_tool_call/a5a4209bfe28a28e747af8b57cdcc3c1dd87c301dc65953c287ff05009b59bf1.txt"
+          }
+        }
+      ]
+    },
+    {
+      "content": "Here are the files and directories in the current directory:\n\n| Name | Type |\n|------|------|\n| `.artifacts/` | Directory |\n| `.git/` | Directory |\n| `.gitignore` | File |\n| `.opencode/` | Directory |\n| `AGENTS.md` | File |\n| `CMakeLists.txt` | File |\n| `README.md` | File |\n| `Testing/` | Directory |\n| `blog/` | Directory |\n| `c2/` | Directory |\n| `demos/` | Directory |\n| `docs/` | Directory |\n| `docker/` | Directory |\n| `handoffs/` | Directory |\n| `prompts/` | Directory |\n| `scripts/` | Directory |\n| `sessions/` | Directory |\n| `skills/` | Directory |\n| `source/` | Directory |\n| `specs/` | Directory |\n| `src/` | Directory |\n| `technical-specification.md` | File |\n| `test/` | Directory |\n| `thirdparty/` | Directory |\n| `todos/` | Directory |\n| `TUI-IMPLEMENTATION-SESSION.md` | File |\n\nThere are **25 items** total \u2014 21 directories and 4 files."
+    }
+  ]
+}

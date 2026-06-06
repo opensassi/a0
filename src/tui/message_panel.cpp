@@ -20,8 +20,11 @@ public:
         if (autoScroll && !entries.empty()) {
             int total = static_cast<int>(entries.size());
             m_scrollTop = std::max(0, total - VISIBLE_ENTRIES);
+            scrollToBottom = true;
         }
     }
+
+    bool scrollToBottom = false;
 };
 
 static int xWindowStart(int scrollTop, int total, int window) {
@@ -51,7 +54,12 @@ MessagePanel::MessagePanel()
         }
 
         for (int i = start; i < end; ++i) {
-            elems.push_back(xRenderEntry(m_impl->entries[i]));
+            auto entry = xRenderEntry(m_impl->entries[i]);
+            if (m_impl->autoScroll && i == end - 1 && m_impl->scrollToBottom) {
+                entry = entry | ftxui::focus;
+                m_impl->scrollToBottom = false;
+            }
+            elems.push_back(std::move(entry));
         }
 
         if (end < total) {
@@ -154,15 +162,18 @@ void MessagePanel::clear() {
     m_impl->entries.clear();
     m_impl->m_scrollTop = 0;
     m_impl->autoScroll = true;
+    m_impl->scrollToBottom = false;
 }
 
 void MessagePanel::scrollToBottom() {
     m_impl->autoScroll = true;
+    m_impl->scrollToBottom = true;
     m_impl->ensureScroll();
 }
 
 void MessagePanel::scrollUp(int n) {
     m_impl->autoScroll = false;
+    m_impl->scrollToBottom = false;
     m_impl->m_scrollTop = std::max(0, m_impl->m_scrollTop - n);
 }
 
@@ -219,7 +230,7 @@ ftxui::Element MessagePanel::xRenderEntry(const MessageEntry& entry) const {
     } else if (entry.streaming) {
         content = xRenderStreamingPlaceholder(entry);
     } else {
-        content = ftxui::text(entry.content);
+        content = ftxui::paragraph(entry.content);
     }
 
     auto label = roleLabel(role, entry.toolName);
@@ -263,7 +274,7 @@ ftxui::Element MessagePanel::xRenderToolBlock(const MessageEntry& entry) const {
     ftxui::Elements body;
     body.push_back(header);
     if (!entry.toolOutput.empty()) {
-        body.push_back(ftxui::text(entry.toolOutput) | ftxui::color(ftxui::Color::GrayDark));
+        body.push_back(ftxui::paragraph(entry.toolOutput) | ftxui::color(ftxui::Color::GrayDark));
     }
 
     return ftxui::vbox(std::move(body)) | ftxui::color(ftxui::Color::BlueLight);
@@ -272,7 +283,7 @@ ftxui::Element MessagePanel::xRenderToolBlock(const MessageEntry& entry) const {
 ftxui::Element MessagePanel::xRenderStreamingPlaceholder(const MessageEntry& entry) const {
     auto cursor = ftxui::text("\u258C") | ftxui::blink;
     ftxui::Elements elems;
-    elems.push_back(ftxui::text(entry.content));
+    elems.push_back(ftxui::paragraph(entry.content));
     elems.push_back(cursor);
     return ftxui::hbox(std::move(elems));
 }

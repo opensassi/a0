@@ -76,13 +76,34 @@ The concurrency model spec (`specs/concurrency-model.md`) and sub-module specs (
 
 ### Rule 7: Clean Up Zombie Processes
 
-Failing tests often leave behind child processes that consume CPU or block ports. After each test iteration, verify that all child processes are dead:
+Run `bash scripts/cleanup-dev.sh` **before and after every test run** to prevent stale processes from interfering with results.
+
+Failing tests often leave behind child processes that consume CPU or block ports. To verify a clean environment, run the cleanup script and confirm its output says `cleanup-dev: done`:
 
 ```bash
-pgrep -f "a0" | grep -v $$ | xargs kill -9 2>/dev/null
-pgrep -f "mock_deepseek" | xargs kill 2>/dev/null
+bash scripts/cleanup-dev.sh
 ```
+
+If cleanup-dev.sh finds nothing to clean (ideal state), the environment is ready. If it reports any signals sent, a previous run left orphans — proceed with the test but be aware of potential state contamination.
+
+This script uses path-prefixed `pkill` to target only `build/{a0,b1,c2}` and `mock_deepseek` processes, avoiding the opencode harness itself. It also reads `.a0/*.pid` files and unlinks stale sockets. See `scripts/cleanup-dev.sh` for details.
 
 ### Rule 8: Document the Root Cause
 
 Once found, record the root cause in a bullet point with the file path and a one-line description. This builds a library of failure modes for future debugging sessions.
+
+## Creating Mock Fixtures from Real Sessions
+
+When asked to create a TUI E2E test fixture from a real agent session, use this workflow:
+
+1. The user provides the session slug (8-char prefix from the TUI status bar, e.g. `80380ff7`)
+2. Generate a short 3-5 word snake_case description from the current context that describes the flow being tested (e.g. `word_wrapping_long_tool_output`)
+3. Export the session and pipe through the conversion script:
+   ```bash
+   a0 session export --session-id=<uuid-slug|full-uuid> | python3 scripts/session-to-fixture.py \
+       --name "<3-5 word snake_case description>" \
+       > test/e2e/fixtures/user_<snake_case_name>.json
+   ```
+4. The script filters out init-phase messages (`sub_session_id < 0`), saves tool outputs as SHA256-named files in `test/e2e/fixtures/<name>/`, rewrites tool calls to `read()` those fixture files, and emits a scenario JSON compatible with `MockServer(scenario=path, stream=True)`
+5. Generate a `pytest` test method referencing the fixture, following the patterns in `test/e2e/test_tui_e2e.py`
+6. Verify with: `bash test/e2e/test_tui_e2e.sh`

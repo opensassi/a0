@@ -36,7 +36,7 @@ struct MarkdownRendererImpl {
                 result = ftxui::vbox(std::move(block.children));
                 break;
             case MD_BLOCK_P:
-                result = ftxui::hbox(std::move(block.children));
+                result = ftxui::hflow(std::move(block.children));
                 break;
             case MD_BLOCK_H: {
                 auto h = ftxui::hbox(std::move(block.children));
@@ -73,13 +73,13 @@ struct MarkdownRendererImpl {
         ftxui::Element elem;
         switch (type) {
             case MD_TEXT_CODE:
-                elem = ftxui::text(text) | style::inlineCode;
+                elem = ftxui::paragraph(text) | style::inlineCode;
                 break;
             case MD_TEXT_HTML:
                 elem = ftxui::text(text) | ftxui::dim;
                 break;
             default:
-                elem = ftxui::text(text);
+                elem = ftxui::paragraph(text);
                 break;
         }
         if (!blockStack.empty()) {

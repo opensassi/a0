@@ -123,6 +123,9 @@ class TuiDriver:
         ]
         if self.mock_server:
             cmd += ["--mock-api", f"http://127.0.0.1:{self.mock_server.port}"]
+        # Redirect stderr to file to prevent curl verbose output from
+        # polluting the PTY-captured TUI output.
+        cmd += ["--log-file", f"{a0_dir}/a0.log"]
         cmd += self.extra_args
         cmd += ["tui", "--test-mode", "--no-permissions"]
 
