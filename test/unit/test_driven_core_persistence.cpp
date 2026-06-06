@@ -120,3 +120,64 @@ TEST_F(DrivenCorePersistenceTest, SessionSwitchPersistsToCorrectSession) {
     ASSERT_GE(msgs2.size(), 1u);
     EXPECT_EQ(msgs2[0].content, "goal 2");
 }
+
+TEST_F(DrivenCorePersistenceTest, ErrorEventFailsGoal) {
+    provider.m_responses = {mpsc::Error{"something went wrong"}};
+
+    DrivenCore core = makeCore();
+    std::string result = core.runSync("do something");
+
+    EXPECT_TRUE(result.find("ERROR:") != std::string::npos);
+    EXPECT_TRUE(result.find("something went wrong") != std::string::npos);
+}
+
+TEST_F(DrivenCorePersistenceTest, CancelClearsState) {
+    provider.m_responses = {};
+
+    DrivenCore core = makeCore();
+    core.submitGoal("test cancel");
+
+    EXPECT_FALSE(core.idle());
+    core.cancel();
+    EXPECT_TRUE(core.idle());
+    // Second cancel should be safe
+    core.cancel();
+    EXPECT_TRUE(core.idle());
+}
+
+TEST_F(DrivenCorePersistenceTest, SetSessionBeforeSubmit) {
+    int64_t customSessionId = store.createSession("custom-uuid", 0, 0, 1);
+    provider.m_responses = {mpsc::Complete{"custom result"}};
+
+    DrivenCore core(&provider, nullptr, &store);
+    core.setSession(customSessionId, "custom-uuid");
+    std::string result = core.runSync("custom goal");
+
+    EXPECT_EQ(result, "custom result");
+
+    auto msgs = store.loadMessages(customSessionId, std::nullopt);
+    ASSERT_GE(msgs.size(), 1u);
+    EXPECT_EQ(msgs[0].content, "custom goal");
+}
+
+TEST_F(DrivenCorePersistenceTest, SubmitFromIdleOnly) {
+    DrivenCore core = makeCore();
+    core.submitGoal("first");
+    // Second submit should be ignored (not idle)
+    core.submitGoal("second");
+    auto msgs = store.loadMessages(sessionDbId, std::nullopt);
+    EXPECT_EQ(msgs[0].content, "first");
+}
+
+TEST_F(DrivenCorePersistenceTest, NullSkillManagerDoesNotCrash) {
+    provider.m_responses = {mpsc::Complete{"no skillmgr result"}};
+    DrivenCore core(&provider, nullptr, &store);
+    core.setSession(sessionDbId, sessionUuid);
+    EXPECT_NO_FATAL_FAILURE(core.runSync("test"));
+}
+
+TEST_F(DrivenCorePersistenceTest, TickFromIdleReturnsEmpty) {
+    DrivenCore core = makeCore();
+    auto events = core.tick();
+    EXPECT_TRUE(events.empty());
+}

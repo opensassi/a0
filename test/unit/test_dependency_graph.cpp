@@ -151,3 +151,55 @@ TEST(DependencyGraphTest, BuildBatches_MixedPreservesOrderByClass) {
     EXPECT_EQ(batches[2].size(), 1u);
     EXPECT_EQ(batches[2][0].qualifiedName, "system-fs-edit");
 }
+
+// ===========================================================================
+// xExecuteOne (via executeBatches with null skillMgr)
+// ===========================================================================
+
+TEST(DependencyGraphTest, ExecuteBatches_NullSkillManager) {
+    std::vector<ToolInvocation> invs = {{"system-fs-read", {{"file_path", "/tmp"}}}};
+    auto batches = DependencyGraph::buildBatches(invs);
+    auto results = DependencyGraph::executeBatches(batches, nullptr, 4);
+    ASSERT_EQ(results.size(), 1u);
+    ASSERT_EQ(results[0].outputs.size(), 1u);
+    EXPECT_TRUE(results[0].outputs[0].find("ERROR:") != std::string::npos);
+}
+
+TEST(DependencyGraphTest, ExecuteBatches_EmptyBatches) {
+    auto results = DependencyGraph::executeBatches({}, nullptr, 4);
+    EXPECT_TRUE(results.empty());
+}
+
+// ===========================================================================
+// Reader/Writer classification edge cases
+// ===========================================================================
+
+TEST(DependencyGraphTest, BuildBatches_ReadersDeduplicated) {
+    std::vector<ToolInvocation> invs = {
+        {"system-fs-read", {{"a", 1}}},
+        {"system-fs-read", {{"a", 2}}},
+    };
+    auto batches = DependencyGraph::buildBatches(invs);
+    // Both readers should be in a single batch
+    ASSERT_EQ(batches.size(), 1u);
+    ASSERT_EQ(batches[0].size(), 2u);
+    EXPECT_EQ(batches[0][0].qualifiedName, "system-fs-read");
+    EXPECT_EQ(batches[0][1].qualifiedName, "system-fs-read");
+}
+
+TEST(DependencyGraphTest, BuildBatches_WriterAndReadWrite) {
+    std::vector<ToolInvocation> invs = {
+        {"system-fs-write", {{"file_path", "a"}}},
+        {"system-bash-bash", {{"command", "echo"}}}
+    };
+    auto batches = DependencyGraph::buildBatches(invs);
+    // writer batch first, then read_write
+    ASSERT_EQ(batches.size(), 2u);
+    EXPECT_EQ(batches[0][0].qualifiedName, "system-fs-write");
+    EXPECT_EQ(batches[1][0].qualifiedName, "system-bash-bash");
+}
+
+TEST(DependencyGraphTest, BuildBatches_MetaPrefixes) {
+    EXPECT_EQ(DependencyGraph::classifyTool("system-meta-123"), ResourceClass::READER);
+    EXPECT_EQ(DependencyGraph::classifyTool("system-meta-show_skills"), ResourceClass::READER);
+}

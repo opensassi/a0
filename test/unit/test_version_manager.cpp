@@ -109,3 +109,54 @@ TEST_F(VersionManagerTest, PersistLockFileAcrossInstances) {
     // After reload, the version should be found
     EXPECT_EQ(m_mgr->release(SkillNamespace::LOCAL, "persist_comp", "abc123"), 0);
 }
+
+TEST_F(VersionManagerTest, RestoreArchivedVersion) {
+    createComponent("local", "restore_comp");
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "restore_comp", "abc123", "1.0.0"), 0);
+    fs::remove_all(m_skillsRoot + "/local/restore_comp");
+    EXPECT_EQ(m_mgr->restore(SkillNamespace::LOCAL, "restore_comp", "abc123"), 0);
+    EXPECT_TRUE(fs::exists(m_skillsRoot + "/local/restore_comp/skill.json"));
+}
+
+TEST_F(VersionManagerTest, GcDryRun) {
+    createComponent("local", "gc_comp");
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "gc_comp", "abc123", "1.0.0"), 0);
+    int removed = m_mgr->gc(true);
+    EXPECT_EQ(removed, 0);
+}
+
+TEST_F(VersionManagerTest, ReleaseToZeroThenGc) {
+    createComponent("local", "gc_zero");
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "gc_zero", "abc123", "1.0.0"), 0);
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "gc_zero", "abc123", "1.0.0"), 0);
+    ASSERT_EQ(m_mgr->release(SkillNamespace::LOCAL, "gc_zero", "abc123"), 0);
+    ASSERT_EQ(m_mgr->release(SkillNamespace::LOCAL, "gc_zero", "abc123"), 0);
+    EXPECT_NO_FATAL_FAILURE(m_mgr->gc(false));
+}
+
+TEST_F(VersionManagerTest, ArchiveWithToolPreservesFiles) {
+    createComponent("local", "tool_comp");
+    std::string toolDir = m_skillsRoot + "/local/tool_comp";
+    fs::create_directories(toolDir + "/scripts");
+    {
+        std::ofstream f(toolDir + "/scripts/test.sh");
+        f << "echo hello";
+    }
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "tool_comp", "abc123", "1.0.0"), 0);
+    std::string storePath = m_storeRoot + "/local/abc123/tool_comp/scripts/test.sh";
+    EXPECT_TRUE(fs::exists(storePath));
+}
+
+TEST_F(VersionManagerTest, MultipleArchivesSameComponent) {
+    createComponent("local", "multi_comp");
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "multi_comp", "abc", "1.0.0"), 0);
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "multi_comp", "def", "2.0.0"), 0);
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "multi_comp", "abc", "1.0.0"), 0);
+}
+
+TEST_F(VersionManagerTest, ReleaseByCommitAndGc) {
+    createComponent("local", "gc_target");
+    ASSERT_EQ(m_mgr->archive(SkillNamespace::LOCAL, "gc_target", "aaa", "1.0.0"), 0);
+    ASSERT_EQ(m_mgr->release(SkillNamespace::LOCAL, "gc_target", "aaa"), 0);
+    EXPECT_NO_FATAL_FAILURE(m_mgr->gc(false));
+}

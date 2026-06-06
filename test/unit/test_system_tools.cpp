@@ -325,3 +325,171 @@ TEST_F(SystemToolsTest, GrepWithIncludeFilter) {
     EXPECT_TRUE(result.output.find("match_me.cpp") != std::string::npos);
     EXPECT_EQ(result.output.find("ignore_me.h"), std::string::npos);
 }
+
+TEST_F(SystemToolsTest, ReadUsingFilePathKey) {
+    writeFile(m_tmp + "/test.txt", "hello world");
+    auto result = a0::xRead({{"file_path", m_tmp + "/test.txt"}});
+    EXPECT_TRUE(result.output.find("1: hello world") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, ReadWithOffsetAndLimit) {
+    writeFile(m_tmp + "/lines.txt",
+        "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10");
+    auto result = a0::xRead({
+        {"filePath", m_tmp + "/lines.txt"},
+        {"offset", 3},
+        {"limit", 2}
+    });
+    EXPECT_TRUE(result.output.find("3: line3") != std::string::npos);
+    EXPECT_TRUE(result.output.find("4: line4") != std::string::npos);
+    EXPECT_EQ(result.output.find("5: line5"), std::string::npos);
+}
+
+TEST_F(SystemToolsTest, ReadShortTextFile) {
+    writeFile(m_tmp + "/short_read.txt", "just a single line");
+    auto result = a0::xRead({{"filePath", m_tmp + "/short_read.txt"}});
+    EXPECT_TRUE(result.output.find("1: just a single line") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, EditUsingFileKeyNames) {
+    writeFile(m_tmp + "/edit_keys.txt", "hello foo world");
+    auto result = a0::xEdit({
+        {"file_path", m_tmp + "/edit_keys.txt"},
+        {"old_string", "foo"},
+        {"new_string", "bar"}
+    });
+    EXPECT_TRUE(result.output.find("Edit applied successfully") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, EditReplaceAllOldStringNotFound) {
+    writeFile(m_tmp + "/edit_notfound2.txt", "hello world");
+    auto result = a0::xEdit({
+        {"filePath", m_tmp + "/edit_notfound2.txt"},
+        {"oldString", "zzzzz"},
+        {"newString", "bar"},
+        {"replaceAll", true}
+    });
+    EXPECT_TRUE(result.output.find("oldString not found") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, WriteWithSubdirCreation) {
+    std::string path = m_tmp + "/subdir/newfile.txt";
+    auto result = a0::xWrite({{"filePath", path}, {"content", "nested"}});
+    EXPECT_TRUE(result.output.find("Wrote file successfully") != std::string::npos);
+    EXPECT_TRUE(fs::exists(path));
+}
+
+TEST_F(SystemToolsTest, BashWithTimeoutParam) {
+    auto result = a0::xBash({
+        {"command", "echo timeout_test"},
+        {"timeout", 5000}
+    });
+    EXPECT_TRUE(result.output.find("timeout_test") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, BashWithCommandFailed) {
+    auto result = a0::xBash({{"command", "false"}});
+    EXPECT_TRUE(result.output.find("ERROR:") != std::string::npos ||
+                result.output.find("exit code") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, GlobWithRegexSpecialChars) {
+    writeFile(m_tmp + "/test+file.txt", "content");
+    auto result = a0::xGlob({
+        {"pattern", "test+file.txt"},
+        {"path", m_tmp}
+    });
+    EXPECT_TRUE(result.output.find("test+file.txt") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, GlobWithDotPattern) {
+    writeFile(m_tmp + "/config.json", "{}");
+    auto result = a0::xGlob({
+        {"pattern", "*.json"},
+        {"path", m_tmp}
+    });
+    EXPECT_TRUE(result.output.find("config.json") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, ReadWithTruncatedLines) {
+    std::string path = m_tmp + "/longlines.txt";
+    std::string longLine = std::string(5000, 'X');
+    writeFile(path, longLine + "\n" + "short line");
+    auto result = a0::xRead({{"filePath", path}});
+    EXPECT_TRUE(result.output.find("1:") != std::string::npos);
+    EXPECT_TRUE(result.output.find("2: short line") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, ReadWithContinuationHint) {
+    std::string path = m_tmp + "/manylines.txt";
+    std::string content;
+    for (int i = 1; i <= 15; i++)
+        content += "line" + std::to_string(i) + "\n";
+    writeFile(path, content);
+    auto result = a0::xRead({
+        {"filePath", path},
+        {"offset", 12},
+        {"limit", 3}
+    });
+    EXPECT_TRUE(result.output.find("more lines") != std::string::npos) << "Output: " << result.output;
+}
+
+TEST_F(SystemToolsTest, BashStderrIncluded) {
+    auto result = a0::xBash({{"command", "echo stderr_output >&2; echo stdout_output"}});
+    EXPECT_TRUE(result.output.find("stdout_output") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, BashOutputTruncation) {
+    std::string big(1024 * 1024, 'A');
+    auto result = a0::xBash({{"command", "echo '" + big + "'"}});
+    EXPECT_TRUE(result.output.size() <= 1024 * 1024 + 100);
+}
+
+TEST_F(SystemToolsTest, WriteFailsOnBadPath) {
+    std::string badPath = m_tmp + "/nonexistent_parent/file.txt";
+    auto result = a0::xWrite({{"filePath", badPath}, {"content", "test"}});
+    EXPECT_TRUE(result.output.find("ERROR") != std::string::npos ||
+                result.output.find("successfully") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, EditEmptyFile) {
+    writeFile(m_tmp + "/empty.txt", "");
+    auto result = a0::xEdit({
+        {"filePath", m_tmp + "/empty.txt"},
+        {"oldString", "foo"},
+        {"newString", "bar"}
+    });
+    EXPECT_TRUE(result.output.find("oldString not found") != std::string::npos);
+}
+
+TEST_F(SystemToolsTest, EditWithReplaceAllSingleMatch) {
+    writeFile(m_tmp + "/single_replace.txt", "foo bar foo baz");
+    auto result = a0::xEdit({
+        {"filePath", m_tmp + "/single_replace.txt"},
+        {"oldString", "foo"},
+        {"newString", "qux"},
+        {"replaceAll", true}
+    });
+    EXPECT_TRUE(result.output.find("Edit applied") != std::string::npos);
+    std::ifstream f(m_tmp + "/single_replace.txt");
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "qux bar qux baz");
+}
+
+TEST_F(SystemToolsTest, GlobWithExcludedDir) {
+    fs::create_directories(m_tmp + "/node_modules");
+    writeFile(m_tmp + "/node_modules/pkg.txt", "hidden");
+    writeFile(m_tmp + "/visible.txt", "found");
+    auto result = a0::xGlob({
+        {"pattern", "**/*.txt"},
+        {"path", m_tmp}
+    });
+    EXPECT_TRUE(result.output.find("visible.txt") != std::string::npos);
+    EXPECT_EQ(result.output.find("node_modules"), std::string::npos);
+}
+
+TEST_F(SystemToolsTest, GrepPatternFoundEarly) {
+    writeFile(m_tmp + "/early_grep.txt", "AAA findme BBB");
+    auto result = a0::xGrep({{"pattern", "findme"}, {"path", m_tmp}});
+    EXPECT_TRUE(result.output.find("findme") != std::string::npos);
+}

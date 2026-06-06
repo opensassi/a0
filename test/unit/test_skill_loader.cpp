@@ -166,3 +166,164 @@ TEST_F(SkillLoaderTest, writeSystemManifest) {
     // SYSTEM namespace is read-only, so writeManifest returns -1
     EXPECT_NE(m_loader->writeManifest("syscomp", m), 0);
 }
+
+TEST_F(SkillLoaderTest, LoadWithSubModules) {
+    fs::create_directories(m_root + "/local/maincomp/submod1");
+    fs::create_directories(m_root + "/local/maincomp/submod2");
+    {
+        std::ofstream f(m_root + "/local/maincomp/skill.json");
+        f << R"({"name":"maincomp","version":"1.0","subModules":["submod1","submod2"]})" << "\n";
+    }
+    {
+        std::ofstream f(m_root + "/local/maincomp/submod1/skill.json");
+        f << R"({"name":"submod1","version":"1.0","tools":[{"name":"t1","command":"echo t1"}]})" << "\n";
+    }
+    {
+        std::ofstream f(m_root + "/local/maincomp/submod2/skill.json");
+        f << R"({"name":"submod2","version":"1.0","tools":[{"name":"t2","command":"echo t2"}]})" << "\n";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    SkillTool tool;
+    // Sub-modules get indexed under "maincomp-submod1" component key
+    EXPECT_EQ(m_loader->getTool("local", "maincomp-submod1", "t1", tool), 0);
+    EXPECT_EQ(tool.command, "echo t1");
+}
+
+TEST_F(SkillLoaderTest, GithubNamespaceScanned) {
+    fs::create_directories(m_root + "/github_testuser/mycomp");
+    {
+        std::ofstream f(m_root + "/github_testuser/mycomp/skill.json");
+        f << R"({"name":"mycomp","version":"1.0","tools":[{"name":"gtool","command":"echo gh"}]})" << "\n";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    SkillTool tool;
+    EXPECT_EQ(m_loader->getTool("github_testuser", "mycomp", "gtool", tool), 0);
+    EXPECT_EQ(tool.command, "echo gh");
+}
+
+TEST_F(SkillLoaderTest, GetToolNotFound) {
+    fs::create_directories(m_root + "/local/comp");
+    {
+        std::ofstream f(m_root + "/local/comp/skill.json");
+        f << R"({"name":"comp","version":"1.0","tools":[{"name":"t1","command":"echo"}]})" << "\n";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    SkillTool tool;
+    EXPECT_EQ(m_loader->getTool("local", "nonexistent", "t1", tool), -1);
+    EXPECT_EQ(m_loader->getTool("local", "comp", "nonexistent_tool", tool), -2);
+}
+
+TEST_F(SkillLoaderTest, GetPromptNotFound) {
+    fs::create_directories(m_root + "/local/comp");
+    {
+        std::ofstream f(m_root + "/local/comp/skill.json");
+        f << R"({"name":"comp","version":"1.0","prompts":[{"name":"p1","prompt":"hello"}]})" << "\n";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    Prompt prompt;
+    EXPECT_EQ(m_loader->getPrompt("local", "nonexistent", "p1", prompt), -1);
+    EXPECT_EQ(m_loader->getPrompt("local", "comp", "nonexistent_prompt", prompt), -2);
+}
+
+TEST_F(SkillLoaderTest, RemoveComponentLocal) {
+    fs::create_directories(m_root + "/local/removable");
+    {
+        std::ofstream f(m_root + "/local/removable/skill.json");
+        f << R"({"name":"removable","version":"1.0"})" << "\n";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    EXPECT_EQ(m_loader->removeComponent("removable"), 0);
+    EXPECT_FALSE(fs::exists(m_root + "/local/removable"));
+}
+
+TEST_F(SkillLoaderTest, WriteManifestWritesToDisk) {
+    fs::create_directories(m_root + "/local");
+    SkillManifest m;
+    m.name = "testwrite";
+    m.version = "2.0.0";
+    m.ns = SkillNamespace::LOCAL;
+    SkillTool tool;
+    tool.name = "tw";
+    tool.command = "echo test";
+    m.tools.push_back(tool);
+    EXPECT_EQ(m_loader->writeManifest("testwrite", m), 0);
+    EXPECT_TRUE(fs::exists(m_root + "/local/testwrite/skill.json"));
+}
+
+TEST_F(SkillLoaderTest, LoadManifestWithToolDetails) {
+    fs::create_directories(m_root + "/local/detail");
+    {
+        std::ofstream f(m_root + "/local/detail/skill.json");
+        f << R"({"name":"detail","version":"1.0","tools":[{"name":"t","command":"echo","parameters":{"type":"object"}}]})" << "\n";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    SkillTool tool;
+    EXPECT_EQ(m_loader->getTool("local", "detail", "t", tool), 0);
+    EXPECT_EQ(tool.name, "t");
+    EXPECT_EQ(tool.command, "echo");
+}
+
+TEST_F(SkillLoaderTest, LoadManifestWithAllToolFields) {
+    fs::create_directories(m_root + "/local/full");
+    {
+        std::ofstream f(m_root + "/local/full/skill.json");
+        f << R"({
+            "name":"full","version":"2.0",
+            "tools":[{
+                "name":"t","command":"echo","inputMode":"args",
+                "description":"a tool","systemTool":true,"default":true,
+                "timeoutSecs":60,"streaming":true,"subCommand":"sub",
+                "trustLevel":"HIGH","dockerImage":"ubuntu:22.04",
+                "aptDependencies":["curl"],
+                "parameters":{"type":"object"}
+            }],
+            "prompts":[{
+                "name":"p","prompt":"hello","description":"a prompt",
+                "dependencies":["dep1"],"chain":["base"],
+                "parallelValidators":true,
+                "validators":[{"toolName":"v1"}]
+            }]
+        })" << "\n";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    SkillTool tool;
+    ASSERT_EQ(m_loader->getTool("local", "full", "t", tool), 0);
+    EXPECT_EQ(tool.name, "t");
+    EXPECT_TRUE(tool.systemTool);
+    EXPECT_TRUE(tool.default_);
+    EXPECT_EQ(tool.timeoutSecs, 60);
+    EXPECT_TRUE(tool.streaming);
+    EXPECT_EQ(tool.trustLevel, TrustLevel::HIGH);
+    ASSERT_EQ(tool.aptDependencies.size(), 1u);
+    EXPECT_EQ(tool.aptDependencies[0], "curl");
+}
+
+TEST_F(SkillLoaderTest, LoadManifestWithSubModulesError) {
+    fs::create_directories(m_root + "/local/parent/sub");
+    {
+        std::ofstream f(m_root + "/local/parent/skill.json");
+        f << R"({"name":"parent","version":"1.0","subModules":["sub"]})" << "\n";
+    }
+    {
+        std::ofstream f(m_root + "/local/parent/sub/skill.json");
+        f << "invalid json";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    // Should not crash, just skip the sub-module
+}
+
+TEST_F(SkillLoaderTest, PromptFileFound) {
+    fs::create_directories(m_root + "/local/promptdir");
+    {
+        std::ofstream f(m_root + "/local/promptdir/skill.json");
+        f << R"({"name":"promptdir","version":"1.0","prompts":[{"name":"p","promptFile":"content.md"}]})" << "\n";
+    }
+    {
+        std::ofstream f(m_root + "/local/promptdir/content.md");
+        f << "file content";
+    }
+    EXPECT_EQ(m_loader->loadAll(), 0);
+    Prompt p;
+    ASSERT_EQ(m_loader->getPrompt("local", "promptdir", "p", p), 0);
+    EXPECT_EQ(p.prompt, "file content");
+}

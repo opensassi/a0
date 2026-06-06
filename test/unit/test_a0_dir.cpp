@@ -102,3 +102,23 @@ TEST_F(A0DirTest, CreateDirOutsideGitRepo) {
     EXPECT_FALSE(fs::exists(m_tmp + "/.gitignore"));
     fs::current_path("/");
 }
+
+TEST_F(A0DirTest, RequireWorktreeMissing) {
+    std::string path = m_tmp + "/.a0";
+    int rc = a0::ensureA0Dir(path, true);
+    EXPECT_EQ(rc, -1);
+}
+
+TEST_F(A0DirTest, RequireWorktreeExisting) {
+    std::string path = m_tmp + "/.a0";
+    fs::create_directories(path + "/worktrees");
+    int rc = a0::ensureA0Dir(path, true);
+    EXPECT_EQ(rc, 1);
+}
+
+TEST_F(A0DirTest, NewDirWorktreeCreated) {
+    std::string path = m_tmp + "/.a0";
+    int rc = a0::ensureA0Dir(path, false);
+    EXPECT_EQ(rc, 0);
+    EXPECT_TRUE(fs::is_directory(path + "/worktrees"));
+}

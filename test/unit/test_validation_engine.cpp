@@ -164,3 +164,61 @@ TEST_F(ValidationEngineTest, GithubNamespaceValidation) {
     int rc = m_engine->validate(SkillNamespace::GITHUB, "gh_comp", m, "ghi789", report);
     EXPECT_EQ(rc, 0);
 }
+
+TEST_F(ValidationEngineTest, MultipleInvocationsAllMatch) {
+    SkillTool tool;
+    tool.name = "multi_tool";
+    tool.command = "echo expected";
+    tool.inputMode = "stdin";
+    SkillManifest m = makeManifestWithTool("multi_comp", tool);
+
+    addInvocation("local", "multi_comp", "multi_tool", json(), json("expected\n"));
+    addInvocation("local", "multi_comp", "multi_tool", json(), json("expected\n"));
+
+    std::string report;
+    int rc = m_engine->validate(SkillNamespace::LOCAL, "multi_comp", m, "abc123", report);
+    EXPECT_EQ(rc, 0);
+}
+
+TEST_F(ValidationEngineTest, MultipleInvocationsOneFails) {
+    SkillTool tool;
+    tool.name = "partial_tool";
+    tool.command = "echo expected";
+    tool.inputMode = "stdin";
+    SkillManifest m = makeManifestWithTool("partial_comp", tool);
+
+    addInvocation("local", "partial_comp", "partial_tool", json(), json("expected\n"));
+    addInvocation("local", "partial_comp", "partial_tool", json(), json("wrong"));
+
+    std::string report;
+    int rc = m_engine->validate(SkillNamespace::LOCAL, "partial_comp", m, "abc123", report);
+    EXPECT_EQ(rc, -1);
+}
+
+static bool g_bridgeCalled = false;
+static std::string xMockBridge(const std::string& input) {
+    g_bridgeCalled = true;
+    return "transformed_result";
+}
+
+TEST_F(ValidationEngineTest, TransformCommandWorks) {
+    SkillTool tool;
+    tool.name = "transform_tool";
+    tool.command = "echo raw_output";
+    tool.inputMode = "stdin";
+    SkillManifest m = makeManifestWithTool("transform_comp", tool);
+
+    CompatBridge bridge;
+    bridge.toolName = "transform_tool";
+    bridge.bridgeCommand = "echo '{\"result\":\"transformed_result\"}'";
+    bridge.description = "test bridge";
+    m.compat.push_back(bridge);
+
+    addInvocation("local", "transform_comp", "transform_tool", json(),
+                  json::parse("{\"result\":\"transformed_result\"}"));
+
+    std::string report;
+    int rc = m_engine->validate(SkillNamespace::LOCAL, "transform_comp", m, "abc123", report);
+    // Bridge should transform raw_output to transformed_result, making match succeed
+    EXPECT_EQ(rc, 1);
+}

@@ -135,3 +135,51 @@ TEST_F(ToolRunnerTest, TimeoutEnforced) {
     EXPECT_TRUE(output.find("ERROR: timeout") == 0);
     EXPECT_LE(elapsed, 5);
 }
+
+TEST_F(ToolRunnerTest, StdinModeObjectNoInputKey) {
+    Tool tool = makeEchoTool();
+    json result = runner.run(tool, json::object({{"extra", "data"}}));
+    ASSERT_TRUE(result.is_string());
+}
+
+TEST_F(ToolRunnerTest, ArgsModeWithNamedNumberValue) {
+    Tool tool = {"echo_count", "echo count", "sh -c 'echo \"$@\"' _", "args"};
+    json params = {{"count", 42}, {"verbose", true}};
+    json result = runner.run(tool, params);
+    ASSERT_TRUE(result.is_string());
+    std::string out = result.get<std::string>();
+    EXPECT_TRUE(out.find("--count=42") != std::string::npos) << "Got: " << out;
+    EXPECT_TRUE(out.find("--verbose=true") != std::string::npos) << "Got: " << out;
+}
+
+TEST_F(ToolRunnerTest, ArgsModeJsonArrayValue) {
+    Tool tool = {"echo_json", "echo json", "sh -c 'echo \"$@\"' _", "args"};
+    json params = {{"items", json::array({1, 2, 3})}};
+    json result = runner.run(tool, params);
+    ASSERT_TRUE(result.is_string());
+}
+
+TEST_F(ToolRunnerTest, NonObjectParamsStdinMode) {
+    Tool tool = makeBashTool();
+    json result = runner.run(tool, json(42));
+    ASSERT_TRUE(result.is_string());
+}
+
+TEST_F(ToolRunnerTest, RunStreamingEmptyInput) {
+    Tool tool = makeBashTool();
+    std::string accumulated;
+    a0::StreamHandle handle = runner.runStreaming(tool, json::object(),
+        [&](const std::string& data, const std::string& dir) {
+            accumulated += data;
+        });
+    handle.wait();
+}
+
+TEST_F(ToolRunnerTest, TruncationHardLimit) {
+    std::string bigData(1024 * 1024 + 500, 'B');
+    Tool tool = makeBashTool();
+    json result = runner.run(tool, {{"input", "echo '" + bigData + "'"}});
+    ASSERT_TRUE(result.is_string());
+    std::string out = result.get<std::string>();
+    EXPECT_LE(out.size(), 1024 * 1024 + 100);
+}

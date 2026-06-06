@@ -649,3 +649,183 @@ TEST_F(SkillManagerTest, ExecuteToolStreaming_HandlerTakesPrecedenceOverCommandT
     EXPECT_EQ(output, "hello handler");
     EXPECT_EQ(handle.streamId, 0);
 }
+
+TEST_F(SkillManagerTest, ExecuteToolWithMeta_ExactHandler) {
+    m_mgr->registerHandler("system-test-exec", [](const json& p, const HandlerContext&) {
+        return ::a0::HandlerResult{"executed: " + p.value("val", ""), {}};
+    });
+    auto hr = m_mgr->executeToolWithMeta("system-test-exec", {{"val", "hello"}});
+    EXPECT_EQ(hr.output, "executed: hello");
+}
+
+TEST_F(SkillManagerTest, ExecuteToolWithMeta_WildcardHandler) {
+    m_mgr->registerHandler("system-test-*", [](const json& p, const HandlerContext& ctx) {
+        return ::a0::HandlerResult{"wildcard: " + ctx.subcommand, {}};
+    });
+    auto hr = m_mgr->executeToolWithMeta("system-test-cmd", {{}});
+    EXPECT_EQ(hr.output, "wildcard: cmd");
+}
+
+TEST_F(SkillManagerTest, ExecuteToolWithMeta_TwoPartAlias) {
+    m_mgr->registerHandler("system-bash-bash", [](const json& p, const HandlerContext&) {
+        return ::a0::HandlerResult{"bash output", {}};
+    });
+    auto hr = m_mgr->executeToolWithMeta("system-bash", {{}});
+    EXPECT_EQ(hr.output, "bash output");
+}
+
+TEST_F(SkillManagerTest, ExecuteToolWithMeta_NotFound) {
+    auto hr = m_mgr->executeToolWithMeta("local-nonexistent-tool", {{}});
+    EXPECT_TRUE(hr.output.find("ERROR: tool not found") != std::string::npos);
+}
+
+TEST_F(SkillManagerTest, Schemas_DefaultOnly) {
+    writeManifest(m_skillsRoot, "local", "comp", json{
+        {"name", "comp"},
+        {"version", "1.0.0"},
+        {"tools", json::array({
+            json{{"name", "visible"}, {"command", "echo"}, {"inputMode", "args"}, {"default", true},
+                 {"parameters", {{"type", "object"}, {"properties", json::object()}, {"required", json::array()}}}},
+            json{{"name", "hidden"}, {"command", "echo"}, {"inputMode", "args"},
+                 {"parameters", {{"type", "object"}, {"properties", json::object()}, {"required", json::array()}}}}
+        })}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+    auto schemas = m_mgr->schemas(true);
+    bool hasVisible = false;
+    bool hasHidden = false;
+    for (const auto& s : schemas) {
+        if (s.name == "visible") hasVisible = true;
+        if (s.name == "hidden") hasHidden = true;
+    }
+    EXPECT_TRUE(hasVisible);
+    EXPECT_FALSE(hasHidden);
+}
+
+TEST_F(SkillManagerTest, Schemas_All) {
+    writeManifest(m_skillsRoot, "local", "comp", json{
+        {"name", "comp"},
+        {"version", "1.0.0"},
+        {"tools", json::array({
+            json{{"name", "a"}, {"command", "echo"}, {"inputMode", "args"},
+                 {"parameters", {{"type", "object"}, {"properties", json::object()}, {"required", json::array()}}}},
+            json{{"name", "b"}, {"command", "echo"}, {"inputMode", "args"},
+                 {"parameters", {{"type", "object"}, {"properties", json::object()}, {"required", json::array()}}}}
+        })}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+    auto schemas = m_mgr->schemas(false);
+    EXPECT_EQ(schemas.size(), 2);
+}
+
+TEST_F(SkillManagerTest, RegisterHandlerAndExecute) {
+    bool called = false;
+    m_mgr->registerHandler("system-test-handler", [&](const json&, const HandlerContext&) {
+        called = true;
+        return ::a0::HandlerResult{"ok", {}};
+    });
+    m_mgr->executeTool("system-test-handler", {});
+    EXPECT_TRUE(called);
+}
+
+TEST_F(SkillManagerTest, ExecuteTool_CommandToolWithRunner) {
+    writeManifest(m_skillsRoot, "local", "comp", json{
+        {"name", "comp"},
+        {"version", "1.0.0"},
+        {"tools", json::array({
+            json{{"name", "echo_tool"}, {"command", "echo hello"}, {"inputMode", "stdin"}}
+        })}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+    SubprocessToolRunner runner;
+    m_mgr->setToolRunner(&runner);
+    json result = m_mgr->executeTool("local-comp-echo_tool", {{"input", ""}});
+    ASSERT_TRUE(result.is_string());
+    EXPECT_EQ(result.get<std::string>(), "hello\n");
+}
+
+TEST_F(SkillManagerTest, GetManifest_Existing) {
+    writeManifest(m_skillsRoot, "local", "comp", json{
+        {"name", "comp"},
+        {"version", "1.0.0"}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+    a0::skills::SkillManifest m;
+    EXPECT_EQ(m_mgr->getManifest(a0::skills::SkillNamespace::LOCAL, "comp", m), 0);
+    EXPECT_EQ(m.name, "comp");
+}
+
+TEST_F(SkillManagerTest, GetManifest_NotFound) {
+    a0::skills::SkillManifest m;
+    EXPECT_EQ(m_mgr->getManifest(a0::skills::SkillNamespace::LOCAL, "nonexistent", m), -1);
+}
+
+TEST_F(SkillManagerTest, MissingHandlers_AllRegistered) {
+    auto missing = m_mgr->missingHandlers();
+    EXPECT_TRUE(missing.empty());
+}
+
+TEST_F(SkillManagerTest, MissingHandlers_Unregistered) {
+    writeManifest(m_skillsRoot, "local", "comp", json{
+        {"name", "comp"},
+        {"version", "1.0.0"},
+        {"tools", json::array({
+            json{{"name", "sys"}, {"command", ""}, {"systemTool", true}}
+        })}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+    auto missing = m_mgr->missingHandlers();
+    EXPECT_FALSE(missing.empty());
+}
+
+TEST_F(SkillManagerTest, GetTool_TwoPartAlias) {
+    writeManifest(m_skillsRoot, "local", "mycomp", json{
+        {"name", "mycomp"},
+        {"version", "1.0.0"},
+        {"tools", json::array({
+            json{{"name", "mycomp"}, {"command", "echo"}, {"inputMode", "args"}}
+        })}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+    SkillTool t;
+    // Two-part name: local-mycomp → ns=local, component=mycomp, name=mycomp
+    EXPECT_EQ(m_mgr->getTool("local-mycomp", t), 0);
+}
+
+TEST_F(SkillManagerTest, ListSkills_SystemOnly) {
+    writeManifest(m_skillsRoot, "system", "bash", json{
+        {"name", "bash"}, {"version", "1.0.0"}
+    });
+    writeManifest(m_skillsRoot, "local", "mycomp", json{
+        {"name", "mycomp"}, {"version", "1.0.0"}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+    auto sys = m_mgr->listSkills(a0::skills::SkillNamespace::SYSTEM);
+    EXPECT_EQ(sys.size(), 1);
+    EXPECT_EQ(sys[0], "bash");
+}
+
+TEST_F(SkillManagerTest, ListSkills_LocalOnly) {
+    writeManifest(m_skillsRoot, "local", "mycomp", json{
+        {"name", "mycomp"}, {"version", "1.0.0"}
+    });
+    ASSERT_EQ(m_mgr->loadAll(), 0);
+    auto local = m_mgr->listSkills(a0::skills::SkillNamespace::LOCAL);
+    EXPECT_EQ(local.size(), 1);
+}
+
+TEST_F(SkillManagerTest, ToolStateAccessor) {
+    ToolState& ts = m_mgr->toolState();
+    ts.set("k", json("v"));
+    EXPECT_EQ(ts.get("k"), json("v"));
+}
+
+TEST_F(SkillManagerTest, DockerRunnerSetNull) {
+    m_mgr->setDockerRunner(nullptr);
+    SUCCEED();
+}
+
+TEST_F(SkillManagerTest, DockerSecurityFilterSetNull) {
+    m_mgr->setDockerSecurityFilter(nullptr);
+    SUCCEED();
+}

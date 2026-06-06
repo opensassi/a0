@@ -1,7 +1,12 @@
 #include "session_context.h"
+#include "hex_session_id.h"
+#include "base_prompt.h"
+#include "skills/skills.h"
 #include <gtest/gtest.h>
 #include <string>
+#include <filesystem>
 
+namespace fs = std::filesystem;
 using namespace a0;
 
 // ---------------------------------------------------------------------------
@@ -65,5 +70,63 @@ TEST(SessionContextTest, Restore_NoWorktreePath_Fails) {
     SessionContext ctx("/tmp", "/tmp/.a0", "abc123456789012345678901234567890", 0);
     // restore should fail since no worktree path was set
     int rc = ctx.restore(nullptr);
+    EXPECT_NE(rc, 0);
+}
+
+// ---------------------------------------------------------------------------
+// generateHexSessionId
+// ---------------------------------------------------------------------------
+
+TEST(SessionContextTest, HexSessionId_NonEmpty) {
+    std::string id = generateHexSessionId();
+    EXPECT_FALSE(id.empty());
+}
+
+TEST(SessionContextTest, HexSessionId_Length) {
+    std::string id = generateHexSessionId();
+    // 4 uint32_t values, each formatted as 8 hex chars = 32 chars
+    EXPECT_EQ(id.size(), 32u);
+}
+
+TEST(SessionContextTest, HexSessionId_HexChars) {
+    std::string id = generateHexSessionId();
+    for (char c : id) {
+        EXPECT_TRUE((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+    }
+}
+
+TEST(SessionContextTest, HexSessionId_Unique) {
+    std::string id1 = generateHexSessionId();
+    std::string id2 = generateHexSessionId();
+    EXPECT_NE(id1, id2);
+}
+
+// ---------------------------------------------------------------------------
+// buildBasePrompt
+// ---------------------------------------------------------------------------
+
+TEST(SessionContextTest, BuildBasePrompt_ReturnsString) {
+    std::string prompt = buildBasePrompt(nullptr);
+    EXPECT_FALSE(prompt.empty());
+}
+
+TEST(SessionContextTest, LoadFromDb_WithNullPersistence) {
+    auto ctx = SessionContext::loadFromDb(42, "/tmp/.a0", nullptr);
+    EXPECT_FALSE(ctx);
+}
+
+TEST(SessionContextTest, LoadFromDb_WithNegativeId) {
+    auto ctx = SessionContext::loadFromDb(-1, "/tmp/.a0", nullptr);
+    EXPECT_FALSE(ctx);
+}
+
+TEST(SessionContextTest, WorktreePath_EmptyByDefault) {
+    SessionContext ctx("/tmp", "/tmp/.a0", "abc123456789012345678901234567890", 0);
+    EXPECT_TRUE(ctx.worktreePath().empty());
+}
+
+TEST(SessionContextTest, Init_NullManagerReturnsError) {
+    SessionContext ctx("/tmp", "/tmp/.a0", "abc123456789012345678901234567890", 0);
+    int rc = ctx.init(nullptr);
     EXPECT_NE(rc, 0);
 }
