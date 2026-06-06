@@ -33,22 +33,29 @@ bool parseQualifiedName(const std::string& qualified,
                         std::string& component,
                         std::string& name)
 {
-    auto first = qualified.find('-');
-    if (first == std::string::npos) {
-        return false;
+    // github_<user> namespace contains '_' internally — find the second '_'
+    size_t first;
+    if (qualified.rfind("github_", 0) == 0) {
+        first = qualified.find('_', 7); // skip past "github_"
+        if (first == std::string::npos) return false;
+    } else {
+        first = qualified.find('_');
+        if (first == std::string::npos) return false;
     }
     ns = qualified.substr(0, first);
-    // Everything after the first segment
+    // Everything after the namespace prefix
     auto rest = qualified.substr(first + 1);
-    auto last = rest.rfind('-');
-    if (last == std::string::npos) {
-        // 2 segments: ns-name → component = name
+    // Component names never use '_' (they use '-'), so the first '_' in rest
+    // is always the component-name separator.
+    auto sep = rest.find('_');
+    if (sep == std::string::npos) {
+        // 2 segments: ns_name → component = name
         component = rest;
         name = rest;
     } else {
-        // 3+ segments: ns-middle-name
-        component = rest.substr(0, last);
-        name = rest.substr(last + 1);
+        // 3+ segments: ns_component_name
+        component = rest.substr(0, sep);
+        name = rest.substr(sep + 1);
     }
     return true;
 }
@@ -58,9 +65,9 @@ std::string buildQualifiedName(const std::string& ns,
                                 const std::string& name)
 {
     if (name.empty() || name == component) {
-        return ns + "-" + component;
+        return ns + "_" + component;
     }
-    return ns + "-" + component + "-" + name;
+    return ns + "_" + component + "_" + name;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +127,9 @@ static void xCollectChain(const SkillLoader* loader,
     for (const auto& chainName : chain) {
         Prompt cp;
         bool found = false;
-        if (chainName.find('-') == std::string::npos) {
+        if (chainName.rfind("system_", 0) != 0 &&
+            chainName.rfind("local_", 0) != 0 &&
+            chainName.rfind("github_", 0) != 0) {
             // Short name: resolve within the same component
             if (loader->getPrompt(ns, component, chainName, cp) == 0) {
                 found = true;
@@ -185,8 +194,10 @@ int SkillManager::resolveName(const std::string& componentNs,
                                const std::string& shortName,
                                std::string& qualifiedOut) const
 {
-    // If already qualified (contains '-'), use directly
-    if (shortName.find('-') != std::string::npos) {
+    // If already qualified (starts with known ns prefix), use directly
+    if (shortName.rfind("system_", 0) == 0 ||
+        shortName.rfind("local_", 0) == 0 ||
+        shortName.rfind("github_", 0) == 0) {
         qualifiedOut = shortName;
         return 0;
     }
@@ -348,12 +359,12 @@ std::unordered_map<std::string, std::string> SkillManager::buildDispatchTable() 
 
     // Assign short names with collision resolution
     for (const auto& entry : entries) {
-        std::string shortName = entry.qn.substr(entry.qn.rfind('-') + 1);
+        std::string shortName = entry.qn.substr(entry.qn.rfind('_') + 1);
         std::string candidate = shortName;
         int attempt = 0;
 
         while (table.find(candidate) != table.end()) {
-            auto parts = xSplit(entry.qn, '-');
+            auto parts = xSplit(entry.qn, '_');
             int n = (int)parts.size();
             // Build from rightmost segments: +2 because attempt 0 already tried the last segment
             int segments = std::min(attempt + 2, n);
@@ -458,11 +469,11 @@ json SkillManager::executeTool(const std::string& qualifiedName, const json& par
         }
     }
 
-    // 1b. 2-part name alias: "system-bash" → try "system-bash-bash"
+    // 1b. 2-part name alias: "system_bash" → try "system_bash_bash"
     {
         std::string ns, comp, name;
         if (parseQualifiedName(qualifiedName, ns, comp, name) && !name.empty()) {
-            std::string qn3 = ns + "-" + comp + "-" + name;
+            std::string qn3 = ns + "_" + comp + "_" + name;
             if (qn3 != qualifiedName) {
                 auto it = m_handlers.find(qn3);
                 if (it != m_handlers.end()) {
@@ -475,14 +486,14 @@ json SkillManager::executeTool(const std::string& qualifiedName, const json& par
         }
     }
 
-    // 2. Wildcard match (ns-component-*)
+    // 2. Wildcard match (ns_component_*)
     {
-        auto lastDash = qualifiedName.rfind('-');
-        if (lastDash != std::string::npos) {
-            std::string wildcard = qualifiedName.substr(0, lastDash) + "-*";
+        std::string ns, comp, name;
+        if (parseQualifiedName(qualifiedName, ns, comp, name)) {
+            std::string wildcard = ns + "_" + comp + "_*";
             auto wit = m_handlers.find(wildcard);
             if (wit != m_handlers.end()) {
-                std::string sub = qualifiedName.substr(lastDash + 1);
+                std::string sub = name;
                 // Check for subCommand override in tool definition
                 SkillTool tool;
                 if (getTool(qualifiedName, tool) == 0 && !tool.subCommand.empty()) {
@@ -559,12 +570,12 @@ a0::StreamHandle SkillManager::executeToolStreaming(
 
     // 2. Wildcard match
     {
-        auto lastDash = qualifiedName.rfind('-');
-        if (lastDash != std::string::npos) {
-            std::string wildcard = qualifiedName.substr(0, lastDash) + "-*";
+        std::string ns, comp, name;
+        if (parseQualifiedName(qualifiedName, ns, comp, name)) {
+            std::string wildcard = ns + "_" + comp + "_*";
             auto wit = m_handlers.find(wildcard);
             if (wit != m_handlers.end()) {
-                std::string sub = qualifiedName.substr(lastDash + 1);
+                std::string sub = name;
                 SkillTool tool;
                 if (getTool(qualifiedName, tool) == 0 && !tool.subCommand.empty())
                     sub = tool.subCommand;
@@ -630,10 +641,10 @@ std::vector<std::string> SkillManager::missingHandlers() const
                               : (ns == SkillNamespace::LOCAL) ? "local" : "github";
             for (const auto& tool : manifest.tools) {
                 if (!tool.systemTool) continue;
-                std::string qn3 = nsStr + "-" + comp + "-" + tool.name;
+                std::string qn3 = nsStr + "_" + comp + "_" + tool.name;
                 if (m_handlers.find(qn3) != m_handlers.end()) continue;
-                if (m_handlers.find(nsStr + "-" + comp + "-*") != m_handlers.end()) continue;
-                if (tool.name == comp && m_handlers.find(nsStr + "-" + comp) != m_handlers.end()) continue;
+                if (m_handlers.find(nsStr + "_" + comp + "_*") != m_handlers.end()) continue;
+                if (tool.name == comp && m_handlers.find(nsStr + "_" + comp) != m_handlers.end()) continue;
                 missing.push_back(qn3);
             }
         }

@@ -112,7 +112,7 @@ std::string SessionContext::containerName(const std::string& base) const {
 }
 
 int SessionContext::xDetectGit(a0::skills::SkillManager* skillMgr, int& seq) {
-    auto r1 = skillMgr->executeToolWithMeta("system-git-rev_parse",
+    auto r1 = skillMgr->executeToolWithMeta("system_git_rev-parse",
         {{"args", {"--is-inside-work-tree"}}}, &seq, "", -1);
     if (r1.output.find("true") == std::string::npos) {
         return -1;
@@ -120,21 +120,21 @@ int SessionContext::xDetectGit(a0::skills::SkillManager* skillMgr, int& seq) {
 
     m_git.isRepo = true;
 
-    auto r2 = skillMgr->executeToolWithMeta("system-git-rev_parse",
+    auto r2 = skillMgr->executeToolWithMeta("system_git_rev-parse",
         {{"args", {"--show-toplevel"}}}, &seq, "", -1);
     m_git.repoRoot = r2.output;
     while (!m_git.repoRoot.empty() &&
            (m_git.repoRoot.back() == '\n' || m_git.repoRoot.back() == ' '))
         m_git.repoRoot.pop_back();
 
-    auto r3 = skillMgr->executeToolWithMeta("system-git-rev_parse",
+    auto r3 = skillMgr->executeToolWithMeta("system_git_rev-parse",
         {{"args", {"--abbrev-ref", "HEAD"}}}, &seq, "", -1);
     m_git.currentBranch = r3.output;
     while (!m_git.currentBranch.empty() &&
            (m_git.currentBranch.back() == '\n' || m_git.currentBranch.back() == ' '))
         m_git.currentBranch.pop_back();
 
-    auto r4 = skillMgr->executeToolWithMeta("system-git-rev_parse",
+    auto r4 = skillMgr->executeToolWithMeta("system_git_rev-parse",
         {{"args", {"HEAD"}}}, &seq, "", -1);
     m_git.commitHash = r4.output;
     while (!m_git.commitHash.empty() &&
@@ -148,7 +148,7 @@ int SessionContext::xCreateWorktree(a0::skills::SkillManager* skillMgr, int& seq
     std::string sessionBranch = "a0/session-" + m_sessionPrefix;
     m_worktreePath = m_a0Dir + "/worktrees/a0-session-" + m_sessionPrefix;
 
-    auto r = skillMgr->executeToolWithMeta("system-git-worktree",
+    auto r = skillMgr->executeToolWithMeta("system_git_worktree",
         {{"args", {"add", "-b", sessionBranch, m_worktreePath, "HEAD"}}},
         &seq, "", -1);
 

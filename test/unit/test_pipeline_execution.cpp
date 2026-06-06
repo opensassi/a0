@@ -104,25 +104,25 @@ protected:
 // ---------------------------------------------------------------------------
 
 TEST_F(PipelineExecutionTest, SingleRunner) {
-    addMockReader("system-fs-read");
-    std::vector<ToolInvocation> invs = {{"system-fs-read", {}}};
+    addMockReader("system_fs_read");
+    std::vector<ToolInvocation> invs = {{"system_fs_read", {}}};
     auto batches = DependencyGraph::buildBatches(invs);
     auto results = DependencyGraph::executeBatches(batches, m_mgr);
     ASSERT_EQ(results.size(), 1u);
     ASSERT_EQ(results[0].outputs.size(), 1u);
-    EXPECT_EQ(results[0].outputs[0], "system-fs-read:ok");
+    EXPECT_EQ(results[0].outputs[0], "system_fs_read:ok");
     EXPECT_TRUE(results[0].errors.empty());
 }
 
 TEST_F(PipelineExecutionTest, AllReadersInSameBatch) {
-    addMockReader("system-fs-read", 100);
-    addMockReader("system-fs-glob", 100);
-    addMockReader("system-fs-grep", 100);
+    addMockReader("system_fs_read", 100);
+    addMockReader("system_fs_glob", 100);
+    addMockReader("system_fs_grep", 100);
 
     std::vector<ToolInvocation> invs = {
-        {"system-fs-read", {}},
-        {"system-fs-glob", {}},
-        {"system-fs-grep", {}}
+        {"system_fs_read", {}},
+        {"system_fs_glob", {}},
+        {"system_fs_grep", {}}
     };
     auto batches = DependencyGraph::buildBatches(invs);
     // Structural: all readers in a single batch
@@ -132,31 +132,31 @@ TEST_F(PipelineExecutionTest, AllReadersInSameBatch) {
     auto results = DependencyGraph::executeBatches(batches, m_mgr, 4);
     ASSERT_EQ(results.size(), 1u);
     ASSERT_EQ(results[0].outputs.size(), 3u);
-    EXPECT_EQ(results[0].outputs[0], "system-fs-read:ok");
-    EXPECT_EQ(results[0].outputs[1], "system-fs-glob:ok");
-    EXPECT_EQ(results[0].outputs[2], "system-fs-grep:ok");
+    EXPECT_EQ(results[0].outputs[0], "system_fs_read:ok");
+    EXPECT_EQ(results[0].outputs[1], "system_fs_glob:ok");
+    EXPECT_EQ(results[0].outputs[2], "system_fs_grep:ok");
 }
 
 TEST_F(PipelineExecutionTest, WritersInSeparateBatches) {
-    addMockWriter("system-fs-write", 50);
-    addMockWriter("system-fs-edit", 50);
+    addMockWriter("system_fs_write", 50);
+    addMockWriter("system_fs_edit", 50);
 
     std::vector<ToolInvocation> invs = {
-        {"system-fs-write", {}},
-        {"system-fs-edit", {}}
+        {"system_fs_write", {}},
+        {"system_fs_edit", {}}
     };
     auto batches = DependencyGraph::buildBatches(invs);
     // Structural: each writer gets its own batch
     ASSERT_EQ(batches.size(), 2u);
     EXPECT_EQ(batches[0].size(), 1u);
     EXPECT_EQ(batches[1].size(), 1u);
-    EXPECT_EQ(batches[0][0].qualifiedName, "system-fs-write");
-    EXPECT_EQ(batches[1][0].qualifiedName, "system-fs-edit");
+    EXPECT_EQ(batches[0][0].qualifiedName, "system_fs_write");
+    EXPECT_EQ(batches[1][0].qualifiedName, "system_fs_edit");
 
     auto results = DependencyGraph::executeBatches(batches, m_mgr, 4);
     ASSERT_EQ(results.size(), 2u);
-    EXPECT_EQ(results[0].outputs[0], "system-fs-write:ok");
-    EXPECT_EQ(results[1].outputs[0], "system-fs-edit:ok");
+    EXPECT_EQ(results[0].outputs[0], "system_fs_write:ok");
+    EXPECT_EQ(results[1].outputs[0], "system_fs_edit:ok");
 
     // Verify each writer ran sequentially (no overlap between batches)
     ASSERT_EQ(m_records.size(), 2u);
@@ -165,17 +165,17 @@ TEST_F(PipelineExecutionTest, WritersInSeparateBatches) {
 }
 
 TEST_F(PipelineExecutionTest, ReadersBeforeWriters_Ordering) {
-    addMockReader("system-fs-read", 30);
-    addMockWriter("system-fs-write", 30);
+    addMockReader("system_fs_read", 30);
+    addMockWriter("system_fs_write", 30);
 
     std::vector<ToolInvocation> invs = {
-        {"system-fs-read", {}},
-        {"system-fs-write", {}}
+        {"system_fs_read", {}},
+        {"system_fs_write", {}}
     };
     auto batches = DependencyGraph::buildBatches(invs);
     ASSERT_EQ(batches.size(), 2u);
-    EXPECT_EQ(batches[0][0].qualifiedName, "system-fs-read");
-    EXPECT_EQ(batches[1][0].qualifiedName, "system-fs-write");
+    EXPECT_EQ(batches[0][0].qualifiedName, "system_fs_read");
+    EXPECT_EQ(batches[1][0].qualifiedName, "system_fs_write");
 
     auto results = DependencyGraph::executeBatches(batches, m_mgr, 4);
 
@@ -186,14 +186,14 @@ TEST_F(PipelineExecutionTest, ReadersBeforeWriters_Ordering) {
 }
 
 TEST_F(PipelineExecutionTest, ReadWriteAfterReadersAndWriters_Ordering) {
-    addMockReader("system-fs-read", 20);
-    addMockWriter("system-fs-write", 20);
-    addMockReadWrite("system-bash-bash", 20);
+    addMockReader("system_fs_read", 20);
+    addMockWriter("system_fs_write", 20);
+    addMockReadWrite("system_bash_bash", 20);
 
     std::vector<ToolInvocation> invs = {
-        {"system-fs-read", {}},
-        {"system-fs-write", {}},
-        {"system-bash-bash", {}}
+        {"system_fs_read", {}},
+        {"system_fs_write", {}},
+        {"system_bash_bash", {}}
     };
     auto batches = DependencyGraph::buildBatches(invs);
     ASSERT_EQ(batches.size(), 3u);
@@ -208,14 +208,14 @@ TEST_F(PipelineExecutionTest, ReadWriteAfterReadersAndWriters_Ordering) {
 }
 
 TEST_F(PipelineExecutionTest, ErrorInReaderDoesNotBlockOtherReaders) {
-    m_mgr->registerHandler("system-fs-read", [](const json&, const HandlerContext&) {
+    m_mgr->registerHandler("system_fs_read", [](const json&, const HandlerContext&) {
         return ::a0::HandlerResult{"ERROR: read failed", {}};
     });
-    addMockReader("system-fs-glob", 20);
+    addMockReader("system_fs_glob", 20);
 
     std::vector<ToolInvocation> invs = {
-        {"system-fs-read", {}},
-        {"system-fs-glob", {}}
+        {"system_fs_read", {}},
+        {"system_fs_glob", {}}
     };
     auto batches = DependencyGraph::buildBatches(invs);
     auto results = DependencyGraph::executeBatches(batches, m_mgr, 4);
@@ -226,18 +226,18 @@ TEST_F(PipelineExecutionTest, ErrorInReaderDoesNotBlockOtherReaders) {
     EXPECT_EQ(results[0].outputs[0], "ERROR: read failed");
     ASSERT_FALSE(results[0].errors.empty());
     // Second result is fine (not blocked)
-    EXPECT_EQ(results[0].outputs[1], "system-fs-glob:ok");
+    EXPECT_EQ(results[0].outputs[1], "system_fs_glob:ok");
 }
 
 TEST_F(PipelineExecutionTest, ToolsInReaderBatchReturnInOrder) {
-    addMockReader("system-fs-read", 100);
-    addMockReader("system-fs-glob", 20);
-    addMockReader("system-fs-grep", 50);
+    addMockReader("system_fs_read", 100);
+    addMockReader("system_fs_glob", 20);
+    addMockReader("system_fs_grep", 50);
 
     std::vector<ToolInvocation> invs = {
-        {"system-fs-read", {}},
-        {"system-fs-glob", {}},
-        {"system-fs-grep", {}}
+        {"system_fs_read", {}},
+        {"system_fs_glob", {}},
+        {"system_fs_grep", {}}
     };
     auto batches = DependencyGraph::buildBatches(invs);
     auto results = DependencyGraph::executeBatches(batches, m_mgr, 4);
@@ -245,24 +245,24 @@ TEST_F(PipelineExecutionTest, ToolsInReaderBatchReturnInOrder) {
     ASSERT_EQ(results.size(), 1u);
     ASSERT_EQ(results[0].outputs.size(), 3u);
     // Outputs must be in invocation order, not completion order
-    EXPECT_EQ(results[0].outputs[0], "system-fs-read:ok");
-    EXPECT_EQ(results[0].outputs[1], "system-fs-glob:ok");
-    EXPECT_EQ(results[0].outputs[2], "system-fs-grep:ok");
+    EXPECT_EQ(results[0].outputs[0], "system_fs_read:ok");
+    EXPECT_EQ(results[0].outputs[1], "system_fs_glob:ok");
+    EXPECT_EQ(results[0].outputs[2], "system_fs_grep:ok");
 }
 
 TEST_F(PipelineExecutionTest, MixedReadersAndWriters) {
-    addMockReader("system-fs-read", 20);
-    addMockReader("system-fs-glob", 20);
-    addMockWriter("system-fs-write", 20);
-    addMockWriter("system-fs-edit", 20);
-    addMockReader("system-fs-grep", 20);
+    addMockReader("system_fs_read", 20);
+    addMockReader("system_fs_glob", 20);
+    addMockWriter("system_fs_write", 20);
+    addMockWriter("system_fs_edit", 20);
+    addMockReader("system_fs_grep", 20);
 
     std::vector<ToolInvocation> invs = {
-        {"system-fs-read", {}},
-        {"system-fs-write", {}},
-        {"system-fs-glob", {}},
-        {"system-fs-edit", {}},
-        {"system-fs-grep", {}}
+        {"system_fs_read", {}},
+        {"system_fs_write", {}},
+        {"system_fs_glob", {}},
+        {"system_fs_edit", {}},
+        {"system_fs_grep", {}}
     };
     auto batches = DependencyGraph::buildBatches(invs);
     // Batch 0: readers (read, glob, grep)

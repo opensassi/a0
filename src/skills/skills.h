@@ -113,16 +113,16 @@ struct InvocationRecord {
 // Qualified name helpers
 // ---------------------------------------------------------------------------
 
-/// Parse "github_alice-utils-list_files" → ns="github_alice", component="utils", name="list_files"
-/// Parse "system-bash" → ns="system", component="bash", name="bash"
+/// Parse "system_task_manager_add_task" → ns="system", component="task_manager", name="add_task"
+/// Parse "system_bash" → ns="system", component="bash", name="bash"
 /// First segment is ns, last segment is name, everything between is component.
-/// For 2 segments (ns-name), component = name.
+/// For 2 segments (ns_name), component = name.
 bool parseQualifiedName(const std::string& qualified,
                         std::string& ns,
                         std::string& component,
                         std::string& name);
 
-/// Build "local-file_utils-list_files" from parts.
+/// Build "system_task_manager_add_task" from parts.
 std::string buildQualifiedName(const std::string& ns,
                                 const std::string& component,
                                 const std::string& name);

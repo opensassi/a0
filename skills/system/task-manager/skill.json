@@ -1,0 +1,97 @@
+{
+  "name": "task-manager",
+  "version": "1.0.0",
+  "description": "Tree-based task list management with SQLite persistence",
+  "tools": [
+    {
+      "name": "add-task",
+      "description": "Add a new task to the tree under a parent.task_id. Use parent_task_id=0 to attach under the session root task.\n\nReturns the new task's integer id.\n\nExample: add_task(parent_task_id=0, description='Create login endpoint', detailed_plan='Write auth handler...', automated_verification='pytest tests/test_auth.py', human_verification='curl POST /login and verify 200', priority=1)",
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "parent_task_id": {
+            "type": "integer",
+            "description": "ID of the parent task (0 = session root)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief task description (one sentence)"
+          },
+          "detailed_plan": {
+            "type": "string",
+            "description": "Step-by-step instructions for the executor skill"
+          },
+          "automated_verification": {
+            "type": "string",
+            "description": "Executable deterministic verification command or script"
+          },
+          "human_verification": {
+            "type": "string",
+            "description": "Minimal human verification steps"
+          },
+          "priority": {
+            "type": "integer",
+            "description": "Sort priority (lower = higher priority, default 0)",
+            "default": 0
+          }
+        },
+        "required": ["parent_task_id", "description", "detailed_plan", "automated_verification", "human_verification"]
+      }
+    },
+    {
+      "name": "remove-task",
+      "description": "Remove a task by its id. Fails if the task has children — remove children first.",
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "description": "ID of the task to remove"
+          }
+        },
+        "required": ["task_id"]
+      }
+    },
+    {
+      "name": "list-tasks",
+      "description": "List tasks under a parent. Use parent_task_id=0 to list children of the session root.\n\nReturns a numbered list ordered by priority, with each task showing its id.\n\nExample output:\n  1. Create login endpoint (Task ID: #3)\n     Priority: 1 | Status: pending\n  2. Add password hashing (Task ID: #4)\n     Priority: 2 | Status: pending",
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "parent_task_id": {
+            "type": "integer",
+            "description": "ID of the parent task to list children for (0 = session root)"
+          }
+        },
+        "required": ["parent_task_id"]
+      }
+    },
+    {
+      "name": "set-task-priority",
+      "description": "Update the sort priority of a task. Lower numbers = higher priority.",
+      "systemTool": true,
+      "default": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "description": "ID of the task to update"
+          },
+          "priority": {
+            "type": "integer",
+            "description": "New priority value (lower = higher priority)"
+          }
+        },
+        "required": ["task_id", "priority"]
+      }
+    }
+  ],
+  "prompts": []
+}

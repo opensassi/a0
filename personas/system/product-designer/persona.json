@@ -1,0 +1,7 @@
+{
+  "name": "product-designer",
+  "description": "A product designer persona focused on UX, design systems, and user research",
+  "promptFile": "prompt.md",
+  "skills": [],
+  "tools": []
+}

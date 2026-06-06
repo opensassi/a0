@@ -61,12 +61,12 @@ protected:
         m_toolRunner = new SubprocessToolRunner();
         m_mgr->setToolRunner(m_toolRunner);
         // Register core system tool handlers for prompt expansion tests
-        m_mgr->registerHandler("system-fs-read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
-        m_mgr->registerHandler("system-fs-glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
-        m_mgr->registerHandler("system-fs-grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
-        m_mgr->registerHandler("system-fs-edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
-        m_mgr->registerHandler("system-fs-write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
-        m_mgr->registerHandler("system-bash-bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
+        m_mgr->registerHandler("system_fs_read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
+        m_mgr->registerHandler("system_fs_glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
+        m_mgr->registerHandler("system_fs_grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
+        m_mgr->registerHandler("system_fs_edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
+        m_mgr->registerHandler("system_fs_write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
+        m_mgr->registerHandler("system_bash_bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
         m_depResolver = new DefaultDependencyResolver(m_mgr);
         m_skillRunner = new DefaultSkillRunner(m_toolRunner, nullptr, m_mgr,
                                                 m_depResolver,

@@ -1,14 +1,13 @@
 #include "base_prompt.h"
+#include "personas.h"
 #include "agent_interfaces.h"
 #include "persistence/build_identity.h"
 #include <sys/utsname.h>
 #include <unistd.h>
-#include <fstream>
 #include <sstream>
 #include <string>
 #include <regex>
 #include <cstdlib>
-#include <vector>
 
 namespace a0 {
 
@@ -28,37 +27,6 @@ static std::string getOsInfo() {
         return os.str();
     }();
     return info;
-}
-
-static std::string loadTemplate() {
-    // Try in order: CWD, parent-of-CWD (for build/ dir), A0_DIR, then raw relative path
-    std::vector<std::string> candidates;
-    char cwd[4096];
-    if (::getcwd(cwd, sizeof(cwd))) {
-        candidates.push_back(std::string(cwd) + "/prompts/base.md");
-        // Also try ../prompts/base.md (build dir case)
-        std::string parent(cwd);
-        auto slash = parent.rfind('/');
-        if (slash != std::string::npos) {
-            parent = parent.substr(0, slash);
-            candidates.push_back(parent + "/prompts/base.md");
-        }
-    }
-    const char* a0Dir = std::getenv("A0_DIR");
-    if (a0Dir) {
-        candidates.push_back(std::string(a0Dir) + "/prompts/base.md");
-    }
-    candidates.push_back("prompts/base.md");
-
-    for (const auto& path : candidates) {
-        std::ifstream f(path);
-        if (f) {
-            std::stringstream ss;
-            ss << f.rdbuf();
-            return ss.str();
-        }
-    }
-    return "You are a0 build {{BUILD_HASH}}.\nEnvironment: {{OS_INFO}}\nCWD: {{CWD}}\n";
 }
 
 static std::string substitute(std::string tmpl) {
@@ -84,10 +52,19 @@ static std::string substitute(std::string tmpl) {
     return tmpl;
 }
 
-std::string buildBasePrompt(const skills::SkillManager* skillMgr) {
+std::string buildBasePrompt(const skills::SkillManager* skillMgr,
+                             const std::string& personaName) {
     (void)skillMgr;
-    static const std::string prompt = substitute(loadTemplate());
-    return prompt;
+    std::string name = personaName.empty() ? "software-engineer" : personaName;
+    personas::PersonaLoader loader;
+    if (loader.loadAll() != 0) {
+        return "ERROR: personas/ directory not found";
+    }
+    auto persona = loader.getPersona(name);
+    if (!persona) {
+        return "ERROR: persona \"" + name + "\" not found";
+    }
+    return substitute(persona->prompt);
 }
 
 } // namespace a0

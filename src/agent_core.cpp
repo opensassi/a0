@@ -117,7 +117,7 @@ bool DefaultAgentCore::init(const std::string& skillsDir, const std::string& a0D
                     m_externalRepoUrl, externalDir
                 })}
             };
-            auto result = m_skillMgr->executeTool("system-git-clone", cloneParams);
+            auto result = m_skillMgr->executeTool("system_git_clone", cloneParams);
             std::string output = result.is_string() ? result.get<std::string>() : result.dump();
             if (output.find("ERROR:") == 0) {
                 std::cerr << "Warning: git clone failed: " << output << std::endl;
@@ -125,11 +125,11 @@ bool DefaultAgentCore::init(const std::string& skillsDir, const std::string& a0D
         } else {
             // Fetch latest main for existing clone
             json fetchParams = {{"args", json::array({"-C", externalDir, "fetch", "origin", "main"})}};
-            m_skillMgr->executeTool("system-git-fetch", fetchParams);
+            m_skillMgr->executeTool("system_git_fetch", fetchParams);
             json checkoutParams = {{"args", json::array({"-C", externalDir, "checkout", "main"})}};
-            m_skillMgr->executeTool("system-git-checkout", checkoutParams);
+            m_skillMgr->executeTool("system_git_checkout", checkoutParams);
             json resetParams = {{"args", json::array({"-C", externalDir, "reset", "--hard", "origin/main"})}};
-            m_skillMgr->executeTool("system-git-reset", resetParams);
+            m_skillMgr->executeTool("system_git_reset", resetParams);
         }
         m_skillRunner->setGlobalVar("A0_SRC_DIR", externalDir);
     }
@@ -247,7 +247,7 @@ std::string DefaultAgentCore::xRunForkedLoop(
     m_accumulatedTools.clear();
     if (m_skillMgr) {
         auto analysis = m_skillMgr->executeToolWithMeta(
-            "system-meta-tools_for_prompt", {{"prompt", userInput}});
+            "system_meta_tools-for-prompt", {{"prompt", userInput}});
         if (!analysis.output.empty()) {
             messages.push_back({"assistant", analysis.output});
             for (const auto& t : analysis.recommendedTools)

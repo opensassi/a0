@@ -139,6 +139,22 @@ public:
         return {};
     }
 
+    int saveSessionSystemPrompt(int64_t, const std::string&, const std::string&) override {
+        return 0;
+    }
+
+    int loadSessionSystemPrompt(int64_t, std::string&, std::string&) const override {
+        return 0;
+    }
+
+    int64_t createSessionRootTask(int64_t) override { return 1; }
+    int64_t getSessionRootTask(int64_t) const override { return 1; }
+    int64_t addTask(const Task&) override { static int64_t next = 100; return next++; }
+    int removeTask(int64_t) override { return 0; }
+    std::vector<Task> listTasks(int64_t) const override { return {}; }
+    int updateTaskPriority(int64_t, int) override { return 0; }
+    Task getTask(int64_t) const override { return {}; }
+
     int saveSessionContext(const SessionContextRow&) override { return 0; }
 
     SessionContextRow loadSessionContext(int64_t) const override { return {}; }

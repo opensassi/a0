@@ -12,14 +12,14 @@ namespace a0 {
 // ---------------------------------------------------------------------------
 
 static const std::unordered_set<std::string> s_readerPrefixes = {
-    "system-fs-read",
-    "system-fs-glob",
-    "system-fs-grep",
-    "system-meta-",
+    "system_fs_read",
+    "system_fs_glob",
+    "system_fs_grep",
+    "system_meta_",
 };
 static const std::unordered_set<std::string> s_writerPrefixes = {
-    "system-fs-write",
-    "system-fs-edit",
+    "system_fs_write",
+    "system_fs_edit",
 };
 
 static bool xStartsWithAny(const std::string& s,

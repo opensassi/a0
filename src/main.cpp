@@ -18,6 +18,7 @@
 #include "hex_session_id.h"
 #include "session_context.h"
 #include "app_core_thread.h"
+#include "personas.h"
 #include "tui/agent_tui.h"
 #include <cstdlib>
 #include <cstdio>
@@ -287,6 +288,20 @@ static int cmdSessionExport(const std::string& a0Dir,
         }
         out = &outFile;
     }
+    // Emit system prompt + tool definitions as first record
+    {
+        std::string systemPrompt, toolDefs;
+        if (db.loadSessionSystemPrompt(sid, systemPrompt, toolDefs) == 0) {
+            json meta;
+            meta["_meta"] = true;
+            meta["system_prompt"] = systemPrompt;
+            if (!toolDefs.empty()) {
+                try { meta["tool_definitions"] = json::parse(toolDefs); }
+                catch (...) { meta["tool_definitions"] = toolDefs; }
+            }
+            *out << meta.dump() << "\n";
+        }
+    }
     for (const auto& m : messages) {
         json j;
         j["role"] = m.role;
@@ -382,21 +397,21 @@ static int cmdSessionList(const std::string& a0Dir,
 // ---------------------------------------------------------------------------
 
 static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr) {
-    mgr.registerHandler("system-bash-bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
-    mgr.registerHandler("system-fs-read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
-    mgr.registerHandler("system-fs-glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
-    mgr.registerHandler("system-fs-grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
-    mgr.registerHandler("system-fs-edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
-    mgr.registerHandler("system-fs-write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
+    mgr.registerHandler("system_bash_bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
+    mgr.registerHandler("system_fs_read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
+    mgr.registerHandler("system_fs_glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
+    mgr.registerHandler("system_fs_grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
+    mgr.registerHandler("system_fs_edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
+    mgr.registerHandler("system_fs_write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
 
-    mgr.registerHandler("system-git-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
+    mgr.registerHandler("system_git_*", [](const json& p, const a0::skills::HandlerContext& ctx) {
         return a0::xGitCommand(ctx.subcommand, p);
     });
 
-    mgr.registerHandler("system-meta-show_skills", [&mgr](const json& p, const a0::skills::HandlerContext&) {
+    mgr.registerHandler("system_meta_show-skills", [&mgr](const json& p, const a0::skills::HandlerContext&) {
         return a0::xShowSkills(p, &mgr);
     });
-    mgr.registerHandler("system-meta-show_skill_tools", [&mgr](const json& p, const a0::skills::HandlerContext&) {
+    mgr.registerHandler("system_meta_show-skill-tools", [&mgr](const json& p, const a0::skills::HandlerContext&) {
         return a0::xShowSkillTools(p, &mgr);
     });
 }
@@ -450,6 +465,39 @@ struct AgentStack {
         skillMgr.setToolRunner(&toolRunner);
         if (dockerRunner) skillMgr.setDockerRunner(dockerRunner);
         xRegisterSystemHandlers(skillMgr);
+
+        // Task manager handlers
+        auto* taskDb = &persistence;
+        skillMgr.registerHandler("system_task-manager_add-task",
+            [taskDb](const json& p, const a0::skills::HandlerContext& ctx) {
+                json params = p;
+                int64_t sid = 0;
+                if (ctx.toolState) {
+                    auto val = ctx.toolState->get("session_id");
+                    if (val.is_number()) sid = val.get<int64_t>();
+                }
+                params["_session_id"] = sid;
+                return a0::xAddTask(params, taskDb);
+            });
+        skillMgr.registerHandler("system_task-manager_remove-task",
+            [taskDb](const json& p, const a0::skills::HandlerContext&) {
+                return a0::xRemoveTask(p, taskDb);
+            });
+        skillMgr.registerHandler("system_task-manager_list-tasks",
+            [taskDb](const json& p, const a0::skills::HandlerContext& ctx) {
+                json params = p;
+                int64_t sid = 0;
+                if (ctx.toolState) {
+                    auto val = ctx.toolState->get("session_id");
+                    if (val.is_number()) sid = val.get<int64_t>();
+                }
+                params["_session_id"] = sid;
+                return a0::xListTasks(params, taskDb);
+            });
+        skillMgr.registerHandler("system_task-manager_set-task-priority",
+            [taskDb](const json& p, const a0::skills::HandlerContext&) {
+                return a0::xSetTaskPriority(p, taskDb);
+            });
     }
 
     ~AgentStack() {
@@ -485,7 +533,8 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
                   const std::string& defaultImage,
                   int maxParallel = 4,
                   const std::string& externalRepo = "https://github.com/opensassi/a0",
-                  const std::unordered_map<std::string, std::string>& skillArgs = {}) {
+                  const std::unordered_map<std::string, std::string>& skillArgs = {},
+                  const std::string& personaName = "") {
     AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
                      idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
 
@@ -516,17 +565,35 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
         return 1;
     }
 
+    // Load persona skills/tools
+    std::vector<std::string> personaSkills, personaTools;
+    if (!personaName.empty()) {
+        a0::personas::PersonaLoader pl;
+        if (pl.loadAll() == 0) {
+            auto p = pl.getPersona(personaName);
+            if (p) {
+                personaSkills = p->manifest.skills;
+                personaTools = p->manifest.tools;
+            }
+        }
+    }
+
     // Create session
     int agentId = xRegisterAgent(stack.persistence);
     int64_t sessionDbId = stack.persistence.createSession(sid, 0, 0, agentId);
     stack.skillMgr.setRecordingSession(sessionDbId);
+
+    // Store session id for task manager handlers and create root task
+    stack.skillMgr.toolState().set("session_id", sessionDbId);
+    stack.persistence.createSessionRootTask(sessionDbId);
 
     // Build AppCoreThread
     auto [cmdSender, cmdRcvr] = a0::mpsc::Channel<a0::mpsc::Command>::create();
     auto [evtSender, evtRcvr] = a0::mpsc::Channel<a0::mpsc::AppCoreEvent>::create();
 
     a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek-v4-flash" : "mock",
-                                 &stack.skillMgr, &stack.persistence);
+                                 &stack.skillMgr, &stack.persistence, personaName,
+                                 personaSkills, personaTools);
     if (!mockUrl.empty())
         coreThread.setMockUrl(mockUrl);
     coreThread.start(std::move(cmdRcvr), std::move(evtSender));
@@ -580,7 +647,8 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
                   const std::unordered_map<std::string, std::string>& skillArgs = {},
                   const std::string& tuiResumeUuid = "",
                   bool tuiNoPermissions = false,
-                  bool tuiTestMode = false) {
+                  bool tuiTestMode = false,
+                  const std::string& personaName = "") {
     AgentStack stack(a0Dir, skillsDir, apiKey, mockUrl, noDocker, noContainerPool,
                      idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo);
 
@@ -611,10 +679,25 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
         return 1;
     }
 
+    // Load persona skills/tools
+    std::vector<std::string> personaSkills, personaTools;
+    if (!personaName.empty()) {
+        a0::personas::PersonaLoader pl;
+        if (pl.loadAll() == 0) {
+            auto p = pl.getPersona(personaName);
+            if (p) {
+                personaSkills = p->manifest.skills;
+                personaTools = p->manifest.tools;
+            }
+        }
+    }
+
     // Register agent and create session
     int agentId = xRegisterAgent(stack.persistence);
     int64_t sessionDbId = stack.persistence.createSession(sid, 0, 0, agentId);
     stack.skillMgr.setRecordingSession(sessionDbId);
+    stack.skillMgr.toolState().set("session_id", sessionDbId);
+    stack.persistence.createSessionRootTask(sessionDbId);
 
     // Capture original CWD
     char cwdBuf[4096];
@@ -698,7 +781,8 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
 
     // Start core thread
     a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek-v4-flash" : "mock",
-                                 &stack.skillMgr, &stack.persistence);
+                                 &stack.skillMgr, &stack.persistence, personaName,
+                                 personaSkills, personaTools);
     if (!mockUrl.empty())
         coreThread.setMockUrl(mockUrl);
 
@@ -931,6 +1015,7 @@ int main(int argc, char* argv[]) {
     app.add_option("--log-dir", logDir, "Log directory -- auto-names a0-<sessionId>-<pid>.log");
 
     std::string apiKey, mockUrl, skillsDir = "./skills", resumeSessionId;
+    std::string personaName;
     std::string idleTimeoutStr = "300", maxIdleStr = "10", defaultImage = "ubuntu:22.04";
     bool noDocker = false, noContainerPool = false, noB1 = false, outputJson = false;
     app.add_flag("--output-json", outputJson, "Output results as JSON");
@@ -938,6 +1023,7 @@ int main(int argc, char* argv[]) {
     app.add_option("--mock-api", mockUrl, "Mock API URL");
     app.add_option("--skills-dir", skillsDir, "Skills root directory");
     app.add_option("--resume", resumeSessionId, "Resume session UUID");
+    app.add_option("--persona", personaName, "Persona name (default: software-engineer)");
     app.add_flag("--no-docker", noDocker, "Disable Docker integration");
     app.add_flag("--no-container-pool", noContainerPool, "Disable container pooling");
     app.add_flag("--no-b1", noB1, "Skip b1 supervisor launch");
@@ -1069,18 +1155,18 @@ int main(int argc, char* argv[]) {
         return cmdRun(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
                       runPrompt, runSkillName, runParamsStr,
                       noDocker, noContainerPool, idleTimeoutStr, maxIdleStr,
-                      defaultImage, maxParallel, externalRepo, skillArgs);
+                      defaultImage, maxParallel, externalRepo, skillArgs, personaName);
     if (app.got_subcommand(termCmd))
         return cmdTerminal(a0Dir, terminalId, terminalCwd);
     if (app.got_subcommand(tuiCmd))
         return cmdTui(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
                       noDocker, noContainerPool, noB1,
                       idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo, skillArgs,
-                      tuiResumeUuid, tuiNoPermissions, tuiTestMode);
+                      tuiResumeUuid, tuiNoPermissions, tuiTestMode, personaName);
 
     // Default: tui
     return cmdTui(a0Dir, skillsDir, apiKey, mockUrl, resumeSessionId,
                   noDocker, noContainerPool, noB1,
                   idleTimeoutStr, maxIdleStr, defaultImage, maxParallel, externalRepo, skillArgs,
-                  tuiResumeUuid, tuiNoPermissions, tuiTestMode);
+                  tuiResumeUuid, tuiNoPermissions, tuiTestMode, personaName);
 }

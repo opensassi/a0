@@ -2,6 +2,7 @@
 #include "skills/skills.h"
 #include "command_runner.h"
 #include "docker_security_filter.h"
+#include "persistence/persistence_store.h"
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -764,7 +765,7 @@ HandlerResult xShowSkillTools(const json& params, a0::skills::SkillManager* skil
     }
 
     if (firstPart == "system") {
-        out << "Core system tools: bash, read, glob, grep, edit, write, show_skills, show_skill_tools, tools_for_prompt\n";
+        out << "Core system tools: bash, read, glob, grep, edit, write, show-skills, show-skill-tools, tools-for-prompt\n";
     }
 
     return {out.str()};
@@ -772,5 +773,106 @@ HandlerResult xShowSkillTools(const json& params, a0::skills::SkillManager* skil
 
 // NOTE: xToolsForPrompt was removed. It required InferenceProvider*
 // which has been deleted.
+
+// ---------------------------------------------------------------------------
+// Task manager handlers
+// ---------------------------------------------------------------------------
+
+HandlerResult xAddTask(const json& params, a0::persistence::PersistenceStore* db) {
+    if (!db) return {"ERROR: persistence store not available"};
+
+    int64_t parentTaskId = params.value("parent_task_id", 0);
+    int64_t sessionId = params.value("_session_id", 0);
+
+    if (sessionId <= 0) return {"ERROR: session_id not set"};
+
+    int64_t resolvedParent = parentTaskId;
+    int64_t resolvedRoot = parentTaskId;
+
+    if (parentTaskId == 0) {
+        resolvedParent = db->getSessionRootTask(sessionId);
+        resolvedRoot = resolvedParent;
+    } else {
+        auto parent = db->getTask(parentTaskId);
+        if (parent.id == 0) return {"ERROR: parent task not found"};
+        resolvedRoot = parent.rootTaskId;
+        resolvedParent = parentTaskId;
+    }
+
+    a0::persistence::Task task;
+    task.rootTaskId = resolvedRoot;
+    task.parentTaskId = resolvedParent;
+    task.sessionId = sessionId;
+    task.description = params.value("description", "");
+    task.detailedPlan = params.value("detailed_plan", "");
+    task.automatedVerification = params.value("automated_verification", "");
+    task.humanVerification = params.value("human_verification", "");
+    task.priority = params.value("priority", 0);
+    task.createdAt = std::time(nullptr);
+    task.updatedAt = task.createdAt;
+
+    int64_t id = db->addTask(task);
+    if (id <= 0) return {"ERROR: failed to add task"};
+
+    json result;
+    result["task_id"] = id;
+    return {result.dump()};
+}
+
+HandlerResult xRemoveTask(const json& params, a0::persistence::PersistenceStore* db) {
+    if (!db) return {"ERROR: persistence store not available"};
+
+    int64_t taskId = params.value("task_id", 0);
+    if (taskId <= 0) return {"ERROR: invalid task_id"};
+
+    int rc = db->removeTask(taskId);
+    if (rc < 0) return {"ERROR: task has children or not found"};
+
+    json result;
+    result["removed"] = true;
+    return {result.dump()};
+}
+
+HandlerResult xListTasks(const json& params, a0::persistence::PersistenceStore* db) {
+    if (!db) return {"ERROR: persistence store not available"};
+
+    int64_t sessionId = params.value("_session_id", 0);
+    int64_t parentTaskId = params.value("parent_task_id", 0);
+
+    if (parentTaskId == 0) {
+        parentTaskId = db->getSessionRootTask(sessionId);
+        if (parentTaskId <= 0) return {"ERROR: no session root task found"};
+    }
+
+    auto tasks = db->listTasks(parentTaskId);
+
+    std::ostringstream out;
+    int idx = 1;
+    for (const auto& t : tasks) {
+        out << idx << ". " << t.description << " (Task ID: #" << t.id << ")\n";
+        out << "   Priority: " << t.priority << " | Status: " << t.status << "\n";
+        ++idx;
+    }
+    if (idx == 1) {
+        out << "(no tasks)\n";
+    }
+    return {out.str()};
+}
+
+HandlerResult xSetTaskPriority(const json& params, a0::persistence::PersistenceStore* db) {
+    if (!db) return {"ERROR: persistence store not available"};
+
+    int64_t taskId = params.value("task_id", 0);
+    int priority = params.value("priority", 0);
+
+    if (taskId <= 0) return {"ERROR: invalid task_id"};
+
+    int rc = db->updateTaskPriority(taskId, priority);
+    if (rc < 0) return {"ERROR: task not found"};
+
+    json result;
+    result["updated"] = true;
+    return {result.dump()};
+}
 
 } // namespace a0

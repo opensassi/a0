@@ -4,7 +4,7 @@
   "description": "Meta-tools for skill browsing and tool discovery",
   "tools": [
     {
-      "name": "show_skills",
+      "name": "show-skills",
       "description": "Browse the skill tree by path. Lists available skills with descriptions.",
       "systemTool": true,
       "default": true,
@@ -21,7 +21,7 @@
       }
     },
     {
-      "name": "show_skill_tools",
+      "name": "show-skill-tools",
       "description": "Browse available tools by category. Lists tool names, descriptions, and parameters.",
       "systemTool": true,
       "default": true,
@@ -38,7 +38,7 @@
       }
     },
     {
-      "name": "tools_for_prompt",
+      "name": "tools-for-prompt",
       "description": "Analyze user intent and recommend skills/tools for a given prompt.",
       "systemTool": true,
       "default": true,

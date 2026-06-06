@@ -132,7 +132,7 @@
       }
     },
     {
-      "name": "rev_parse",
+      "name": "rev-parse",
       "description": "Pick out and massage parameters",
       "systemTool": true,
       "parameters": {
@@ -171,21 +171,21 @@
   ],
   "prompts": [
     {
-      "name": "start_session",
+      "name": "start-session",
       "description": "Git session start: checkout main, pull --rebase origin main, verify working tree. The standard way to begin any git workflow.",
-      "dependencies": ["system-git-status", "system-git-checkout", "system-git-pull"],
+      "dependencies": ["system_git_status", "system_git_checkout", "system_git_pull"],
       "promptFile": "prompts/start_session.md"
     },
     {
-      "name": "finish_session",
+      "name": "finish-session",
       "description": "Git session finish: add, commit, rebase onto main, push. The standard way to end and publish a git session.",
-      "dependencies": ["system-git-status", "system-git-add", "system-git-commit", "system-git-checkout", "system-git-pull", "system-git-rebase", "system-git-push"],
+      "dependencies": ["system_git_status", "system_git_add", "system_git_commit", "system_git_checkout", "system_git_pull", "system_git_rebase", "system_git_push"],
       "promptFile": "prompts/finish_session.md"
     },
     {
       "name": "sync",
       "description": "Git sync: fetch origin and rebase onto origin/main.",
-      "dependencies": ["system-git-fetch", "system-git-rebase", "system-git-status"],
+      "dependencies": ["system_git_fetch", "system_git_rebase", "system_git_status"],
       "promptFile": "prompts/sync.md"
     }
   ]

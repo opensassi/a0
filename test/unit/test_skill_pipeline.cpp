@@ -90,7 +90,7 @@ TEST_F(SkillPipelineTest, PromptWithInlineText) {
     loadSkills();
 
     Prompt resolved;
-    ASSERT_EQ(m_mgr->getPromptResolved("local-test-greet", resolved), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local_test_greet", resolved), 0);
     EXPECT_EQ(resolved.prompt, "Hello world");
 }
 
@@ -130,12 +130,12 @@ TEST_F(SkillPipelineTest, ValidatorsSequential) {
     });
 
     // Register C++ handlers for these tools
-    m_mgr->registerHandler("local-validators-uppercase", [](const json& p, const HandlerContext&) {
+    m_mgr->registerHandler("local_validators_uppercase", [](const json& p, const HandlerContext&) {
         std::string input = p.value("input", "");
         for (auto& c : input) c = toupper(c);
         return ::a0::HandlerResult{input, {}};
     });
-    m_mgr->registerHandler("local-validators-echo", [](const json& p, const HandlerContext&) {
+    m_mgr->registerHandler("local_validators_echo", [](const json& p, const HandlerContext&) {
         return ::a0::HandlerResult{p.value("input", "ok"), {}};
     });
 
@@ -146,8 +146,8 @@ TEST_F(SkillPipelineTest, ValidatorsSequential) {
     p.prompt = "test content";
     p.parallelValidators = false;
     ValidatorBinding v1, v2;
-    v1.toolName = "local-validators-uppercase";
-    v2.toolName = "local-validators-echo";
+    v1.toolName = "local_validators_uppercase";
+    v2.toolName = "local_validators_echo";
     p.validators = {v1, v2};
 
     json result = m_runner->runValidators(p, json("hello world"));
@@ -169,11 +169,11 @@ TEST_F(SkillPipelineTest, ValidatorsParallel) {
         })}
     });
 
-    m_mgr->registerHandler("local-val_par-auth", [](const json& p, const HandlerContext&) {
+    m_mgr->registerHandler("local_val_par_auth", [](const json& p, const HandlerContext&) {
         std::string input = p.value("input", "");
         return ::a0::HandlerResult{input.find("valid") != std::string::npos ? "ok" : "ERROR: invalid", {}};
     });
-    m_mgr->registerHandler("local-val_par-length", [](const json& p, const HandlerContext&) {
+    m_mgr->registerHandler("local_val_par_length", [](const json& p, const HandlerContext&) {
         std::string input = p.value("input", "");
         return ::a0::HandlerResult{input.size() < 100 ? "ok" : "ERROR: too long", {}};
     });
@@ -185,8 +185,8 @@ TEST_F(SkillPipelineTest, ValidatorsParallel) {
     p.prompt = "test";
     p.parallelValidators = true;
     ValidatorBinding v1, v2;
-    v1.toolName = "local-val_par-auth";
-    v2.toolName = "local-val_par-length";
+    v1.toolName = "local_val_par_auth";
+    v2.toolName = "local_val_par_length";
     p.validators = {v1, v2};
 
     json result = m_runner->runValidators(p, json("valid content here"));
@@ -202,13 +202,13 @@ TEST_F(SkillPipelineTest, DependenciesCheckedBeforeExecution) {
         {"version", "1.0.0"},
         {"prompts", json::array({
             json{{"name", "needy"}, {"description", ""}, {"prompt", "needs tool"},
-                 {"dependencies", json::array({"local-dep_test-nonexistent"})}}
+                 {"dependencies", json::array({"local_dep_test_nonexistent"})}}
         })}
     });
     loadSkills();
 
     Prompt resolved;
-    ASSERT_EQ(m_mgr->getPromptResolved("local-dep_test-needy", resolved), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local_dep_test_needy", resolved), 0);
 
     json result = m_runner->execute(resolved, json::object());
     ASSERT_TRUE(result.is_string());
@@ -221,7 +221,7 @@ TEST_F(SkillPipelineTest, BatchReadersExecuteInParallel) {
     std::atomic<int> concurrent{0};
     std::atomic<int> maxConcurrent{0};
 
-    m_mgr->registerHandler("system-fs-read", [&](const json&, const HandlerContext&) {
+    m_mgr->registerHandler("system_fs_read", [&](const json&, const HandlerContext&) {
         int c = ++concurrent;
         int mc = maxConcurrent.load();
         while (c > mc) maxConcurrent.compare_exchange_weak(mc, c);
@@ -229,7 +229,7 @@ TEST_F(SkillPipelineTest, BatchReadersExecuteInParallel) {
         --concurrent;
         return ::a0::HandlerResult{"read:ok", {}};
     });
-    m_mgr->registerHandler("system-fs-glob", [&](const json&, const HandlerContext&) {
+    m_mgr->registerHandler("system_fs_glob", [&](const json&, const HandlerContext&) {
         int c = ++concurrent;
         int mc = maxConcurrent.load();
         while (c > mc) maxConcurrent.compare_exchange_weak(mc, c);
@@ -240,8 +240,8 @@ TEST_F(SkillPipelineTest, BatchReadersExecuteInParallel) {
 
     // Directly test DependencyGraph batching with these handlers
     std::vector<ToolInvocation> invs = {
-        {"system-fs-read", {}},
-        {"system-fs-glob", {}}
+        {"system_fs_read", {}},
+        {"system_fs_glob", {}}
     };
     auto batches = DependencyGraph::buildBatches(invs);
 
@@ -267,23 +267,23 @@ TEST_F(SkillPipelineTest, PromptChainResolvesCorrectly) {
     loadSkills();
 
     Prompt resolved;
-    ASSERT_EQ(m_mgr->getPromptResolved("local-chain_test-child", resolved), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local_chain_test_child", resolved), 0);
     EXPECT_EQ(resolved.prompt, "BASE: {{goal}}\n\nCHILD: {{input}}");
 }
 
 TEST_F(SkillPipelineTest, ExecutionOrderMixed) {
     // Register a reader + writer handler
-    m_mgr->registerHandler("system-fs-read", [](const json&, const HandlerContext&) {
+    m_mgr->registerHandler("system_fs_read", [](const json&, const HandlerContext&) {
         return ::a0::HandlerResult{"reader:ok", {}};
     });
-    m_mgr->registerHandler("system-fs-write", [](const json&, const HandlerContext&) {
+    m_mgr->registerHandler("system_fs_write", [](const json&, const HandlerContext&) {
         return ::a0::HandlerResult{"writer:ok", {}};
     });
 
     std::vector<ToolInvocation> invs = {
-        {"system-fs-read", {}},
-        {"system-fs-write", {}},
-        {"system-fs-read", {}}   // second reader after write
+        {"system_fs_read", {}},
+        {"system_fs_write", {}},
+        {"system_fs_read", {}}   // second reader after write
     };
     auto batches = DependencyGraph::buildBatches(invs);
     // Batch 0: both readers (read index 0, read index 2)

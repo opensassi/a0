@@ -471,9 +471,9 @@ std::string SkillLoader::xIndexKey(SkillNamespace ns, const std::string& compone
 {
     std::string prefix;
     switch (ns) {
-        case SkillNamespace::SYSTEM: prefix = "system-"; break;
-        case SkillNamespace::LOCAL:  prefix = "local-"; break;
-        case SkillNamespace::GITHUB: prefix = "github-"; break;
+        case SkillNamespace::SYSTEM: prefix = "system_"; break;
+        case SkillNamespace::LOCAL:  prefix = "local_"; break;
+        case SkillNamespace::GITHUB: prefix = "github_"; break;
     }
     return prefix + component;
 }

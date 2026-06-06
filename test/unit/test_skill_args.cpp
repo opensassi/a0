@@ -45,7 +45,7 @@ protected:
         m_context = new DefaultContextManager();
 
         m_mgr->setToolRunner(m_toolRunner);
-        m_mgr->registerHandler("system-git-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
+        m_mgr->registerHandler("system_git_*", [](const json& p, const a0::skills::HandlerContext& ctx) {
             return a0::xGitCommand(ctx.subcommand, p);
         });
 
@@ -135,7 +135,7 @@ TEST(SkillArgsParsingTest, ParseCommandLine) {
 TEST_F(SkillArgsTest, HandlerCanReadSkillArg) {
     // Register a handler that reads from ToolState
     std::string headlessValue;
-    m_mgr->registerHandler("local-test_comp-read_arg", [&](const json&, const a0::skills::HandlerContext& ctx) {
+    m_mgr->registerHandler("local_test_comp_read_arg", [&](const json&, const a0::skills::HandlerContext& ctx) {
         if (ctx.toolState) {
             auto v = ctx.toolState->get("args:playwright-headless");
             headlessValue = v.is_null() ? "not_set" : v.get<std::string>();
@@ -150,7 +150,7 @@ TEST_F(SkillArgsTest, HandlerCanReadSkillArg) {
     ASSERT_TRUE(ok);
 
     // Execute the handler and verify it read the arg
-    json result = m_mgr->executeTool("local-test_comp-read_arg", json::object());
+    json result = m_mgr->executeTool("local_test_comp_read_arg", json::object());
     ASSERT_TRUE(result.is_string());
     EXPECT_EQ(result.get<std::string>(), "true");
 }

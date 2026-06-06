@@ -25,7 +25,7 @@ TEST(A0LauncherTest, ConstructWithEmptyPath) {
 TEST(A0LauncherTest, RunSkillWithNonExistentBinary) {
     A0Launcher launcher("/nonexistent/a0_binary");
     std::string result;
-    int rc = launcher.runSkill("system-rebuild", "{}", result);
+    int rc = launcher.runSkill("system_rebuild", "{}", result);
     // Stub returns -1 — real impl should return -1 (binary not found)
     EXPECT_EQ(rc, -1);
 }
@@ -33,7 +33,7 @@ TEST(A0LauncherTest, RunSkillWithNonExistentBinary) {
 TEST(A0LauncherTest, RunSkillWithTimeout) {
     A0Launcher launcher("sleep");
     std::string result;
-    int rc = launcher.runSkill("system-sleep", "{}", result, 1);
+    int rc = launcher.runSkill("system_sleep", "{}", result, 1);
     // Stub returns -1 — real impl should return -2 on timeout
     EXPECT_EQ(rc, -1);
 }
@@ -42,7 +42,7 @@ TEST(A0LauncherTest, RunSkillReturnsResult) {
     A0Launcher launcher("echo");
     std::string result;
     // Real impl would capture stdout and parse JSON
-    int rc = launcher.runSkill("system-echo", R"({"msg":"ok"})", result);
+    int rc = launcher.runSkill("system_echo", R"({"msg":"ok"})", result);
     EXPECT_EQ(rc, -1);
     // Real impl: EXPECT_EQ(rc, 0); EXPECT_EQ(result, R"({"msg":"ok"})\n");
 }

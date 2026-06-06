@@ -7,13 +7,11 @@ namespace a0 { namespace skills { class SkillManager; } }
 namespace a0 {
 
 /// Build the base system prompt for all LLM sessions.
-/// Includes agent identity (binary SHA), environment info (uname),
-/// and parameterized descriptions of all available system tools.
+/// Loads the selected persona's prompt.md and substitutes {{VARS}}.
 ///
-/// Should be called once at startup and cached — the result is
-/// immutable for the lifetime of the process.
-///
-/// \param skillMgr  Loaded SkillManager for tool definition lookups
-std::string buildBasePrompt(const skills::SkillManager* skillMgr);
+/// \param skillMgr     Loaded SkillManager (unused, reserved)
+/// \param personaName  Persona name (default: "software-engineer")
+std::string buildBasePrompt(const skills::SkillManager* skillMgr,
+                             const std::string& personaName = "software-engineer");
 
 } // namespace a0

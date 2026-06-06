@@ -71,6 +71,21 @@ struct InvocationRow {
     int64_t timestamp;
 };
 
+struct Task {
+    int64_t id = 0;
+    int64_t rootTaskId = 0;
+    int64_t parentTaskId = 0;
+    int64_t sessionId = 0;
+    std::string description;
+    std::string detailedPlan;
+    std::string automatedVerification;
+    std::string humanVerification;
+    int priority = 0;
+    std::string status = "pending";
+    int64_t createdAt = 0;
+    int64_t updatedAt = 0;
+};
+
 class PersistenceStore {
 public:
     virtual ~PersistenceStore() = default;
@@ -146,6 +161,26 @@ public:
     virtual std::vector<InvocationRow> loadInvocations(int type,
                                                          const std::string& name) const = 0;
 
+    // --- System prompt + tool definitions ---
+
+    virtual int saveSessionSystemPrompt(int64_t sessionId,
+                                         const std::string& systemPrompt,
+                                         const std::string& toolDefinitionsJson) = 0;
+
+    virtual int loadSessionSystemPrompt(int64_t sessionId,
+                                         std::string& systemPrompt,
+                                         std::string& toolDefinitionsJson) const = 0;
+
+    // --- Task tree ---
+
+    virtual int64_t createSessionRootTask(int64_t sessionId) = 0;
+    virtual int64_t getSessionRootTask(int64_t sessionId) const = 0;
+    virtual int64_t addTask(const Task& task) = 0;
+    virtual int removeTask(int64_t taskId) = 0;
+    virtual std::vector<Task> listTasks(int64_t parentTaskId) const = 0;
+    virtual int updateTaskPriority(int64_t taskId, int priority) = 0;
+    virtual Task getTask(int64_t taskId) const = 0;
+
     // --- Session context ---
 
     virtual int saveSessionContext(const SessionContextRow& row) = 0;
@@ -197,6 +232,17 @@ public:
     std::vector<InvocationRow> loadInvocations(int, const std::string&) const override {
         return {};
     }
+
+    int saveSessionSystemPrompt(int64_t, const std::string&, const std::string&) override { return 0; }
+    int loadSessionSystemPrompt(int64_t, std::string&, std::string&) const override { return 0; }
+
+    int64_t createSessionRootTask(int64_t) override { return 1; }
+    int64_t getSessionRootTask(int64_t) const override { return 1; }
+    int64_t addTask(const Task&) override { static int64_t next = 100; return next++; }
+    int removeTask(int64_t) override { return 0; }
+    std::vector<Task> listTasks(int64_t) const override { return {}; }
+    int updateTaskPriority(int64_t, int) override { return 0; }
+    Task getTask(int64_t) const override { return {}; }
 
     int saveSessionContext(const SessionContextRow&) override { return 0; }
     SessionContextRow loadSessionContext(int64_t) const override { return {}; }

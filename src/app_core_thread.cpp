@@ -15,9 +15,15 @@ namespace a0 {
 AppCoreThread::AppCoreThread(const std::string& apiKey,
                              const std::string& model,
                              a0::skills::SkillManager* skillMgr,
-                             a0::persistence::PersistenceStore* persistence)
+                             a0::persistence::PersistenceStore* persistence,
+                             const std::string& personaName,
+                             const std::vector<std::string>& personaSkills,
+                             const std::vector<std::string>& personaTools)
     : m_apiKey(apiKey)
     , m_model(model)
+    , m_personaName(personaName)
+    , m_personaSkills(personaSkills)
+    , m_personaTools(personaTools)
     , m_skillMgr(skillMgr)
     , m_persistence(persistence)
 {
@@ -81,6 +87,9 @@ void AppCoreThread::xRun() {
         provider.setMockUrl(m_mockUrl);
     }
     DrivenCore core(&provider, m_skillMgr, m_persistence);
+    core.setPersona(m_personaName);
+    if (!m_personaSkills.empty()) core.setPersonaSkills(m_personaSkills);
+    if (!m_personaTools.empty()) core.setPersonaTools(m_personaTools);
 
     // Block SIGCHLD so we handle it via waitpid(WNOHANG) in the poll loop
     sigset_t sigmask;

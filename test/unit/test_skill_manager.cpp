@@ -51,7 +51,7 @@ protected:
 
 TEST(SkillManagerHelperTest, ParseQualifiedName_Full) {
     std::string ns, component, name;
-    EXPECT_TRUE(parseQualifiedName("github_alice-utils-list_files", ns, component, name));
+    EXPECT_TRUE(parseQualifiedName("github_alice_utils_list_files", ns, component, name));
     EXPECT_EQ(ns, "github_alice");
     EXPECT_EQ(component, "utils");
     EXPECT_EQ(name, "list_files");
@@ -59,10 +59,10 @@ TEST(SkillManagerHelperTest, ParseQualifiedName_Full) {
 
 TEST(SkillManagerHelperTest, ParseQualifiedName_NoName) {
     std::string ns, component, name;
-    EXPECT_TRUE(parseQualifiedName("local-my_comp", ns, component, name));
+    EXPECT_TRUE(parseQualifiedName("local_meta", ns, component, name));
     EXPECT_EQ(ns, "local");
-    EXPECT_EQ(component, "my_comp");
-    EXPECT_EQ(name, "my_comp");
+    EXPECT_EQ(component, "meta");
+    EXPECT_EQ(name, "meta");
 }
 
 TEST(SkillManagerHelperTest, ParseQualifiedName_Invalid) {
@@ -71,11 +71,11 @@ TEST(SkillManagerHelperTest, ParseQualifiedName_Invalid) {
 }
 
 TEST(SkillManagerHelperTest, BuildQualifiedName_NameEqualsComponent) {
-    EXPECT_EQ(buildQualifiedName("local", "my_comp", "my_comp"), "local-my_comp");
+    EXPECT_EQ(buildQualifiedName("local", "my_comp", "my_comp"), "local_my_comp");
 }
 
 TEST(SkillManagerHelperTest, BuildQualifiedName_NameDifferent) {
-    EXPECT_EQ(buildQualifiedName("local", "my_comp", "my_tool"), "local-my_comp-my_tool");
+    EXPECT_EQ(buildQualifiedName("local", "my_comp", "my_tool"), "local_my_comp_my_tool");
 }
 
 // ===========================================================================
@@ -88,17 +88,17 @@ TEST_F(SkillManagerTest, GetPromptResolved_InvalidName) {
 }
 
 TEST_F(SkillManagerTest, GetPromptResolved_NotFound) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"}
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    EXPECT_EQ(m_mgr->getPromptResolved("local-test_comp-nonexistent", out), -2);
+    EXPECT_EQ(m_mgr->getPromptResolved("local_test-comp_nonexistent", out), -2);
 }
 
 TEST_F(SkillManagerTest, GetPromptResolved_SimpleChain) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"prompts", json::array({
@@ -108,12 +108,12 @@ TEST_F(SkillManagerTest, GetPromptResolved_SimpleChain) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local-test_comp-child", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local_test-comp_child", out), 0);
     EXPECT_EQ(out.prompt, "BASE_TEXT\n\nCHILD_TEXT");
 }
 
 TEST_F(SkillManagerTest, GetPromptResolved_DeepChain) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"prompts", json::array({
@@ -124,33 +124,33 @@ TEST_F(SkillManagerTest, GetPromptResolved_DeepChain) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local-test_comp-level3", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local_test-comp_level3", out), 0);
     EXPECT_EQ(out.prompt, "LVL1\n\nLVL2\n\nLVL3");
 }
 
 TEST_F(SkillManagerTest, GetPromptResolved_CrossComponentChain) {
-    writeManifest(m_skillsRoot, "local", "comp_a", json{
+    writeManifest(m_skillsRoot, "local", "comp-a", json{
         {"name", "comp_a"},
         {"version", "1.0.0"},
         {"prompts", json::array({
             json{{"name", "greeting"}, {"description", ""}, {"prompt", "Hello"}}
         })}
     });
-    writeManifest(m_skillsRoot, "local", "comp_b", json{
+    writeManifest(m_skillsRoot, "local", "comp-b", json{
         {"name", "comp_b"},
         {"version", "1.0.0"},
         {"prompts", json::array({
-            json{{"name", "polite"}, {"description", ""}, {"chain", json::array({"local-comp_a-greeting"})}, {"prompt", "World"}}
+            json{{"name", "polite"}, {"description", ""}, {"chain", json::array({"local_comp-a_greeting"})}, {"prompt", "World"}}
         })}
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local-comp_b-polite", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local_comp-b_polite", out), 0);
     EXPECT_EQ(out.prompt, "Hello\n\nWorld");
 }
 
 TEST_F(SkillManagerTest, GetPromptResolved_MissingChainEntry) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"prompts", json::array({
@@ -159,12 +159,12 @@ TEST_F(SkillManagerTest, GetPromptResolved_MissingChainEntry) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local-test_comp-child", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local_test-comp_child", out), 0);
     EXPECT_EQ(out.prompt, "TEXT");
 }
 
 TEST_F(SkillManagerTest, GetPromptResolved_PreservesMetadata) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"prompts", json::array({
@@ -174,13 +174,13 @@ TEST_F(SkillManagerTest, GetPromptResolved_PreservesMetadata) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     Prompt out;
-    ASSERT_EQ(m_mgr->getPromptResolved("local-test_comp-child", out), 0);
+    ASSERT_EQ(m_mgr->getPromptResolved("local_test-comp_child", out), 0);
     EXPECT_EQ(out.name, "child");
     EXPECT_EQ(out.description, "child desc");
     ASSERT_EQ(out.dependencies.size(), 1);
     EXPECT_EQ(out.dependencies[0], "dep1");
     EXPECT_EQ(out.ns, "local");
-    EXPECT_EQ(out.component, "test_comp");
+    EXPECT_EQ(out.component, "test-comp");
 }
 
 // ===========================================================================
@@ -189,12 +189,12 @@ TEST_F(SkillManagerTest, GetPromptResolved_PreservesMetadata) {
 
 TEST_F(SkillManagerTest, ResolveName_AlreadyQualified) {
     std::string out;
-    EXPECT_EQ(m_mgr->resolveName("local", "comp", "system-read", out), 0);
-    EXPECT_EQ(out, "system-read");
+    EXPECT_EQ(m_mgr->resolveName("local", "comp", "system_read", out), 0);
+    EXPECT_EQ(out, "system_read");
 }
 
 TEST_F(SkillManagerTest, ResolveName_WithinComponent_Found) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"tools", json::array({
@@ -203,12 +203,12 @@ TEST_F(SkillManagerTest, ResolveName_WithinComponent_Found) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     std::string out;
-    EXPECT_EQ(m_mgr->resolveName("local", "test_comp", "my_tool", out), 0);
-    EXPECT_EQ(out, "local-test_comp-my_tool");
+    EXPECT_EQ(m_mgr->resolveName("local", "test-comp", "my_tool", out), 0);
+    EXPECT_EQ(out, "local_test-comp_my_tool");
 }
 
 TEST_F(SkillManagerTest, ResolveName_WithinComponent_FoundPrompt) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"prompts", json::array({
@@ -217,13 +217,13 @@ TEST_F(SkillManagerTest, ResolveName_WithinComponent_FoundPrompt) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     std::string out;
-    EXPECT_EQ(m_mgr->resolveName("local", "test_comp", "my_prompt", out), 0);
-    EXPECT_EQ(out, "local-test_comp-my_prompt");
+    EXPECT_EQ(m_mgr->resolveName("local", "test-comp", "my_prompt", out), 0);
+    EXPECT_EQ(out, "local_test-comp_my_prompt");
 }
 
 TEST_F(SkillManagerTest, ResolveName_WithinComponent_NotFound) {
     std::string out;
-    EXPECT_EQ(m_mgr->resolveName("local", "test_comp", "nonexistent", out), 1);
+    EXPECT_EQ(m_mgr->resolveName("local", "test-comp", "nonexistent", out), 1);
     EXPECT_EQ(out, "nonexistent");
 }
 
@@ -237,10 +237,10 @@ TEST_F(SkillManagerTest, AddAndGetTool) {
     t.description = "test tool";
     t.command = "echo hello";
     t.inputMode = "args";
-    EXPECT_EQ(m_mgr->addTool("test_comp", t), 0);
+    EXPECT_EQ(m_mgr->addTool("test-comp", t), 0);
 
     SkillTool got;
-    EXPECT_EQ(m_mgr->getTool("local-test_comp-my_tool", got), 0);
+    EXPECT_EQ(m_mgr->getTool("local_test-comp_my_tool", got), 0);
     EXPECT_EQ(got.name, "my_tool");
     EXPECT_EQ(got.command, "echo hello");
 }
@@ -250,10 +250,10 @@ TEST_F(SkillManagerTest, AddAndGetPrompt) {
     p.name = "my_prompt";
     p.description = "test prompt";
     p.prompt = "Hello world";
-    EXPECT_EQ(m_mgr->addPrompt("test_comp", p), 0);
+    EXPECT_EQ(m_mgr->addPrompt("test-comp", p), 0);
 
     Prompt got;
-    EXPECT_EQ(m_mgr->getPrompt("local-test_comp-my_prompt", got), 0);
+    EXPECT_EQ(m_mgr->getPrompt("local_test-comp_my_prompt", got), 0);
     EXPECT_EQ(got.name, "my_prompt");
     EXPECT_EQ(got.prompt, "Hello world");
 }
@@ -264,12 +264,12 @@ TEST_F(SkillManagerTest, AddTool_PersistsThroughLoadAll) {
     t.description = "persists";
     t.command = "echo persist";
     t.inputMode = "args";
-    ASSERT_EQ(m_mgr->addTool("persist_comp", t), 0);
+    ASSERT_EQ(m_mgr->addTool("persist-comp", t), 0);
 
     ASSERT_EQ(m_mgr->loadAll(), 0);
 
     SkillTool got;
-    EXPECT_EQ(m_mgr->getTool("local-persist_comp-persist_tool", got), 0);
+    EXPECT_EQ(m_mgr->getTool("local_persist-comp_persist_tool", got), 0);
     EXPECT_EQ(got.name, "persist_tool");
 }
 
@@ -278,18 +278,18 @@ TEST_F(SkillManagerTest, AddPrompt_Twice) {
     p.name = "p1";
     p.description = "";
     p.prompt = "first";
-    ASSERT_EQ(m_mgr->addPrompt("multi_comp", p), 0);
+    ASSERT_EQ(m_mgr->addPrompt("multi-comp", p), 0);
 
     Prompt p2;
     p2.name = "p2";
     p2.description = "";
     p2.prompt = "second";
-    ASSERT_EQ(m_mgr->addPrompt("multi_comp", p2), 0);
+    ASSERT_EQ(m_mgr->addPrompt("multi-comp", p2), 0);
 
     Prompt got;
-    EXPECT_EQ(m_mgr->getPrompt("local-multi_comp-p1", got), 0);
+    EXPECT_EQ(m_mgr->getPrompt("local_multi-comp_p1", got), 0);
     EXPECT_EQ(got.prompt, "first");
-    EXPECT_EQ(m_mgr->getPrompt("local-multi_comp-p2", got), 0);
+    EXPECT_EQ(m_mgr->getPrompt("local_multi-comp_p2", got), 0);
     EXPECT_EQ(got.prompt, "second");
 }
 
@@ -304,11 +304,11 @@ TEST_F(SkillManagerTest, GetTool_InvalidName) {
 
 TEST_F(SkillManagerTest, GetTool_NonexistentComponent) {
     SkillTool t;
-    EXPECT_EQ(m_mgr->getTool("local-nope-tool", t), -1);
+    EXPECT_EQ(m_mgr->getTool("local_nope_tool", t), -1);
 }
 
 TEST_F(SkillManagerTest, GetTool_NonexistentToolName) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"tools", json::array({
@@ -317,7 +317,7 @@ TEST_F(SkillManagerTest, GetTool_NonexistentToolName) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     SkillTool t;
-    EXPECT_EQ(m_mgr->getTool("local-test_comp-missing", t), -2);
+    EXPECT_EQ(m_mgr->getTool("local_test-comp_missing", t), -2);
 }
 
 // ===========================================================================
@@ -330,17 +330,17 @@ TEST_F(SkillManagerTest, UpdateTool) {
     t.description = "original";
     t.command = "echo original";
     t.inputMode = "args";
-    ASSERT_EQ(m_mgr->addTool("test_comp", t), 0);
+    ASSERT_EQ(m_mgr->addTool("test-comp", t), 0);
 
     SkillTool upd;
     upd.name = "my_tool";
     upd.description = "updated";
     upd.command = "echo updated";
     upd.inputMode = "args";
-    EXPECT_EQ(m_mgr->updateTool("test_comp", "my_tool", upd), 0);
+    EXPECT_EQ(m_mgr->updateTool("test-comp", "my_tool", upd), 0);
 
     SkillTool got;
-    ASSERT_EQ(m_mgr->getTool("local-test_comp-my_tool", got), 0);
+    ASSERT_EQ(m_mgr->getTool("local_test-comp_my_tool", got), 0);
     EXPECT_EQ(got.description, "updated");
     EXPECT_EQ(got.command, "echo updated");
 }
@@ -375,7 +375,7 @@ TEST_F(SkillManagerTest, Install_ForceFlag) {
 // ===========================================================================
 
 TEST_F(SkillManagerTest, Remove_LocalComponent) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"tools", json::array({
@@ -383,12 +383,12 @@ TEST_F(SkillManagerTest, Remove_LocalComponent) {
         })}
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
-    EXPECT_TRUE(fs::exists(m_skillsRoot + "/local/test_comp"));
+    EXPECT_TRUE(fs::exists(m_skillsRoot + "/local/test-comp"));
 
-    EXPECT_EQ(m_mgr->remove("local-test_comp"), 0);
+    EXPECT_EQ(m_mgr->remove("local_test-comp"), 0);
 
     SkillTool t;
-    EXPECT_EQ(m_mgr->getTool("local-test_comp-my_tool", t), -1);
+    EXPECT_EQ(m_mgr->getTool("local_test-comp_my_tool", t), -1);
 }
 
 TEST_F(SkillManagerTest, Remove_SystemComponent_Error) {
@@ -397,7 +397,7 @@ TEST_F(SkillManagerTest, Remove_SystemComponent_Error) {
         {"version", "1.0.0"}
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
-    EXPECT_EQ(m_mgr->remove("system-bash"), -1);
+    EXPECT_EQ(m_mgr->remove("system_bash"), -1);
 }
 
 TEST_F(SkillManagerTest, Remove_InvalidName) {
@@ -432,12 +432,12 @@ TEST_F(SkillManagerTest, Validate_InvalidName) {
 
 TEST_F(SkillManagerTest, Validate_UnknownNamespace) {
     std::string report;
-    EXPECT_EQ(m_mgr->validate("unknown-comp", "", report), -1);
+    EXPECT_EQ(m_mgr->validate("unknown_comp", "", report), -1);
     EXPECT_EQ(report, "unknown namespace: unknown");
 }
 
 TEST_F(SkillManagerTest, Validate_ValidComponent_NoLogs) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"tools", json::array({
@@ -446,7 +446,7 @@ TEST_F(SkillManagerTest, Validate_ValidComponent_NoLogs) {
     });
     ASSERT_EQ(m_mgr->loadAll(), 0);
     std::string report;
-    int rc = m_mgr->validate("local-test_comp-my_tool", "abc123", report);
+    int rc = m_mgr->validate("local_test-comp_my_tool", "abc123", report);
     EXPECT_EQ(rc, 0);
     EXPECT_EQ(report, "no historical logs — validation skipped");
 }
@@ -461,7 +461,7 @@ TEST_F(SkillManagerTest, BuildDispatchTable_Empty) {
 }
 
 TEST_F(SkillManagerTest, BuildDispatchTable_NoCollisions) {
-    writeManifest(m_skillsRoot, "local", "test_comp", json{
+    writeManifest(m_skillsRoot, "local", "test-comp", json{
         {"name", "test_comp"},
         {"version", "1.0.0"},
         {"tools", json::array({
@@ -474,19 +474,19 @@ TEST_F(SkillManagerTest, BuildDispatchTable_NoCollisions) {
     ASSERT_EQ(m_mgr->loadAll(), 0);
     auto table = m_mgr->buildDispatchTable();
     EXPECT_EQ(table.size(), 2);
-    EXPECT_EQ(table["parser"], "local-test_comp-parser");
-    EXPECT_EQ(table["greet"], "local-test_comp-greet");
+    EXPECT_EQ(table["parser"], "local_test-comp_parser");
+    EXPECT_EQ(table["greet"], "local_test-comp_greet");
 }
 
 TEST_F(SkillManagerTest, BuildDispatchTable_WithCollisions) {
-    writeManifest(m_skillsRoot, "local", "comp_a", json{
+    writeManifest(m_skillsRoot, "local", "comp-a", json{
         {"name", "comp_a"},
         {"version", "1.0.0"},
         {"tools", json::array({
             json{{"name", "parser"}, {"description", ""}, {"command", "echo a"}, {"inputMode", "args"}}
         })}
     });
-    writeManifest(m_skillsRoot, "local", "comp_b", json{
+    writeManifest(m_skillsRoot, "local", "comp-b", json{
         {"name", "comp_b"},
         {"version", "1.0.0"},
         {"tools", json::array({
@@ -498,17 +498,17 @@ TEST_F(SkillManagerTest, BuildDispatchTable_WithCollisions) {
     EXPECT_EQ(table.size(), 2);
     // Both qualified names must be present; iteration order of the loader's
     // internal unordered_map determines which component gets the bare short name.
-    bool aOk = (table["parser"] == "local-comp_a-parser" || table["comp_a_parser"] == "local-comp_a-parser");
-    bool bOk = (table["parser"] == "local-comp_b-parser" || table["comp_b_parser"] == "local-comp_b-parser");
+    bool aOk = (table["parser"] == "local_comp-a_parser" || table["comp-a_parser"] == "local_comp-a_parser");
+    bool bOk = (table["parser"] == "local_comp-b_parser" || table["comp-b_parser"] == "local_comp-b_parser");
     EXPECT_TRUE(aOk) << "comp_a:parser not found in dispatch table";
     EXPECT_TRUE(bOk) << "comp_b:parser not found in dispatch table";
     // The bare short name must map to exactly one of them
     EXPECT_TRUE(table.find("parser") != table.end());
     auto val = table["parser"];
-    EXPECT_TRUE(val == "local-comp_a-parser" || val == "local-comp_b-parser");
+    EXPECT_TRUE(val == "local_comp-a_parser" || val == "local_comp-b_parser");
     // The disambiguated name must map to the other one
-    std::string other = (val == "local-comp_a-parser") ? "local-comp_b-parser" : "local-comp_a-parser";
-    std::string disambiguated = (other == "local-comp_a-parser") ? "comp_a_parser" : "comp_b_parser";
+    std::string other = (val == "local_comp-a_parser") ? "local_comp-b_parser" : "local_comp-a_parser";
+    std::string disambiguated = (other == "local_comp-a_parser") ? "comp-a_parser" : "comp-b_parser";
     EXPECT_EQ(table[disambiguated], other);
 }
 
@@ -531,8 +531,8 @@ TEST_F(SkillManagerTest, BuildDispatchTable_NamespaceCollision) {
     auto table = m_mgr->buildDispatchTable();
     EXPECT_EQ(table.size(), 2);
     // SYSTEM is iterated first, so "util" maps to the system one
-    EXPECT_EQ(table["util"], "system-shared-util");
-    EXPECT_EQ(table["shared_util"], "local-shared-util");
+    EXPECT_EQ(table["util"], "system_shared_util");
+    EXPECT_EQ(table["shared_util"], "local_shared_util");
 }
 
 // ===========================================================================
@@ -544,7 +544,7 @@ TEST_F(SkillManagerTest, ListSkills_AllNamespaces) {
         {"name", "bash"},
         {"version", "1.0.0"}
     });
-    writeManifest(m_skillsRoot, "local", "my_comp", json{
+    writeManifest(m_skillsRoot, "local", "my-comp", json{
         {"name", "my_comp"},
         {"version", "1.0.0"}
     });
@@ -558,7 +558,7 @@ TEST_F(SkillManagerTest, ListSkills_FilteredNamespace) {
         {"name", "bash"},
         {"version", "1.0.0"}
     });
-    writeManifest(m_skillsRoot, "local", "my_comp", json{
+    writeManifest(m_skillsRoot, "local", "my-comp", json{
         {"name", "my_comp"},
         {"version", "1.0.0"}
     });
@@ -570,7 +570,7 @@ TEST_F(SkillManagerTest, ListSkills_FilteredNamespace) {
 
     auto localOnly = m_mgr->listSkills(SkillNamespace::LOCAL);
     EXPECT_EQ(localOnly.size(), 1);
-    EXPECT_EQ(localOnly[0], "my_comp");
+    EXPECT_EQ(localOnly[0], "my-comp");
 }
 
 TEST_F(SkillManagerTest, ListSkills_Empty) {
@@ -583,12 +583,12 @@ TEST_F(SkillManagerTest, ListSkills_Empty) {
 // ===========================================================================
 
 TEST_F(SkillManagerTest, ExecuteToolStreaming_SystemHandlerSyncFallback) {
-    m_mgr->registerHandler("system-test-read", [](const json& p, const HandlerContext&) {
+    m_mgr->registerHandler("system_test_read", [](const json& p, const HandlerContext&) {
         return ::a0::HandlerResult{p.value("file", "ok"), {}};
     });
 
     std::string output;
-    auto handle = m_mgr->executeToolStreaming("system-test-read",
+    auto handle = m_mgr->executeToolStreaming("system_test_read",
         {{"file", "content"}},
         [&](const std::string& data, const std::string&) { output += data; });
 
@@ -598,12 +598,12 @@ TEST_F(SkillManagerTest, ExecuteToolStreaming_SystemHandlerSyncFallback) {
 }
 
 TEST_F(SkillManagerTest, ExecuteToolStreaming_WildcardSyncFallback) {
-    m_mgr->registerHandler("system-git-*", [](const json& p, const HandlerContext& ctx) {
+    m_mgr->registerHandler("system_git_*", [](const json& p, const HandlerContext& ctx) {
         return ::a0::HandlerResult{"ran: " + ctx.subcommand, {}};
     });
 
     std::string output;
-    auto handle = m_mgr->executeToolStreaming("system-git-status",
+    auto handle = m_mgr->executeToolStreaming("system_git_status",
         json::object(),
         [&](const std::string& data, const std::string&) { output += data; });
 
@@ -613,7 +613,7 @@ TEST_F(SkillManagerTest, ExecuteToolStreaming_WildcardSyncFallback) {
 
 TEST_F(SkillManagerTest, ExecuteToolStreaming_UnknownTool) {
     std::string output;
-    auto handle = m_mgr->executeToolStreaming("local-nonexistent-ghost",
+    auto handle = m_mgr->executeToolStreaming("local_nonexistent_ghost",
         json::object(),
         [&](const std::string& data, const std::string&) { output += data; });
 
@@ -624,7 +624,7 @@ TEST_F(SkillManagerTest, ExecuteToolStreaming_UnknownTool) {
 TEST_F(SkillManagerTest, ExecuteToolStreaming_HandlerTakesPrecedenceOverCommandTool) {
     // When both a handler and a manifest tool exist, the handler wins.
     // This verifies the step-1 dispatch in executeToolStreaming.
-    writeManifest(m_skillsRoot, "local", "stream_comp", json{
+    writeManifest(m_skillsRoot, "local", "stream-comp", json{
         {"name", "stream_comp"},
         {"version", "1.0.0"},
         {"tools", json::array({
@@ -636,12 +636,12 @@ TEST_F(SkillManagerTest, ExecuteToolStreaming_HandlerTakesPrecedenceOverCommandT
     ASSERT_EQ(m_mgr->loadAll(), 0);
 
     // Register a handler that shields the command tool
-    m_mgr->registerHandler("local-stream_comp-echo_stream", [](const json& p, const HandlerContext&) {
+    m_mgr->registerHandler("local_stream-comp_echo_stream", [](const json& p, const HandlerContext&) {
         return ::a0::HandlerResult{p.value("input", "default"), {}};
     });
 
     std::string output;
-    auto handle = m_mgr->executeToolStreaming("local-stream_comp-echo_stream",
+    auto handle = m_mgr->executeToolStreaming("local_stream-comp_echo_stream",
         {{"input", "hello handler"}},
         [&](const std::string& data, const std::string&) { output += data; });
 
@@ -651,31 +651,31 @@ TEST_F(SkillManagerTest, ExecuteToolStreaming_HandlerTakesPrecedenceOverCommandT
 }
 
 TEST_F(SkillManagerTest, ExecuteToolWithMeta_ExactHandler) {
-    m_mgr->registerHandler("system-test-exec", [](const json& p, const HandlerContext&) {
+    m_mgr->registerHandler("system_test_exec", [](const json& p, const HandlerContext&) {
         return ::a0::HandlerResult{"executed: " + p.value("val", ""), {}};
     });
-    auto hr = m_mgr->executeToolWithMeta("system-test-exec", {{"val", "hello"}});
+    auto hr = m_mgr->executeToolWithMeta("system_test_exec", {{"val", "hello"}});
     EXPECT_EQ(hr.output, "executed: hello");
 }
 
 TEST_F(SkillManagerTest, ExecuteToolWithMeta_WildcardHandler) {
-    m_mgr->registerHandler("system-test-*", [](const json& p, const HandlerContext& ctx) {
+    m_mgr->registerHandler("system_test_*", [](const json& p, const HandlerContext& ctx) {
         return ::a0::HandlerResult{"wildcard: " + ctx.subcommand, {}};
     });
-    auto hr = m_mgr->executeToolWithMeta("system-test-cmd", {{}});
+    auto hr = m_mgr->executeToolWithMeta("system_test_cmd", {{}});
     EXPECT_EQ(hr.output, "wildcard: cmd");
 }
 
 TEST_F(SkillManagerTest, ExecuteToolWithMeta_TwoPartAlias) {
-    m_mgr->registerHandler("system-bash-bash", [](const json& p, const HandlerContext&) {
+    m_mgr->registerHandler("system_bash_bash", [](const json& p, const HandlerContext&) {
         return ::a0::HandlerResult{"bash output", {}};
     });
-    auto hr = m_mgr->executeToolWithMeta("system-bash", {{}});
+    auto hr = m_mgr->executeToolWithMeta("system_bash", {{}});
     EXPECT_EQ(hr.output, "bash output");
 }
 
 TEST_F(SkillManagerTest, ExecuteToolWithMeta_NotFound) {
-    auto hr = m_mgr->executeToolWithMeta("local-nonexistent-tool", {{}});
+    auto hr = m_mgr->executeToolWithMeta("local_nonexistent_tool", {{}});
     EXPECT_TRUE(hr.output.find("ERROR: tool not found") != std::string::npos);
 }
 
@@ -720,11 +720,11 @@ TEST_F(SkillManagerTest, Schemas_All) {
 
 TEST_F(SkillManagerTest, RegisterHandlerAndExecute) {
     bool called = false;
-    m_mgr->registerHandler("system-test-handler", [&](const json&, const HandlerContext&) {
+    m_mgr->registerHandler("system_test_handler", [&](const json&, const HandlerContext&) {
         called = true;
         return ::a0::HandlerResult{"ok", {}};
     });
-    m_mgr->executeTool("system-test-handler", {});
+    m_mgr->executeTool("system_test_handler", {});
     EXPECT_TRUE(called);
 }
 
@@ -739,7 +739,7 @@ TEST_F(SkillManagerTest, ExecuteTool_CommandToolWithRunner) {
     ASSERT_EQ(m_mgr->loadAll(), 0);
     SubprocessToolRunner runner;
     m_mgr->setToolRunner(&runner);
-    json result = m_mgr->executeTool("local-comp-echo_tool", {{"input", ""}});
+    json result = m_mgr->executeTool("local_comp_echo_tool", {{"input", ""}});
     ASSERT_TRUE(result.is_string());
     EXPECT_EQ(result.get<std::string>(), "hello\n");
 }
@@ -789,7 +789,7 @@ TEST_F(SkillManagerTest, GetTool_TwoPartAlias) {
     ASSERT_EQ(m_mgr->loadAll(), 0);
     SkillTool t;
     // Two-part name: local-mycomp → ns=local, component=mycomp, name=mycomp
-    EXPECT_EQ(m_mgr->getTool("local-mycomp", t), 0);
+    EXPECT_EQ(m_mgr->getTool("local_mycomp", t), 0);
 }
 
 TEST_F(SkillManagerTest, ListSkills_SystemOnly) {

@@ -32,7 +32,10 @@ public:
     AppCoreThread(const std::string& apiKey,
                   const std::string& model,
                   a0::skills::SkillManager* skillMgr,
-                  a0::persistence::PersistenceStore* persistence = nullptr);
+                  a0::persistence::PersistenceStore* persistence = nullptr,
+                  const std::string& personaName = "",
+                  const std::vector<std::string>& personaSkills = {},
+                  const std::vector<std::string>& personaTools = {});
     ~AppCoreThread();
 
     AppCoreThread(const AppCoreThread&) = delete;
@@ -63,6 +66,9 @@ private:
     std::string m_apiKey;
     std::string m_model;
     std::string m_mockUrl;
+    std::string m_personaName;
+    std::vector<std::string> m_personaSkills;
+    std::vector<std::string> m_personaTools;
     a0::skills::SkillManager* m_skillMgr;
     a0::persistence::PersistenceStore* m_persistence;
 

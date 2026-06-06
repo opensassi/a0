@@ -92,6 +92,23 @@ This script uses path-prefixed `pkill` to target only `build/{a0,b1,c2}` and `mo
 
 Once found, record the root cause in a bullet point with the file path and a one-line description. This builds a library of failure modes for future debugging sessions.
 
+## Viewing Session Exports
+
+Export a session's full message log (including system prompt and tool definitions) using the session UUID or an 8-char prefix slug:
+
+```bash
+# Full UUID
+a0 session export --session-id=5e220a713f4c03ffad7cd4fd5f61cd7d
+
+# 8-char prefix slug
+a0 session export --session-id=5e220a71
+
+# Pipe through jq for formatted viewing
+a0 session export --session-id=5e220a71 | jq .
+```
+
+The output is JSON Lines (one record per line). The first record is `{"_meta":true,...}` containing the system prompt and tool definitions. Subsequent records are individual messages with `role`, `content`, `tool_calls`, etc.
+
 ## Creating Mock Fixtures from Real Sessions
 
 When asked to create a TUI E2E test fixture from a real agent session, use this workflow:

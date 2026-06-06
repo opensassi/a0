@@ -45,7 +45,7 @@ protected:
         m_context = new DefaultContextManager();
 
         m_mgr->setToolRunner(m_toolRunner);
-        m_mgr->registerHandler("system-git-*", [](const json& p, const a0::skills::HandlerContext& ctx) {
+        m_mgr->registerHandler("system_git_*", [](const json& p, const a0::skills::HandlerContext& ctx) {
             return a0::xGitCommand(ctx.subcommand, p);
         });
 

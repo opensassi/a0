@@ -42,6 +42,7 @@ set(LIB_SOURCES
     src/skills/validation_engine.cpp
     src/dependency_graph.cpp
     src/tool_state.cpp
+    src/personas.cpp
 )
 
 # CommandRunner

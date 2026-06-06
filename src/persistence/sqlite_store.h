@@ -53,6 +53,21 @@ public:
     std::vector<InvocationRow> loadInvocations(int type,
                                                  const std::string& name) const override;
 
+    int saveSessionSystemPrompt(int64_t sessionId,
+                                 const std::string& systemPrompt,
+                                 const std::string& toolDefinitionsJson) override;
+    int loadSessionSystemPrompt(int64_t sessionId,
+                                 std::string& systemPrompt,
+                                 std::string& toolDefinitionsJson) const override;
+
+    int64_t createSessionRootTask(int64_t sessionId) override;
+    int64_t getSessionRootTask(int64_t sessionId) const override;
+    int64_t addTask(const Task& task) override;
+    int removeTask(int64_t taskId) override;
+    std::vector<Task> listTasks(int64_t parentTaskId) const override;
+    int updateTaskPriority(int64_t taskId, int priority) override;
+    Task getTask(int64_t taskId) const override;
+
     int saveSessionContext(const SessionContextRow& row) override;
     SessionContextRow loadSessionContext(int64_t sessionId) const override;
 

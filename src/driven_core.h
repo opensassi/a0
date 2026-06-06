@@ -39,6 +39,13 @@ public:
     /// True when idle (no goal in progress).
     bool idle() const { return m_state == CoreState::Idle; }
 
+    /// Set the persona name for base prompt selection.
+    void setPersona(const std::string& persona) { m_personaName = persona; }
+
+    /// Set persona skill/tool filters for schema building.
+    void setPersonaSkills(const std::vector<std::string>& skills) { m_personaSkills = skills; }
+    void setPersonaTools(const std::vector<std::string>& tools) { m_personaTools = tools; }
+
     /// Cancel the current goal.
     void cancel();
 
@@ -66,11 +73,15 @@ private:
     a0::persistence::PersistenceStore* m_persistence;
 
     std::string m_lastResult;
+    std::string m_personaName;
+    std::vector<std::string> m_personaSkills;
+    std::vector<std::string> m_personaTools;
     std::string m_sessionUuid;
     int64_t m_sessionDbId = 0;
     int64_t m_subSessionId = 0;
     int m_seq = 0;
     int m_turnCount = 0;
+    bool m_systemPromptPersisted = false;
 
     std::vector<Message> m_messages;
     std::vector<ToolSchema> m_toolSchemas;

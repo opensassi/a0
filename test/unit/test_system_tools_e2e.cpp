@@ -36,18 +36,18 @@ protected:
         ASSERT_EQ(m_mgr->loadAll(), 0) << "Failed to load skills from " << skillsDir;
 
         SkillTool tool;
-        ASSERT_EQ(m_mgr->getTool("system-bash-bash", tool), 0);
-        ASSERT_EQ(m_mgr->getTool("system-fs-read", tool), 0);
-        ASSERT_EQ(m_mgr->getTool("system-fs-glob", tool), 0);
-        ASSERT_EQ(m_mgr->getTool("system-fs-grep", tool), 0);
+        ASSERT_EQ(m_mgr->getTool("system_bash_bash", tool), 0);
+        ASSERT_EQ(m_mgr->getTool("system_fs_read", tool), 0);
+        ASSERT_EQ(m_mgr->getTool("system_fs_glob", tool), 0);
+        ASSERT_EQ(m_mgr->getTool("system_fs_grep", tool), 0);
 
         // Register C++ handlers on SkillManager
-        m_mgr->registerHandler("system-bash-bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
-        m_mgr->registerHandler("system-fs-read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
-        m_mgr->registerHandler("system-fs-glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
-        m_mgr->registerHandler("system-fs-grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
-        m_mgr->registerHandler("system-fs-edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
-        m_mgr->registerHandler("system-fs-write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
+        m_mgr->registerHandler("system_bash_bash", [](const json& p, const a0::skills::HandlerContext&) { return a0::xBash(p); });
+        m_mgr->registerHandler("system_fs_read", [](const json& p, const a0::skills::HandlerContext&) { return a0::xRead(p); });
+        m_mgr->registerHandler("system_fs_glob", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGlob(p); });
+        m_mgr->registerHandler("system_fs_grep", [](const json& p, const a0::skills::HandlerContext&) { return a0::xGrep(p); });
+        m_mgr->registerHandler("system_fs_edit", [](const json& p, const a0::skills::HandlerContext&) { return a0::xEdit(p); });
+        m_mgr->registerHandler("system_fs_write", [](const json& p, const a0::skills::HandlerContext&) { return a0::xWrite(p); });
 
         m_toolRunner = new SubprocessToolRunner();
         m_provider = new DeepSeekProvider("test-key");
@@ -76,12 +76,12 @@ TEST_F(SystemToolsE2ETest, SystemToolChainExpandsCorrectly) {
         "Architecture Audit Report\n"
         "========================\n\n"
         "Subdirectories:\n"
-        "{{tool:system-fs-glob pattern=\"src/*/\"}}\n\n"
+        "{{tool:system_fs_glob pattern=\"src/*/\"}}\n\n"
         "Project has a docker/ directory with "
         "{{tool:system-bash command=\"ls src/docker/*.cpp 2>/dev/null | wc -l\" description=\"count docker cpps\"}}\n\n"
         "files ending in .cpp\n\n"
         "```cpp\n"
-        "{{tool:system-fs-grep pattern=\"virtual .* = 0\" path=\"" + m_projectRoot + "/src\" include=\"*.h\"}}\n\n"
+        "{{tool:system_fs_grep pattern=\"virtual .* = 0\" path=\"" + m_projectRoot + "/src\" include=\"*.h\"}}\n\n"
         "Main entry (first 5 lines):\n";
 
     Prompt p;

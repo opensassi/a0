@@ -115,6 +115,19 @@ public:
                          nullptr, nullptr, &err);
             sqlite3_free(err);
         }
+        // Migration: add system_prompt + tool_definitions columns for existing databases
+        {
+            char* err = nullptr;
+            sqlite3_exec(db, "ALTER TABLE session ADD COLUMN system_prompt TEXT",
+                         nullptr, nullptr, &err);
+            sqlite3_free(err);
+        }
+        {
+            char* err = nullptr;
+            sqlite3_exec(db, "ALTER TABLE session ADD COLUMN tool_definitions TEXT",
+                         nullptr, nullptr, &err);
+            sqlite3_free(err);
+        }
         // Session context table
         exec(
             "CREATE TABLE IF NOT EXISTS session_context ("
@@ -125,6 +138,32 @@ public:
             "  git_repo_root TEXT DEFAULT '',"
             "  git_branch TEXT DEFAULT '',"
             "  git_commit TEXT DEFAULT ''"
+            ")"
+        );
+
+        // Task tree tables
+        exec(
+            "CREATE TABLE IF NOT EXISTS task ("
+            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  root_task_id INTEGER NOT NULL,"
+            "  parent_task_id INTEGER NOT NULL,"
+            "  session_id INTEGER NOT NULL,"
+            "  description TEXT NOT NULL,"
+            "  detailed_plan TEXT NOT NULL DEFAULT '',"
+            "  automated_verification TEXT NOT NULL DEFAULT '',"
+            "  human_verification TEXT NOT NULL DEFAULT '',"
+            "  priority INTEGER NOT NULL DEFAULT 0,"
+            "  status TEXT NOT NULL DEFAULT 'pending',"
+            "  created_at INTEGER NOT NULL,"
+            "  updated_at INTEGER NOT NULL"
+            ")"
+        );
+        exec("CREATE INDEX IF NOT EXISTS idx_task_parent ON task(parent_task_id)");
+        exec("CREATE INDEX IF NOT EXISTS idx_task_root ON task(root_task_id)");
+        exec(
+            "CREATE TABLE IF NOT EXISTS session_tasks ("
+            "  session_id INTEGER PRIMARY KEY,"
+            "  root_task_id INTEGER NOT NULL"
             ")"
         );
 
@@ -699,6 +738,253 @@ SessionContextRow SqliteStore::loadSessionContext(int64_t sessionId) const
     }
     sqlite3_finalize(stmt);
     return row;
+}
+
+int SqliteStore::saveSessionSystemPrompt(int64_t sessionId,
+                                          const std::string& systemPrompt,
+                                          const std::string& toolDefinitionsJson)
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "UPDATE session SET system_prompt = ?, tool_definitions = ? WHERE id = ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_text(stmt, 1, systemPrompt.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, toolDefinitionsJson.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 3, sessionId);
+
+    int rc = sqlite3_step(stmt) == SQLITE_DONE ? 0 : -1;
+    sqlite3_finalize(stmt);
+    return rc;
+}
+
+int SqliteStore::loadSessionSystemPrompt(int64_t sessionId,
+                                          std::string& systemPrompt,
+                                          std::string& toolDefinitionsJson) const
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT system_prompt, tool_definitions FROM session WHERE id = ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, sessionId);
+
+    int rc = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)))
+            systemPrompt = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)))
+            toolDefinitionsJson = s;
+        rc = 0;
+    }
+    sqlite3_finalize(stmt);
+    return rc;
+}
+
+// ---------------------------------------------------------------------------
+// Task tree
+// ---------------------------------------------------------------------------
+
+int64_t SqliteStore::createSessionRootTask(int64_t sessionId)
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "INSERT INTO task (root_task_id, parent_task_id, session_id,"
+        " description, detailed_plan, automated_verification, human_verification,"
+        " priority, status, created_at, updated_at)"
+        " VALUES (0, 0, ?, '', '', '', '', 0, 'root', ?, ?)";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    int64_t now = static_cast<int64_t>(std::time(nullptr));
+    sqlite3_bind_int64(stmt, 1, sessionId);
+    sqlite3_bind_int64(stmt, 2, now);
+    sqlite3_bind_int64(stmt, 3, now);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(m_impl->db);
+    sqlite3_finalize(stmt);
+
+    // Self-reference to mark as root
+    const char* updateSql = "UPDATE task SET root_task_id = id, parent_task_id = id WHERE id = ?";
+    if (sqlite3_prepare_v2(m_impl->db, updateSql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, id);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    // Link in session_tasks
+    const char* linkSql = "INSERT OR REPLACE INTO session_tasks (session_id, root_task_id) VALUES (?, ?)";
+    if (sqlite3_prepare_v2(m_impl->db, linkSql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, sessionId);
+    sqlite3_bind_int64(stmt, 2, id);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    return id;
+}
+
+int64_t SqliteStore::getSessionRootTask(int64_t sessionId) const
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT root_task_id FROM session_tasks WHERE session_id = ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return 0;
+    }
+    sqlite3_bind_int64(stmt, 1, sessionId);
+
+    int64_t id = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        id = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return id;
+}
+
+int64_t SqliteStore::addTask(const Task& task)
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "INSERT INTO task (root_task_id, parent_task_id, session_id,"
+        " description, detailed_plan, automated_verification, human_verification,"
+        " priority, status, created_at, updated_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, task.rootTaskId);
+    sqlite3_bind_int64(stmt, 2, task.parentTaskId);
+    sqlite3_bind_int64(stmt, 3, task.sessionId);
+    sqlite3_bind_text(stmt, 4, task.description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, task.detailedPlan.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, task.automatedVerification.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, task.humanVerification.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 8, task.priority);
+    sqlite3_bind_text(stmt, 9, task.status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 10, task.createdAt);
+    sqlite3_bind_int64(stmt, 11, task.updatedAt);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(m_impl->db);
+    sqlite3_finalize(stmt);
+    return id;
+}
+
+int SqliteStore::removeTask(int64_t taskId)
+{
+    sqlite3_stmt* stmt;
+
+    // Check no children exist
+    const char* checkSql = "SELECT COUNT(*) FROM task WHERE parent_task_id = ? AND id != ?";
+    if (sqlite3_prepare_v2(m_impl->db, checkSql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, taskId);
+    sqlite3_bind_int64(stmt, 2, taskId);
+    if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_int(stmt, 0) > 0) {
+        sqlite3_finalize(stmt);
+        return -1; // has children
+    }
+    sqlite3_finalize(stmt);
+
+    const char* sql = "DELETE FROM task WHERE id = ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, taskId);
+
+    int rc = sqlite3_step(stmt) == SQLITE_DONE ? 0 : -1;
+    sqlite3_finalize(stmt);
+    return rc;
+}
+
+std::vector<Task> SqliteStore::listTasks(int64_t parentTaskId) const
+{
+    std::vector<Task> result;
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT id, root_task_id, parent_task_id, session_id,"
+        " description, detailed_plan, automated_verification, human_verification,"
+        " priority, status, created_at, updated_at"
+        " FROM task WHERE parent_task_id = ? AND id != ?"
+        " ORDER BY priority ASC, id ASC";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return result;
+    }
+    sqlite3_bind_int64(stmt, 1, parentTaskId);
+    sqlite3_bind_int64(stmt, 2, parentTaskId);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        Task t;
+        t.id = sqlite3_column_int64(stmt, 0);
+        t.rootTaskId = sqlite3_column_int64(stmt, 1);
+        t.parentTaskId = sqlite3_column_int64(stmt, 2);
+        t.sessionId = sqlite3_column_int64(stmt, 3);
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4))) t.description = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5))) t.detailedPlan = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6))) t.automatedVerification = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7))) t.humanVerification = s;
+        t.priority = sqlite3_column_int(stmt, 8);
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9))) t.status = s;
+        t.createdAt = sqlite3_column_int64(stmt, 10);
+        t.updatedAt = sqlite3_column_int64(stmt, 11);
+        result.push_back(t);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+int SqliteStore::updateTaskPriority(int64_t taskId, int priority)
+{
+    sqlite3_stmt* stmt;
+    const char* sql = "UPDATE task SET priority = ?, updated_at = ? WHERE id = ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int(stmt, 1, priority);
+    sqlite3_bind_int64(stmt, 2, static_cast<int64_t>(std::time(nullptr)));
+    sqlite3_bind_int64(stmt, 3, taskId);
+
+    int rc = sqlite3_step(stmt) == SQLITE_DONE ? 0 : -1;
+    sqlite3_finalize(stmt);
+    return rc;
+}
+
+Task SqliteStore::getTask(int64_t taskId) const
+{
+    Task t;
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT id, root_task_id, parent_task_id, session_id,"
+        " description, detailed_plan, automated_verification, human_verification,"
+        " priority, status, created_at, updated_at"
+        " FROM task WHERE id = ?";
+    if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return t;
+    }
+    sqlite3_bind_int64(stmt, 1, taskId);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        t.id = sqlite3_column_int64(stmt, 0);
+        t.rootTaskId = sqlite3_column_int64(stmt, 1);
+        t.parentTaskId = sqlite3_column_int64(stmt, 2);
+        t.sessionId = sqlite3_column_int64(stmt, 3);
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4))) t.description = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5))) t.detailedPlan = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6))) t.automatedVerification = s;
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7))) t.humanVerification = s;
+        t.priority = sqlite3_column_int(stmt, 8);
+        if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9))) t.status = s;
+        t.createdAt = sqlite3_column_int64(stmt, 10);
+        t.updatedAt = sqlite3_column_int64(stmt, 11);
+    }
+    sqlite3_finalize(stmt);
+    return t;
 }
 
 void* SqliteStore::handle() const {
