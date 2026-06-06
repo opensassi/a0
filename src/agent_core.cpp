@@ -63,7 +63,6 @@ static std::string sanitizeUtf8(const std::string& raw) {
 
 DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
                                     SkillRunner* skillRunner,
-                                    InferenceProvider* provider,
                                     ContextManager* context,
                                     DependencyResolver* depResolver,
                                     a0::skills::SkillManager* skillMgr,
@@ -76,7 +75,6 @@ DefaultAgentCore::DefaultAgentCore(ToolRunner* toolRunner,
     , m_dockerRunner(dockerRunner)
     , m_composeMgr(composeMgr)
     , m_skillRunner(skillRunner)
-    , m_provider(provider)
     , m_context(context)
     , m_depResolver(depResolver)
     , m_initialized(false) {}

@@ -17,9 +17,6 @@ TEST(InterfaceTest, DeleteThroughBasePointer) {
     ToolRunner* tr = new SubprocessToolRunner();
     delete tr;
 
-    InferenceProvider* ip = new DeepSeekProvider("key");
-    delete ip;
-
     ContextManager* cm = new DefaultContextManager();
     delete cm;
 

@@ -59,13 +59,80 @@ def content_response(text, turn):
     }
 
 
+# ---------------------------------------------------------------------------
+# SSE helpers for --stream mode
+# ---------------------------------------------------------------------------
+
+def sse_data(delta=None, finish_reason=None):
+    """Build an SSE data line for a streaming chunk.
+
+    finish_reason is placed at the choice level (not inside delta)
+    per the OpenAI streaming spec.
+    """
+    if delta is None:
+        delta = {}
+    choice = {"index": 0, "delta": delta}
+    if finish_reason:
+        choice["finish_reason"] = finish_reason
+    obj = {"choices": [choice]}
+    return "data: " + json.dumps(obj) + "\n\n"
+
+def sse_done():
+    return "data: [DONE]\n\n"
+
+def sse_tool_call_chunks(tool_calls_list):
+    """Yield SSE chunks for a tool-calls response, splitting args across chunks.
+
+    OpenAI streaming format:
+      1. delta with role + tool_call (id + name + empty args)
+      2. delta with tool_call arguments only
+      3. choice with empty delta + finish_reason "tool_calls"
+      4. [DONE]
+    """
+    for idx, tc in enumerate(tool_calls_list):
+        name = tc["function"]["name"]
+        args = tc["function"]["arguments"]
+        call_id = tc["id"]
+        # Chunk 1: role + id + name, args empty
+        yield sse_data(delta={
+            "role": "assistant",
+            "tool_calls": [
+                {"index": idx, "id": call_id, "type": "function",
+                 "function": {"name": name, "arguments": ""}}
+            ]
+        })
+        # Chunk 2: arguments only
+        yield sse_data(delta={
+            "tool_calls": [
+                {"index": idx, "function": {"arguments": args}}
+            ]
+        })
+    # Finish: empty delta + finish_reason at choice level
+    yield sse_data(delta={}, finish_reason="tool_calls")
+    yield sse_done()
+
+def sse_content_chunks(text):
+    """Yield SSE chunks for a plain text response."""
+    # Role chunk
+    yield sse_data(delta={"role": "assistant", "content": ""})
+    # Split text into ~10 char tokens for realistic streaming
+    pos = 0
+    while pos < len(text):
+        chunk = text[pos:pos+10]
+        yield sse_data(delta={"content": chunk})
+        pos += 10
+    # Finish: empty delta + finish_reason at choice level
+    yield sse_data(delta={}, finish_reason="stop")
+    yield sse_done()
+
+
 class ScenarioRunner:
     """Loads and runs a multi-turn scenario from a JSON file.
 
     Scenario format:
       {
         "name": "my_scenario",
-        "analysis": {"content": "..."} | None,  // optional, default=tools_for_prompt
+        "analysis": {"content": "..."} | None,
         "turns": [
           {"tool_calls": [{"name":"bash", "arguments":{"command":"..."}}]},
           {"content": "Final answer."}
@@ -112,9 +179,26 @@ class ScenarioRunner:
             return content_response(step["content"], self.turn)
         return content_response("Done.", self.turn)
 
+    def next_turn_streaming(self, messages, has_tools):
+        """Like next_turn but yields SSE chunk strings."""
+        response = self.next_turn(messages, has_tools)
+        choices = response.get("choices", [])
+        if not choices:
+            yield sse_done()
+            return
+        choice = choices[0]
+        msg = choice.get("message", {})
+        if msg.get("tool_calls"):
+            yield from sse_tool_call_chunks(msg["tool_calls"])
+        elif msg.get("content"):
+            yield from sse_content_chunks(msg["content"])
+        else:
+            yield sse_done()
+
 
 class MockHandler(http.server.BaseHTTPRequestHandler):
     scenario_runner = None
+    stream_mode = False
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
@@ -122,13 +206,15 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
         payload = json.loads(raw) if raw else {}
         messages = payload.get("messages", [])
 
-        if self.__class__.scenario_runner:
-            has_tools = bool(payload.get("tools"))
-            response = self.__class__.scenario_runner.next_turn(messages, has_tools)
+        if self.__class__.stream_mode:
+            self._respond_streaming(messages, payload)
         else:
-            response = self._legacy_respond(payload, messages)
-
-        self._respond(response)
+            if self.__class__.scenario_runner:
+                has_tools = bool(payload.get("tools"))
+                response = self.__class__.scenario_runner.next_turn(messages, has_tools)
+            else:
+                response = self._legacy_respond(payload, messages)
+            self._respond_json(response)
 
     def _legacy_respond(self, payload, messages):
         user_text = ""
@@ -158,7 +244,35 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
         else:
             return LEGACY_RESPONSES["files"]
 
-    def _respond(self, data):
+    def _respond_streaming(self, messages, payload):
+        # Build full SSE body at once (curl receives it as one chunk,
+        # ResponseDecoder handles batch arrival fine)
+        body = ""
+        if self.__class__.scenario_runner:
+            has_tools = bool(payload.get("tools"))
+            for chunk in self.__class__.scenario_runner.next_turn_streaming(messages, has_tools):
+                body += chunk
+        else:
+            response = self._legacy_respond(payload, messages)
+            choices = response.get("choices", [])
+            if choices and choices[0].get("message", {}).get("tool_calls"):
+                for chunk in sse_tool_call_chunks(choices[0]["message"]["tool_calls"]):
+                    body += chunk
+            else:
+                for chunk in sse_content_chunks("Tool executed successfully"):
+                    body += chunk
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        try:
+            self.wfile.write(body.encode())
+            self.wfile.flush()
+        except BrokenPipeError:
+            pass
+
+    def _respond_json(self, data):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -185,6 +299,9 @@ def main():
         runner = ScenarioRunner(args.scenario)
         MockHandler.scenario_runner = runner
         print(f"[MOCK] Loaded scenario: {runner.scenario.get('name', args.scenario)}", file=sys.stderr)
+    if args.stream:
+        MockHandler.stream_mode = True
+        print(f"[MOCK] Streaming SSE mode enabled", file=sys.stderr)
 
     server = http.server.HTTPServer(("127.0.0.1", args.port), MockHandler)
     print(f"[MOCK] DeepSeek API on http://127.0.0.1:{args.port}", file=sys.stderr)

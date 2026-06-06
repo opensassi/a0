@@ -14,47 +14,10 @@ using namespace a0;
 using namespace a0::skills;
 
 // ---------------------------------------------------------------------------
-// Mock provider that returns pre-programmed responses
+// NOTE: This test file is not compiled (commented out in CMakeLists.txt).
+// InferenceProvider/CompletionResponse have been deleted.
+// Kept as reference only.
 // ---------------------------------------------------------------------------
-
-class MockPipelineProvider : public InferenceProvider {
-public:
-    struct ResponseStep {
-        std::string content;
-        std::vector<ToolCall> toolCalls;
-    };
-    std::vector<ResponseStep> m_steps;
-    int m_index = 0;
-
-    void addTextResponse(const std::string& text) {
-        m_steps.push_back({text, {}});
-    }
-
-    void addToolCallResponse(const std::vector<ToolCall>& calls) {
-        m_steps.push_back({"", calls});
-    }
-
-    std::string complete(const std::string&, const std::string&) override {
-        if (m_index < (int)m_steps.size()) {
-            return m_steps[m_index++].content;
-        }
-        return "";
-    }
-
-    CompletionResponse complete(const std::string&,
-                                 const std::vector<Message>&,
-                                 const std::vector<::ToolSchema>&) override {
-        CompletionResponse resp;
-        if (m_index < (int)m_steps.size()) {
-            auto& step = m_steps[m_index++];
-            resp.content = step.content;
-            resp.toolCalls = step.toolCalls;
-        }
-        return resp;
-    }
-
-    void setMockUrl(const std::string&) override {}
-};
 
 // ---------------------------------------------------------------------------
 // Test fixture

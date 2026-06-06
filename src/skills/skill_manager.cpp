@@ -527,7 +527,7 @@ record:
     if (m_sessionDbId > 0 && m_persistence && seq) {
         int currentSeq = (*seq)++;
         int64_t msgId = m_persistence->appendMessage(m_sessionDbId,
-            subSessionId > 0 ? std::optional<int64_t>(subSessionId) : std::nullopt,
+            subSessionId != 0 ? std::optional<int64_t>(subSessionId) : std::nullopt,
             currentSeq, "tool", output, "", toolCallId, qualifiedName, "");
 
         std::string ns, comp, tName;
@@ -604,7 +604,7 @@ a0::StreamHandle SkillManager::executeToolStreaming(
     if (m_sessionDbId > 0 && m_persistence && seq) {
         int currentSeq = (*seq)++;
         m_persistence->appendMessage(m_sessionDbId,
-            subSessionId > 0 ? std::optional<int64_t>(subSessionId) : std::nullopt,
+            subSessionId != 0 ? std::optional<int64_t>(subSessionId) : std::nullopt,
             currentSeq, "tool", "", "", toolCallId, qualifiedName, "");
 
         std::string ns, comp, tName;

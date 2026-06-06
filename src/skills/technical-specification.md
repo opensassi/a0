@@ -20,7 +20,7 @@ The Skills sub-module manages the lifecycle of agent skills — bundles of tools
 
 - `agent_interfaces.h` — core data structures (`Tool`, `SkillPrompt`)
 - `ToolRunner` / `DockerToolRunner` — executes tools at runtime
-- `InferenceProvider` — executes skill prompts at runtime
+- `LlmProvider` (via `DrivenProvider`) — executes LLM inference at runtime
 - `PersistenceStore` (SQLite) — provides historical invocation records for upgrade validation
 
 - `DependencyResolver` — validates transitive skill/tool dependencies
@@ -561,7 +561,6 @@ graph TB
     subgraph "Runners"
         TR[ToolRunner]
         DTR[DockerToolRunner]
-        IP[InferenceProvider]
     end
 
     subgraph "Persistence"

@@ -9,9 +9,7 @@ void ResponseDecoder::reset() {
     m_buffer.clear();
     m_mode = Mode::Unknown;
     m_complete = false;
-    m_accumToolName.clear();
-    m_accumToolArgs.clear();
-    m_accumToolId.clear();
+    m_accumToolCalls.clear();
     m_events.clear();
 }
 
@@ -92,6 +90,7 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
     const json& choice = j["choices"][0];
 
     // Check finish_reason
+    bool hasToolCallsFinish = false;
     if (choice.contains("finish_reason") && !choice["finish_reason"].is_null()) {
         std::string reason = choice["finish_reason"].get<std::string>();
         if (reason == "stop" || reason == "length") {
@@ -109,7 +108,7 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
                         args = tc["function"].value("arguments", "");
                     }
                     if (!name.empty()) {
-                        m_events.push_back(mpsc::ToolStart{name, args});
+                        m_events.push_back(mpsc::ToolStart{id, name, args});
                     }
                 }
             }
@@ -123,11 +122,17 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
                 }
             }
 
-            // If we didn't emit Complete via message.content but finish_reason is "stop", emit empty Complete
+            // If we didn't emit Complete via message.content, emit empty Complete
             if (m_events.empty() || !std::holds_alternative<mpsc::Complete>(m_events.back())) {
                 m_events.push_back(mpsc::Complete{""});
             }
             return;
+        }
+        if (reason == "tool_calls") {
+            m_complete = true;
+            hasToolCallsFinish = true;
+            // Don't return — fall through to delta processing so tool_calls
+            // arriving in the same chunk are accumulated before emission.
         }
     }
 
@@ -152,9 +157,10 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
         }
     }
 
-    // Tool calls
+    // Tool calls — accumulate args across streaming chunks
     if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
         for (const auto& tc : delta["tool_calls"]) {
+            int index = tc.value("index", 0);
             std::string id = tc.value("id", "");
             std::string name;
             std::string args;
@@ -163,10 +169,27 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
                 args = tc["function"].value("arguments", "");
             }
 
-            if (!name.empty()) {
-                m_events.push_back(mpsc::ToolStart{name, args});
-            }
+            auto& acc = m_accumToolCalls[index];
+            if (!id.empty()) acc.id = id;
+            if (!name.empty()) acc.name = name;
+            acc.args += args;
         }
+    }
+
+    // Emit accumulated tool calls + Complete when finish_reason was "tool_calls"
+    if (hasToolCallsFinish) {
+        if (!m_accumToolCalls.empty()) {
+            for (auto& [idx, tc] : m_accumToolCalls) {
+                if (!tc.name.empty()) {
+                    m_events.push_back(mpsc::ToolStart{tc.id, tc.name, tc.args});
+                }
+            }
+            m_accumToolCalls.clear();
+        }
+        if (m_events.empty() || !std::holds_alternative<mpsc::Complete>(m_events.back())) {
+            m_events.push_back(mpsc::Complete{""});
+        }
+        return;
     }
 }
 

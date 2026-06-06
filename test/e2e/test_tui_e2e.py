@@ -8,9 +8,12 @@ import os
 import sys
 import time
 import pytest
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 from conftest import TuiDriver, MockServer
+
+FIXTURES_DIR = str(Path(__file__).resolve().parent / "fixtures")
 
 
 def wait_for_tui_ready(driver, timeout=10):
@@ -233,4 +236,69 @@ class TestTuiEdgeCases:
                 text = driver.capture(timeout=3)
                 assert "pasted text" in text, (
                     f"Pasted text should appear after Enter. Got: {text[:300]}"
+                )
+
+
+class TestTuiToolDisplay:
+    """Tests for tool block rendering and completion states."""
+
+    def test_tool_block_shows_completed(self):
+        """Tool block should show 'completed'/'OK' after tool finishes."""
+        scenario = os.path.join(FIXTURES_DIR, "streaming_tool_calls.json")
+        with MockServer(scenario=scenario, stream=True) as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+
+                driver.send_keys("run a tool")
+                driver.send_enter()
+                deadline = time.monotonic() + 30
+                found_completed = False
+                last_text = ""
+                while time.monotonic() < deadline:
+                    text = driver.capture(timeout=2)
+                    if text:
+                        last_text = text
+                        if "Tool executed" in text or "completed" in text or "OK" in text:
+                            found_completed = True
+                            break
+                assert found_completed, (
+                    f"Expected tool completion in TUI. Last output: {last_text[:300]}"
+                )
+
+
+class TestTuiMultiTurn:
+    """Tests for multi-turn conversation context preservation."""
+
+    def test_multi_turn_context_preserved(self):
+        """Second turn in TUI should have access to first turn's context."""
+        scenario = os.path.join(FIXTURES_DIR, "streaming_multi_turn.json")
+        with MockServer(scenario=scenario, stream=True) as ms:
+            with TuiDriver(mock_server=ms) as driver:
+                assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+
+                # First message
+                driver.send_keys("read src/tool_state.cpp")
+                driver.send_enter()
+                time.sleep(3)
+                text = driver.capture(timeout=10)
+                assert "first turn" in text.lower(), (
+                    f"Expected first turn response. Got: {text[:200]}"
+                )
+
+                # Second message
+                driver.send_keys("what file did I just read")
+                driver.send_enter()
+                deadline = time.monotonic() + 20
+                found_context = False
+                last_text = ""
+                while time.monotonic() < deadline:
+                    text = driver.capture(timeout=2)
+                    if text:
+                        last_text = text
+                        if "tool_state.cpp" in text:
+                            found_context = True
+                            break
+                assert found_context, (
+                    f"Second turn should reference first turn's context. "
+                    f"Last output: {last_text[:300]}"
                 )

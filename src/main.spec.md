@@ -4,7 +4,7 @@
 
 Entry-point module. Parses CLI flags, loads `.env` files, resolves the DeepSeek API key through a priority chain, instantiates all concrete components (skill manager with registered handlers, runners, LLM provider, Docker managers), and runs the interactive TUI or headless run loop. Both paths share `DrivenCore` — the `cmdRun` path uses `runSync()`, the `cmdTui` path uses `tick()` from the FTXUI render loop.
 
-All C++ tool handlers are registered directly onto `SkillManager` via `xRegisterSystemHandlers()`. No `InferenceProvider` is passed — `tools_for_prompt` has been removed.
+All C++ tool handlers are registered directly onto `SkillManager` via `xRegisterSystemHandlers()`. `tools_for_prompt` has been removed.
 
 ## 2. Component Specifications
 
@@ -12,7 +12,7 @@ All C++ tool handlers are registered directly onto `SkillManager` via `xRegister
 
 ```cpp
 /// Registers all C++ system tool handlers on SkillManager.
-/// No longer takes InferenceProvider* — tools_for_prompt is removed.
+/// tools_for_prompt has been removed.
 static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr) {
     mgr.registerHandler("system-bash-bash", ...);
     mgr.registerHandler("system-fs-read", ...);
@@ -24,7 +24,7 @@ static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr) {
     // Git wildcard
     mgr.registerHandler("system-git-*", ...);
 
-    // Meta handlers (SkillManager only — no InferenceProvider)
+    // Meta handlers (SkillManager only)
     mgr.registerHandler("system-meta-show_skills", ...);
     mgr.registerHandler("system-meta-show_skill_tools", ...);
     // NOTE: system-meta-tools_for_prompt was removed.
@@ -44,7 +44,7 @@ Wire-up order:
 3. `DeepSeekProvider(apiKey)` (new subclass of `DrivenProvider : LlmProvider`)
 4. `SubprocessToolRunner`, Docker managers
 5. `skillMgr.setToolRunner(&toolRunner)`
-6. `xRegisterSystemHandlers(skillMgr)` — no `InferenceProvider*` argument
+6. `xRegisterSystemHandlers(skillMgr)`
 7. `skillMgr.loadAll()`
 8. Session creation via `persistence.createSession()`
 9. `DrivenCore(&llmProvider, &skillMgr, &persistence)`
@@ -179,7 +179,7 @@ sequenceDiagram
 | Test | Verification |
 |------|-------------|
 | `xRegisterSystemHandlers` | All core handlers registered with hyphen-separated keys |
-| `xRegisterSystemHandlers` | No `InferenceProvider*` parameter |
+| `xRegisterSystemHandlers` | All core handlers registered |
 | `xRegisterSystemHandlers` | `system-meta-tools_for_prompt` NOT registered |
 | `AgentStack` construction | Succeeds with `DeepSeekProvider`, no `AgentCore`/`SkillRunner` |
 | `cmdRun` with prompt | `DrivenCore::runSync()` called, JSON output produced |

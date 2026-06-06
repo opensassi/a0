@@ -17,7 +17,7 @@ skill.json  ──▶ SkillLoader ──▶ in-memory index ──▶ resolve by
                                                           │
                                           executeTool / executePrompt
                                                           │
-                                                    ToolRunner / InferenceProvider
+                                                     ToolRunner / DrivenProvider
 ```
 
 ---
@@ -622,7 +622,7 @@ Single tool with `systemTool: true`. The `parameters` field includes `command`, 
 
 ### system/meta — Skill/tool introspection
 
-Three meta-tools: `show_skills` (browse skill tree), `show_skill_tools` (browse tool definitions), `tools_for_prompt` (analyze user intent and recommend tools). These require `SkillManager*` and `InferenceProvider*` access, so their handlers are registered with captures in `main.cpp`.
+Three meta-tools: `show_skills` (browse skill tree), `show_skill_tools` (browse tool definitions), `tools_for_prompt` (analyze user intent and recommend tools, removed). `show_skills` and `show_skill_tools` require `SkillManager*` access.
 
 ### local/opensassi/system_design — Spec generation
 

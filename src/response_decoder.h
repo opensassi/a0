@@ -1,9 +1,8 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
-
-#include <nlohmann/json.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -57,10 +56,12 @@ private:
     Mode m_mode = Mode::Unknown;
     bool m_complete = false;
 
-    // Tool call accumulation (tool_calls arrive as complete objects in a single delta)
-    std::string m_accumToolName;
-    std::string m_accumToolArgs;
-    std::string m_accumToolId;
+    struct AccumToolCall {
+        std::string id;
+        std::string name;
+        std::string args;
+    };
+    std::unordered_map<int, AccumToolCall> m_accumToolCalls;
 
     void xFlushLine(const std::string& line);
     void xFlushBuffer();

@@ -7,11 +7,12 @@
 
 namespace a0::persistence { class PersistenceStore; }
 
+/// @deprecated No longer compiled. Kept as reference.
+/// Replaced by DrivenCore + runSync().
 class DefaultAgentCore : public AgentCore {
 public:
     DefaultAgentCore(ToolRunner* toolRunner,
                      SkillRunner* skillRunner,
-                     InferenceProvider* provider,
                      ContextManager* context,
                      DependencyResolver* depResolver,
                      a0::skills::SkillManager* skillMgr,
@@ -37,9 +38,6 @@ public:
 
     int agentDbId() const { return m_agentDbId; }
 
-    /// Set pre-created session info (called after init when session is created early).
-    /// sessionDbId must already be a valid DB session row.
-    /// sessionCtx is owned by the caller and must outlive this AgentCore.
     void setSession(const std::string& sessionId, int64_t sessionDbId,
                     a0::SessionContext* sessionCtx = nullptr);
     void setMaxParallel(int n) { m_maxParallel = n; }
@@ -64,7 +62,6 @@ private:
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
     SkillRunner* m_skillRunner;
-    InferenceProvider* m_provider;
     ContextManager* m_context;
     DependencyResolver* m_depResolver;
     std::string m_sessionId;

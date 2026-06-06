@@ -13,11 +13,11 @@ This document provides the complete technical specification and development plan
 - Tools and skills share JSON Schema I/O (strings, arrays, objects).
 - Skills support **eager tool calls** (`{{tool:name ...}}`) that execute before the LLM request.
 - Skills support **parameter substitution** (`{{key}}`) where `key` is a field from the invocation parameters (e.g., `{{goal}}`).
-- **Validators** (optional chain of tools) process the LLM response; validators are simple tool names (future extension for transformation bindings).
+- **Validators** (optional chain of tools) process the LLM response; validators are simple tool names with optional transformation bindings.
 - **Dependencies** declared per skill (tools and other skills required) – **must be checked before execution**.
 - **Timeout enforcement** for all tool executions (30 seconds default).
 - **Docker execution mode**: Tools can run inside isolated containers (default Ubuntu 22.04) with configurable trust levels (HIGH/MEDIUM/LOW), shared container pools, custom images, and `apt` dependencies. Skills can bring up multi‑service environments using `docker-compose.yml`.
-- Performance monitoring (optional, for future C++ optimization).
+- Performance monitoring (optional).
 - Session replay via local JSON Lines logs.
 
 This specification includes **architectural and procedural guardrails** that would have prevented common implementation omissions, such as missing dependency checks, ignored parameter substitution, absent subprocess timeouts, and incomplete `args` mode handling. The Docker sub‑module is a **required** extension for containerized execution.
@@ -70,7 +70,7 @@ LlmProvider  (pure virtual, DrivedCore depends on this)
     ↑
 DrivenProvider  (universal curl_multi machinery, protected virtual hooks)
     ↑                        ↑
-DeepSeekProvider           (Future: OpenAiProvider, etc.)
+DeepSeekProvider
 ```
 
 ### 2.1 Core Data Structures
@@ -115,7 +115,7 @@ struct ToolSchema {
 
 struct ValidatorBinding {
     std::string toolName;
-    std::optional<std::string> transform; // future: JSONPath binding
+    std::optional<std::string> transform; // JSONPath binding
 };
 
 struct Prompt {
@@ -157,15 +157,9 @@ public:
                                            a0::StreamCallback onChunk);
 };
 
-/// @deprecated Replaced by async LlmProvider + DrivedCore.
-///             Keeped as reference for future provider-agnostic designs.
-class InferenceProvider {
-public:
-    virtual ~InferenceProvider() = default;
-    virtual std::string complete(const std::string& systemPrompt,
-                                  const std::string& userPrompt) = 0;
-    virtual void setMockUrl(const std::string& url) = 0;
-};
+/// @deprecated No longer compiled. Kept as reference.
+/// InferenceProvider was deleted — the async LlmProvider interface
+/// replaced it. This block documents the old contract.
 
 class ContextManager {
 public:
@@ -186,8 +180,7 @@ public:
     virtual std::vector<std::string> missingDependencies(const Prompt& prompt) const = 0;
 };
 
-/// @deprecated Replaced by DrivenCore's direct tool-calling loop.
-///             Kept as reference. No longer compiled.
+/// @deprecated No longer compiled. Kept as reference.
 class SkillRunner {
 public:
     virtual ~SkillRunner() = default;
@@ -201,8 +194,7 @@ public:
     virtual void setGlobalVars(const std::unordered_map<std::string, std::string>& vars) = 0;
 };
 
-/// @deprecated Replaced by DrivenCore + runSync().
-///             Kept as reference. No longer compiled.
+/// @deprecated No longer compiled. Kept as reference.
 class AgentCore {
 public:
     virtual ~AgentCore() = default;
@@ -775,7 +767,7 @@ agent --components-dir ./my_components --container-idle-timeout 600 --max-idle-c
 
 ---
 
-## 7. Development Instructions (Revised)
+## 7. Development Instructions
 
 ### 7.1 Build Setup
 
@@ -806,127 +798,6 @@ On launch, `main.cpp` follows this order:
 10. **b1 auto-launch** — if not `--no-b1` and not in `--run` mode, start/connect to b1 supervisor using paths under `a0Dir`.
 11. **`--run` mode** — execute a skill non-interactively and exit.
 12. **Interactive REPL** — `core.run()` blocks until EOF.
-
-### 7.3 Implementation Plan (Test‑Driven, 90% Coverage)
-
-Follow these steps **in order**:
-
-#### Step 1: Write individual specification files for each source module
-
-- For each `.cpp` file, create a `.spec.md` describing input/output contracts, error handling, and edge cases.
-
-#### Step 1b: Interface assertion tests
-
-- Before writing any implementation, create compile‑time or runtime assertions that verify each interface’s contract is internally consistent.
-  - For `ToolRunner`: write a test that expects `run` to handle `inputMode == "args"` and enforce a timeout (even with a stub).
-  - For `SkillRunner`: write a test that passes a `params` object with a `{{goal}}` placeholder and asserts that the expanded prompt contains the substituted value.
-  - For `SkillManager`: write a test that registers a handler via `registerHandler`, calls `executeTool` with the exact key, and asserts the handler output is returned. Also test wildcard resolution (`system:git:*` with `_subcommand`).
-  - These tests initially fail against stubs, forcing the implementer to provide the required behaviour.
-
-#### Step 2: Write stub implementations with no logic
-
-- Implement all functions with empty bodies or `return {};` (or throw `std::logic_error("stub")`).
-- Ensure the code compiles and links.
-
-#### Step 3: Implement tests against the stub
-
-- Use Google Test.
-- Write unit tests that **expect failure** (assertions that the stub does not yet satisfy the spec).
-- Also write “stub tests” that verify the stub returns default values without crashing.
-- All tests should pass against the stub **only** for trivial cases; most functional tests fail.
-
-#### Step 4: Implement code incrementally
-
-- For each function, write the minimal implementation to pass its tests.
-- Commit after each passing test.
-- Use **TDD red‑green‑refactor** cycle.
-
-#### Step 5: Ensure tests pass – when unsure, consult spec file
-
-- The spec file is **authoritative**; fix either the test or the implementation accordingly.
-
-#### Step 6: Use code coverage tool – enforce 90% coverage
-
-- Configure CMake with `--coverage` (GCC/Clang).
-- Run `lcov --capture --directory . --output-file coverage.info`
-- Generate HTML report: `genhtml coverage.info --output-directory coverage_html`
-- **Requirement**: line coverage ≥90%, function coverage ≥90%, branch coverage ≥90%.
-- Any uncovered lines must be justified (e.g., defensive `assert` or unreachable error handling).
-
-#### Step 7: Session persistence with SQLite
-
-- Wire `PersistenceStore` (SqliteStore) through AgentCore at startup.
-- Record every user message, LLM invocation, tool call, and result to the `message` table.
-- Use sub-session tracking (subSessionId + seq) for the forked tool-calling loop.
-- Enable `ValidationEngine` to read historical invocations from the `invocation` table for upgrade validation.
-- Implement streaming persistence: `Stream` + `StreamChunk` tables for live tool output recording.
-
-#### Step 8: Set up end‑to‑end testing with mock DeepSeek API
-
-- Create a mock HTTP server (e.g., using `cpp-httplib` or a simple Python script) that returns fixture data.
-- Fixtures stored in `test/fixtures/deepseek/`.
-
-#### Step 8a: Negative E2E tests
-
-- In addition to happy‑path tests, write end‑to‑end tests that deliberately trigger error conditions:
-  - Missing dependency.
-  - Timeout.
-  - Parameter substitution.
-  - `args` mode.
-- Each negative test must verify that the agent returns an appropriate error message and does not crash.
-
-#### Step 9: Run E2E tests after every change (CI hook)
-
-- They must pass before merging.
-
-#### Step 10: Implement Docker sub‑module
-
-The Docker sub‑module is a **required** part of the agent for containerized tool execution. Its complete technical specification is located in `./src/docker/technical-specification.md` and the implementation source code resides in `./src/docker/`. The key implementation phases are:
-
-10.1 Implement `ContainerManager` and `DependencyInstaller` using Docker CLI calls (via `popen` or libcurl over the Docker socket).
-10.2 Implement `DockerToolRunner` and integrate into `AgentCore` (tool runner selection based on `dockerImage` presence).
-10.3 Implement `ComposeManager` for skill‑level compose environments.
-10.4 Add pruning logic and CLI flags as described in Section 6.
-10.5 Write unit tests with a mock Docker executable (e.g., a bash script that simulates `docker` commands).
-10.6 Run Docker‑specific E2E tests with a real Docker daemon (if available in CI).
-
-All Docker‑related code must be placed in `./src/docker/`, with its own `CMakeLists.txt` included from the top‑level `CMakeLists.txt`.
-
-#### Step 11: Implement Skills sub‑module
-
-The Skills sub‑module is a **required** part of the agent for tool/skill lifecycle management, distribution, and version validation. Its complete technical specification is located in `./src/skills/technical-specification.md` and the implementation source code resides in `./src/skills/`. The key implementation phases are:
-
-11.1 Implement `SkillLoader` — directory walking, `skill.json` parsing, three-tier namespace index.
-11.2 Implement `SkillManager` facade — qualified name resolution, `addTool`/`addPrompt`, CLI dispatch.
-11.3 Implement `VersionManager` — `.a0/store/` archival, `lock.json` refcounting, GC.
-11.4 Implement `ValidationEngine` — historical log replay, output comparison, compat bridge execution.
-11.5 Wire `SkillManager` into `AgentCore`.
-11.6 Add `a0 skill` CLI subcommand routing in `main.cpp`.
-11.7 Write unit tests with fixture skill trees and mock historical logs.
-11.8 Write integration tests for install/remove/gc with a mock GitHub endpoint.
-
-All built-in tool handlers are registered directly on `SkillManager` via `registerHandler()` in `main.cpp`'s `xRegisterSystemHandlers()`. Each handler is a free-standing function in `namespace a0` (`xBash`, `xRead`, `xGitCommand`, etc.) returning `HandlerResult`. `SkillManager::executeTool()` resolves through exact match → 2-part alias → wildcard → command tool subprocess, providing a single dispatch path for all tools.
-
-All skills‑related code must be placed in `./src/skills/`, with its own `CMakeLists.txt` included from the top‑level `CMakeLists.txt`.
-
-**Deprecated files (kept on disk as reference, not compiled):**
-- `src/agent_core.h/.cpp` — replaced by `DrivenCore` + `runSync()`
-- `src/skill_runner.h/.cpp` — replaced by `DrivenCore`'s direct tool-calling loop
-- `src/deepseek_provider.h/.cpp` (old, implementing `InferenceProvider`) — replaced by new `DeepSeekProvider : DrivenProvider : LlmProvider`
-
-#### Step 12: Implement CommandRunner utility
-
-The `CommandRunner` is a stateless utility class that wraps all subprocess creation in the agent. Every `fork()`, `exec()`, `pipe()`, `alarm()` call is isolated here — no other class manages processes directly.
-
-12.1 Implement `CommandRunner::run()` — single command execution with stdin piping, alarm timeout, stdout/stderr capture, and process group management.
-12.2 Implement `CommandRunner::runAll()` — parallel command execution via N-child fork + waitpid loop, configurable `maxParallel`.
-12.3 Implement `CommandRunner::shellEscape()` — single-quote shell escaping for safe argument passing.
-12.4 Refactor `SubprocessToolRunner` to delegate all subprocess calls to `CommandRunner::run()`, retaining only command-building logic (args mode, stdin mode).
-12.5 Refactor `DockerCLIWrapper` to use `CommandRunner::run()` instead of its own `execSimple`/`execWithTimeout`/`shellEscape` internals.
-12.6 Refactor `DockerToolRunnerImpl::execDockerRun` to delegate to `CommandRunner::run()`.
-12.7 Refactor `ValidationEngine` to use `CommandRunner::run()` for replay and compat bridge execution.
-12.8 Remove duplicate `shellEscape`, `handleAlarm`, signal handler, and fork/exec/pipe code from all other files.
-12.9 Write unit tests for CommandRunner (echo, timeout, pipe, parallel, edge cases).
 
 ---
 
@@ -1049,51 +920,11 @@ project/
 
 ---
 
-## 9. Development Workflow Summary
-
-1. Write spec files for each module.
-2. **Write interface assertion tests** that codify the contract.
-3. Write stub implementations.
-4. Write unit tests (both stub‑passing and failing functional tests).
-5. Implement code iteratively until all tests pass.
-6. Run coverage tool; ensure ≥90% coverage.
-7. Run **positive and negative** E2E tests with mock DeepSeek API; fix any failures.
-8. Implement Docker sub‑module (following `./src/docker/technical-specification.md`).
-9. Run Docker‑specific tests (unit and E2E with real Docker).
-10. Implement Skills sub‑module (following `./src/skills/technical-specification.md`).
-11. Implement `CommandRunner` utility — centralize all fork/exec/pipe/alarm code.
-12. Implement `DependencyGraph` — reader/writer classification, batch builder, batch executor.
-13. Implement `ToolState` — per-session state bag for cross-invocation tool state.
-14. Integrate valijson schema validation in `SkillLoader` — `skills/schema.json` at load time.
-15. Implement `SkillManager::executeToolStreaming` for streaming tool output.
-16. Wire persistent compose (`ComposeManager::startPersistent`/`stopPersistent`).
-17. Add `--external-repo`, `--skill-arg`, `--max-parallel` CLI flags.
-18. Enable `-DENABLE_TRACE=ON` for debug builds; keep trace logs for diagnosis.
-19. Run E2E tests with `bash test/e2e/test_c2_dashboard_e2e.sh`; inspect logs in `/tmp/c2-e2e.log`.
-20. Implement `mpsc::Channel` — header-only MPSC with eventfd wakeup.
-21. Implement `ResponseDecoder` — SSE/JSON LLM response decoder with mode auto-detection.
-22. Implement `DrivenProvider` — async curl_multi-based LLM provider with tick() API.
-23. Implement `DrivenCore` — tick-driven state machine agent core (replaces forked loop).
-24. Implement `AppCoreThread` — thread-safe DrivenCore wrapper with ppoll event loop.
-25. Commit and CI verifies all tests + coverage.
-
 ---
 
-## 10. Future Extensions
+## 10. E2E Testing
 
-- Streaming LLM responses and validator chains.
-- C++ compilation of performance‑critical validators.
-- Input/output transformation mappers in validator objects (e.g., JSONPath).
-- Sandboxing for `bash` tool (command allowlist).
-- Native `mustache` templating for prompt expansion.
-- **LXC backend** as alternative to Docker (for environments without Docker).
-- Resource limits (CPU/memory) per tool in Docker.
-
----
-
-## 11. E2E Testing
-
-### 11.1 Test Framework
+### 10.1 Test Framework
 
 E2E tests use the **Playwright bridge** (`scripts/playwright-bridge.js`) running on port 3100, controlled via curl or the `selectById` bridge action. Tests open a headed Chromium window for visual debugging and navigate the c2 web dashboard.
 
@@ -1101,7 +932,7 @@ E2E tests use the **Playwright bridge** (`scripts/playwright-bridge.js`) running
 - `test/e2e/test_c2_dashboard_e2e.sh` — 29-assertion dashboard E2E test (navigation, terminal, screenshots)
 - `test/e2e/test_c2_agent_interact.sh` — 25-assertion agent interaction page E2E test (message viewer, agent info, input panel)
 
-### 11.2 Running Tests
+### 10.2 Running Tests
 
 ```bash
 # Build with TRACE logging for verbose diagnostics
@@ -1116,7 +947,7 @@ bash test/e2e/test_c2_dashboard_e2e.sh --no-cleanup
 bash test/e2e/test_c2_agent_interact.sh --no-cleanup
 ```
 
-### 11.3 Log Files
+### 10.3 Log Files
 
 When run with `--no-cleanup`, log files persist at:
 
@@ -1134,7 +965,7 @@ c2 --log-file /tmp/c2-e2e.log
         └── b1 --log-file /tmp/c2-e2e-a0-b1.log
 ```
 
-### 11.4 TRACE Logging
+### 10.4 TRACE Logging
 
 Built with `-DENABLE_TRACE=ON`, the `TRACE_LOG(msg)` macro writes `[TRACE] file:line msg` to stderr. Key trace points:
 
@@ -1145,7 +976,7 @@ Built with `-DENABLE_TRACE=ON`, the `TRACE_LOG(msg)` macro writes `[TRACE] file:
 | c2 | `sse_manager.cpp` | sse broadcast (all events) |
 | b1 | `supervisor.cpp` | agent register, disconnect, stream relay, terminal_open |
 
-### 11.5 Test Helpers
+### 10.5 Test Helpers
 
 The test script provides helpers for shadow-DOM-safe element access:
 
@@ -1162,7 +993,7 @@ show_log /tmp/c2-e2e.log 10                    # Show last 10 lines
 
 Bridge action `selectById` with `perform: "click"|"type"|"focus"` recursively searches light DOM and all shadow roots to find elements by their component-manifest ID.
 
-### 11.6 WebComponent Architecture
+### 10.6 WebComponent Architecture
 
 Each c2 web UI component lives in its own directory with a component manifest:
 
@@ -1201,7 +1032,7 @@ The `component.json` manifest lists every element ID, its type, action, and whet
 
 Dynamic IDs are generated by `window.sanitizeId(raw)` which slugifies the raw value and truncates to 24 characters.
 
-### 11.7 Test Assertions
+### 10.7 Test Assertions
 
 The test runs 29 assertions covering:
 
@@ -1232,7 +1063,7 @@ The agent interaction E2E test (`test_c2_agent_interact.sh`) runs 25 assertions:
 | Browser close | 1 | Browser closes cleanly |
 | Cleanup | 2 | Browser closes, processes cleaned |
 
-### 11.8 Running the Full Test Suite
+### 10.8 Running the Full Test Suite
 
 Run all three test layers before every commit to verify no regressions. Expected time: ~2 minutes (unit) + ~20 seconds (agent E2E) + ~60 seconds (c2 E2E).
 
@@ -1256,10 +1087,6 @@ A convenience runner is available at `test/e2e/run_all_tests.sh` that executes a
 
 The complete technical specification for the Docker sub‑module is provided in a separate document: `./src/docker/technical-specification.md`. It includes detailed class specifications, sequence diagrams, configuration options, and testing requirements. The sub‑module is **required** for containerized execution; when `--no-docker` is used, the agent reverts to host‑only execution, but the Docker code is still compiled.
 
-**New in this commit:**
-- `ComposeManager` adds `startPersistent()` / `stopPersistent()` / `isPersistent()` for compose environments that survive across multiple tool calls.
-- `ComposeStackInfo` now stores `composeFile` path for use by persistent mode teardown.
-
 **Location**: `./src/docker/technical-specification.md`  
 **Source code**: `./src/docker/`
 
@@ -1268,14 +1095,6 @@ The complete technical specification for the Docker sub‑module is provided in 
 The complete technical specification for the Skills sub‑module is provided in a separate document: `./src/skills/technical-specification.md`. It includes detailed class specifications, sequence diagrams, configuration options, and testing requirements. The sub‑module is **required** — it implements a three-tier namespace system with version validation via historical log replay and GitHub distribution support.
 
 `SkillManager` serves as the unified tool dispatch layer, replacing `SystemToolRegistry`. A handler registry (`m_handlers`) holds C++ functions registered at startup by `xRegisterSystemHandlers()` in `main.cpp`. `executeTool()` and `schemas()` provide the single point of dispatch and schema generation for the LLM.
-
-**New in this commit:**
-- `SkillLoader` validates all `skill.json` manifests against `skills/schema.json` (Draft-07) via valijson at load time — invalid manifests are skipped with warnings.
-- `SkillManager` owns a `ToolState` instance (`m_toolState`) injected into every handler via `HandlerContext` for per-session cross-invocation state.
-- `SkillManager::executeToolStreaming()` enables streaming output for command tools with `streaming=true`.
-- `HandlerContext` now carries both `subcommand` and `toolState*`.
-- All handlers accept `HandlerContext` as a second parameter.
-- `DependencyGraph` (in `src/dependency_graph.h/.cpp`) classifies tools as READER/WRITER/READ_WRITE and builds parallel-safe execution batches, used by `AgentCore::xRunForkedLoop()` for batched tool dispatch.
 
 **Location**: `./src/skills/technical-specification.md`  
 **Source code**: `./src/skills/`

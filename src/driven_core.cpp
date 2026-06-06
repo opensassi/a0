@@ -51,7 +51,7 @@ static std::string xSanitizeUtf8(const std::string& raw) {
     return out;
 }
 
-static std::string xTruncateForLLM(const std::string& output, size_t maxBytes = 8192) {
+static std::string xTruncateForLLM(const std::string& output, size_t maxBytes = 65536) {
     if (output.size() <= maxBytes) return output;
     std::string truncated = output.substr(0, maxBytes);
     truncated += "\n... (output truncated at " + std::to_string(maxBytes) + " bytes)";
@@ -77,9 +77,8 @@ void DrivenCore::submitGoal(const std::string& goal) {
     m_accumText.clear();
     m_pendingToolCalls.clear();
     m_subSessionId = 0;
-    m_seq = 0;
 
-    xBuildInitialMessages(goal);
+    m_messages.push_back({"user", goal});
     xBuildToolSchemas();
 
     if (m_persistence && m_sessionDbId > 0) {
@@ -99,11 +98,6 @@ std::string DrivenCore::runSync(const std::string& goal) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     return m_lastResult;
-}
-
-void DrivenCore::xBuildInitialMessages(const std::string& goal) {
-    m_messages.clear();
-    m_messages.push_back({"user", goal});
 }
 
 void DrivenCore::xBuildToolSchemas() {
@@ -164,12 +158,19 @@ std::vector<mpsc::AppCoreEvent> DrivenCore::tick() {
     if (m_state == CoreState::AwaitingLlm) {
         auto events = m_provider->tick();
         xHandleLlmEvents(events);
+        // Streaming Complete events carry empty text (text was in LlmToken events).
+        // Fill in the actual result text so consumers (cmdRun) get the answer.
+        for (auto& ev : events) {
+            if (auto* c = std::get_if<mpsc::Complete>(&ev)) {
+                if (c->text.empty() && !m_lastResult.empty())
+                    c->text = m_lastResult;
+            }
+        }
         return events;
     }
 
     if (m_state == CoreState::ExecutingTools) {
-        xExecuteTools();
-        return {};
+        return xExecuteTools();
     }
 
     return {};
@@ -183,7 +184,7 @@ void DrivenCore::xHandleLlmEvents(const std::vector<mpsc::AppCoreEvent>& events)
         } else if (std::holds_alternative<mpsc::ToolStart>(ev)) {
             const auto& ts = std::get<mpsc::ToolStart>(ev);
             PendingToolCall ptc;
-            ptc.id = "";
+            ptc.id = ts.id;
             ptc.name = ts.toolName;
             try {
                 ptc.arguments = nlohmann::json::parse(ts.arguments);
@@ -222,16 +223,18 @@ void DrivenCore::xHandleLlmEvents(const std::vector<mpsc::AppCoreEvent>& events)
     }
 }
 
-void DrivenCore::xExecuteTools() {
+std::vector<mpsc::AppCoreEvent> DrivenCore::xExecuteTools() {
+    std::vector<mpsc::AppCoreEvent> events;
+
     if (m_pendingToolCalls.empty()) {
         m_state = CoreState::Idle;
-        return;
+        return events;
     }
 
     if (m_turnCount >= MAX_TURNS) {
         xFailGoal("ERROR: max tool call turns (" +
                   std::to_string(MAX_TURNS) + ") exceeded");
-        return;
+        return events;
     }
 
     Message asstMsg("assistant", "");
@@ -269,6 +272,13 @@ void DrivenCore::xExecuteTools() {
                 result = br.errors[i] + "\n" + result;
             }
             std::string safeOutput = xSanitizeUtf8(xTruncateForLLM(result));
+
+            mpsc::ToolEnd te;
+            te.toolName = m_pendingToolCalls[invIdx].name;
+            te.exitCode = br.errors.empty() || i >= br.errors.size() || br.errors[i].empty() ? 0 : 1;
+            te.output = safeOutput;
+            events.push_back(std::move(te));
+
             m_messages.push_back({"tool", safeOutput,
                                   m_pendingToolCalls[invIdx].id});
 
@@ -286,6 +296,7 @@ void DrivenCore::xExecuteTools() {
     m_accumText.clear();
 
     xStartLlmRequest(true);
+    return events;
 }
 
 void DrivenCore::xFinishGoal(const std::string& text) {
@@ -297,7 +308,6 @@ void DrivenCore::xFinishGoal(const std::string& text) {
             m_subSessionId, m_seq++, "assistant", safeText, "", "", "", "");
     }
 
-    m_messages.clear();
     m_toolSchemas.clear();
     m_pendingToolCalls.clear();
     m_accumText.clear();
@@ -312,7 +322,6 @@ void DrivenCore::xFailGoal(const std::string& error) {
             m_subSessionId, m_seq++, "assistant", error, "", "", "", "");
     }
 
-    m_messages.clear();
     m_toolSchemas.clear();
     m_pendingToolCalls.clear();
     m_accumText.clear();

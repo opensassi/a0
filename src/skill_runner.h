@@ -4,10 +4,11 @@
 #include "skills/skills.h"
 #include <unordered_map>
 
+/// @deprecated No longer compiled. Kept as reference.
+/// Replaced by DrivenCore which handles the tool-calling loop directly.
 class DefaultSkillRunner : public SkillRunner {
 public:
     DefaultSkillRunner(ToolRunner* toolRunner,
-                       InferenceProvider* provider,
                        a0::skills::SkillManager* skillMgr,
                        DependencyResolver* depResolver,
                        DockerToolRunner* dockerRunner = nullptr,
@@ -33,7 +34,6 @@ private:
     ToolRunner* m_toolRunner;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
-    InferenceProvider* m_provider;
     a0::skills::SkillManager* m_skillMgr;
     DependencyResolver* m_depResolver;
     std::string m_skillsDir;

@@ -437,24 +437,29 @@ std::vector<InvocationRow> SqliteStore::loadInvocations(int type,
 int64_t SqliteStore::findSessionByUuid(const std::string& uuid) const
 {
     sqlite3_stmt* stmt;
-    const char* sql = "SELECT id FROM session WHERE uuid = ?";
+    const char* sql = "SELECT id FROM session WHERE uuid = ?"
+        " OR uuid LIKE ? ORDER BY started_at DESC";
     if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return 0;
     }
     sqlite3_bind_text(stmt, 1, uuid.c_str(), -1, SQLITE_TRANSIENT);
+    std::string prefix = uuid + "%";
+    sqlite3_bind_text(stmt, 2, prefix.c_str(), -1, SQLITE_TRANSIENT);
     int64_t id = 0;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
         id = sqlite3_column_int64(stmt, 0);
+        ++count;
     }
     sqlite3_finalize(stmt);
-    return id;
+    return count == 1 ? id : 0;
 }
 
 std::vector<SqliteStore::SessionRow> SqliteStore::loadSessions(int limit) const
 {
     std::vector<SessionRow> result;
     sqlite3_stmt* stmt;
-    const char* sql = "SELECT s.id, s.uuid, s.started_at, "
+    const char* sql = "SELECT s.id, s.uuid, s.started_at, s.ended_at, "
                       "(SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) "
                       "FROM session s ORDER BY s.started_at DESC LIMIT ?";
     if (sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK)
@@ -466,7 +471,9 @@ std::vector<SqliteStore::SessionRow> SqliteStore::loadSessions(int limit) const
         if (const char* u = (const char*)sqlite3_column_text(stmt, 1))
             row.uuid = u;
         row.startedAt = sqlite3_column_int64(stmt, 2);
-        row.messageCount = sqlite3_column_int(stmt, 3);
+        if (sqlite3_column_type(stmt, 3) != SQLITE_NULL)
+            row.endedAt = sqlite3_column_int64(stmt, 3);
+        row.messageCount = sqlite3_column_int(stmt, 4);
         result.push_back(row);
     }
     sqlite3_finalize(stmt);

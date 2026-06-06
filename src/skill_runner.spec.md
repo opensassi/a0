@@ -6,7 +6,7 @@
 
 ## 1. Overview
 
-DefaultSkillRunner implements SkillRunner. It orchestrates the end-to-end execution of a Skill: dependency validation, optional Docker Compose environment startup, prompt expansion (substituting `{{key}}` params and executing `{{tool:name args}}` placeholders), LLM inference via InferenceProvider, and post-LLM validator chaining.
+DefaultSkillRunner implements SkillRunner. It orchestrates the end-to-end execution of a Skill: dependency validation, optional Docker Compose environment startup, prompt expansion (substituting `{{key}}` params and executing `{{tool:name args}}` placeholders), LLM inference, and post-LLM validator chaining.
 
 System tools are dispatched through `SkillManager::executeToolWithMeta()` (via the unified handler registry). `runTool()` and `runToolStreaming()` operate on `SkillTool` directly instead of converting to legacy `Tool` struct.
 
@@ -14,7 +14,7 @@ System tools are dispatched through `SkillManager::executeToolWithMeta()` (via t
 - `ToolRunner*` — host-level tool execution (required)
 - `DockerToolRunner*` — containerized tool execution (nullable)
 - `ComposeManager*` — Docker Compose lifecycle (nullable)
-- `InferenceProvider*` — LLM completion (required)
+- ~~`InferenceProvider*` — LLM completion (required, deleted)~~
 - `SkillManager*` — tool/skill lookup + handler dispatch (required)
 - `DependencyResolver*` — dependency checking (nullable)
 
@@ -24,7 +24,6 @@ System tools are dispatched through `SkillManager::executeToolWithMeta()` (via t
 class DefaultSkillRunner : public SkillRunner {
 public:
     DefaultSkillRunner(ToolRunner* toolRunner,
-                       InferenceProvider* provider,
                        a0::skills::SkillManager* skillMgr,
                        DependencyResolver* depResolver = nullptr,
                        DockerToolRunner* dockerRunner = nullptr,
@@ -48,7 +47,6 @@ private:
     ToolRunner* m_toolRunner;
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
-    InferenceProvider* m_provider;
     a0::skills::SkillManager* m_skillMgr;
     DependencyResolver* m_depResolver;
     std::string m_skillsDir;
@@ -102,7 +100,6 @@ graph TB
         DSR[DefaultSkillRunner]
     end
 
-    DSR --> IP[InferenceProvider]
     DSR --> DR[DependencyResolver]
     DSR --> CM[ComposeManager]
     DSR --> SM[SkillManager]
@@ -130,7 +127,7 @@ graph TB
    b. If not: fall through to full LLM pipeline
 4. Full LLM pipeline (sync, on background thread):
    a. expandPrompt(prompt, params)
-   b. m_provider->complete(systemPrompt, expanded)
+   b. LLM inference
    c. runValidators(prompt, llmResult)
    d. Fire output via onChunk callback
    e. If composeFile and not persistent: stopEnvironment()
@@ -146,7 +143,6 @@ sequenceDiagram
     participant Client
     participant DSR as DefaultSkillRunner
     participant SM as SkillManager
-    participant IP as InferenceProvider
     participant TR as ToolRunner
 
     Client->>DSR: execute(prompt, params)
@@ -160,8 +156,7 @@ sequenceDiagram
     SM-->>DSR: HandlerResult{output}
     DSR->>DSR: replace placeholder with output
 
-    DSR->>IP: complete(systemPrompt, expanded)
-    IP-->>DSR: llmResponse
+    DSR->>DSR: LLM inference
     DSR->>DSR: runValidators(prompt, llmResponse)
     DSR-->>Client: json result
 ```
@@ -175,7 +170,7 @@ sequenceDiagram
 | Unknown tool in `{{tool:name}}` | Replaced with `"ERROR: tool not found: <name>"` |
 | System tool with no handler | Returns error from SkillManager::executeToolWithMeta |
 | Validator returns `"ERROR:..."` | Short-circuit: `"VALIDATOR_ERROR: ERROR:..."` returned |
-| InferenceProvider throws | Exception propagates to caller |
+| LLM inference throws | Exception propagates to caller |
 | executeStreaming with missing deps | Returns empty StreamHandle (done immediately) |
 | runToolStreaming with invalid tool | Delegates error to underlying runner |
 

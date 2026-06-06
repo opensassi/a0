@@ -105,28 +105,6 @@ struct Message {
         : role(r), content(c), toolCallId(tcid) {}
 };
 
-struct CompletionResponse {
-    std::string content;               // text response (empty if tool_calls)
-    std::vector<ToolCall> toolCalls;   // tool calls (empty if text response)
-};
-
-class InferenceProvider {
-public:
-    virtual ~InferenceProvider() = default;
-
-    /// Original single-turn complete (used by SkillRunner template flow)
-    virtual std::string complete(const std::string& systemPrompt,
-                                  const std::string& userPrompt) = 0;
-
-    /// Tool-calling complete: sends messages + tool schemas, returns text or tool_calls
-    virtual CompletionResponse complete(
-        const std::string& systemPrompt,
-        const std::vector<Message>& messages,
-        const std::vector<ToolSchema>& tools) = 0;
-
-    virtual void setMockUrl(const std::string& url) = 0;
-};
-
 struct ContextFrame {
     std::string role;
     std::string content;

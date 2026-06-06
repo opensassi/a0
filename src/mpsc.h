@@ -46,6 +46,7 @@ struct LlmToken {
 };
 
 struct ToolStart {
+    std::string id;
     std::string toolName;
     std::string arguments;
 };

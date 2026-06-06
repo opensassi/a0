@@ -1,5 +1,6 @@
 """E2E test infrastructure: TuiDriver, AgentSubprocess, MockServer, and shared fixtures."""
 
+import json
 import os
 import pty
 import re
@@ -32,15 +33,18 @@ def find_free_port():
 class MockServer:
     """Manages the mock DeepSeek API server process."""
 
-    def __init__(self, scenario=None, port=None):
+    def __init__(self, scenario=None, port=None, stream=False):
         self.port = port or find_free_port()
         self.scenario = scenario
+        self.stream = stream
         self.process = None
 
     def __enter__(self):
         cmd = [sys.executable, MOCK_SERVER, str(self.port)]
         if self.scenario:
             cmd += ["--scenario", self.scenario]
+        if self.stream:
+            cmd += ["--stream"]
         self.process = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -284,3 +288,23 @@ class AgentSubprocess:
 
     def stderr_contains(self, text):
         return self.result and text in self.result.stderr.decode()
+
+
+def session_export_prefix(a0_dir, prefix):
+    """Export a session using an 8-char prefix, return list of message dicts."""
+    result = subprocess.run(
+        [A0_BIN, "--a0-dir", a0_dir, "session", "export", "--session-id", prefix],
+        capture_output=True, timeout=15
+    )
+    if result.returncode != 0:
+        return []
+    lines = result.stdout.decode().strip().split("\n")
+    msgs = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            msgs.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return msgs

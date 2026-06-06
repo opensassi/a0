@@ -4,6 +4,10 @@
 #include "skill_registry.h"
 #include <gtest/gtest.h>
 
+// NOTE: This test file is not compiled — kept as reference only.
+// InferenceProvider has been deleted; the old DefaultSkillRunner
+// constructor no longer accepts InferenceProvider*.
+
 class SkillRunnerTest : public ::testing::Test {
 protected:
     SubprocessToolRunner toolRunner;
@@ -11,40 +15,16 @@ protected:
     DefaultSkillRunner* runner;
     DefaultDependencyResolver* depResolver;
 
-    class MockProvider : public InferenceProvider {
-    public:
-        std::string lastSystemPrompt;
-        std::string lastUserPrompt;
-        std::string response;
-
-        std::string complete(const std::string& sys, const std::string& usr) override {
-            lastSystemPrompt = sys;
-            lastUserPrompt = usr;
-            return response;
-        }
-        CompletionResponse complete(
-            const std::string&,
-            const std::vector<Message>&,
-            const std::vector<ToolSchema>&) override
-        { return {response, {}}; }
-        void setMockUrl(const std::string& url) override { (void)url; }
-    };
-
-    MockProvider* provider;
-
     void SetUp() override {
-        provider = new MockProvider();
-        provider->response = "mock response";
         registry.addTool(Tool{"list_files", "list", "ls", "stdin"});
         registry.addTool(Tool{"grep_tool", "grep", "grep", "stdin"});
         depResolver = new DefaultDependencyResolver(&registry);
-        runner = new DefaultSkillRunner(&toolRunner, provider, &registry, depResolver);
+        runner = new DefaultSkillRunner(&toolRunner, &registry, depResolver);
     }
 
     void TearDown() override {
         delete runner;
         delete depResolver;
-        delete provider;
     }
 };
 

@@ -30,10 +30,8 @@ HandlerResult xGitCommand(const std::string& subcommand, const json& params);
 HandlerResult xShowSkills(const json& params, a0::skills::SkillManager* skillMgr);
 HandlerResult xShowSkillTools(const json& params, a0::skills::SkillManager* skillMgr);
 
-// NOTE: xToolsForPrompt was removed from the active codebase.
-// It required InferenceProvider* which has been replaced by the async LlmProvider.
-// The function body remains in system_handlers.cpp as reference for future
-// implementation of a static tool listing or async analysis.
+// NOTE: xToolsForPrompt was removed. It required InferenceProvider*
+// which has been deleted. No replacement planned.
 
 } // namespace a0
 ```

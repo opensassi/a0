@@ -537,7 +537,7 @@ Wire-up in `main.cpp`:
 2. `BuildIdentity::binarySha1()` + `BuildIdentity::detectGit()` → register `agent` row
 3. `SqliteStore` constructed with `a0Dir + "/db/sessions.db"` during startup
 4. `AgentCore` receives `PersistenceStore*`
-5. `DeepSeekProvider::complete()` records `role=assistant`
+5. `DrivenCore` records `role=assistant` after LLM response
 6. `CommandRunner::run()` records `role=tool`
 7. `--root` and `--parent` CLI flags populate `createSession` params
 8. `a0 replay` reads DB and drives the agent deterministically
@@ -553,7 +553,7 @@ Wire-up in `main.cpp`:
 
 ### Phase 2: Instrumentation
 
-- Wire `PersistenceStore*` through `AgentCore` → `DeepSeekProvider` → `CommandRunner`
+- Wire `PersistenceStore*` through `DrivenCore` → `CommandRunner`
 - Record messages at each call site
 - Handle `--root` / `--parent` in `main.cpp`
 

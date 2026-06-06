@@ -325,52 +325,34 @@ static int cmdSessionList(const std::string& a0Dir,
                            int offset, int limit,
                            bool outputJson) {
     a0::persistence::SqliteStore db(a0Dir + "/db/sessions.db");
-    sqlite3* raw = static_cast<sqlite3*>(db.handle());
 
-    sqlite3_stmt* stmt;
     int total = 0;
-    if (sqlite3_prepare_v2(raw, "SELECT COUNT(*) FROM session", -1, &stmt, nullptr) == SQLITE_OK) {
-        if (sqlite3_step(stmt) == SQLITE_ROW) total = sqlite3_column_int(stmt, 0);
-        sqlite3_finalize(stmt);
+    {
+        sqlite3* raw = static_cast<sqlite3*>(db.handle());
+        sqlite3_stmt* stmt;
+        if (sqlite3_prepare_v2(raw, "SELECT COUNT(*) FROM session", -1, &stmt, nullptr) == SQLITE_OK) {
+            if (sqlite3_step(stmt) == SQLITE_ROW) total = sqlite3_column_int(stmt, 0);
+            sqlite3_finalize(stmt);
+        }
     }
 
-    const char* sql =
-        "SELECT s.uuid, s.started_at, s.ended_at,"
-        " (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) AS msg_count"
-        " FROM session s ORDER BY s.started_at DESC LIMIT ? OFFSET ?";
-    struct SessionRow {
-        std::string uuid;
-        int64_t started_at, ended_at;
-        int message_count;
-    };
-    std::vector<SessionRow> rows;
-    if (sqlite3_prepare_v2(raw, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_int(stmt, 1, limit);
-        sqlite3_bind_int(stmt, 2, offset);
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            SessionRow r;
-            if (auto* s = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)))
-                r.uuid = s;
-            r.started_at = sqlite3_column_int64(stmt, 1);
-            if (sqlite3_column_type(stmt, 2) != SQLITE_NULL)
-                r.ended_at = sqlite3_column_int64(stmt, 2);
-            else
-                r.ended_at = 0;
-            r.message_count = sqlite3_column_int(stmt, 3);
-            rows.push_back(r);
-        }
-        sqlite3_finalize(stmt);
+    auto sessionRows = db.loadSessions(offset + limit);
+    std::vector<a0::persistence::PersistenceStore::SessionRow> displayRows;
+    for (size_t i = static_cast<size_t>(offset);
+         i < sessionRows.size() && displayRows.size() < static_cast<size_t>(limit);
+         ++i) {
+        displayRows.push_back(sessionRows[i]);
     }
 
     if (outputJson) {
         json arr = json::array();
-        for (const auto& r : rows) {
+        for (const auto& r : displayRows) {
             json j;
             j["uuid"] = r.uuid;
-            j["started_at"] = epochToIso8601(r.started_at);
-            if (r.ended_at > 0)
-                j["ended_at"] = epochToIso8601(r.ended_at);
-            j["message_count"] = r.message_count;
+            j["started_at"] = epochToIso8601(r.startedAt);
+            if (r.endedAt > 0)
+                j["ended_at"] = epochToIso8601(r.endedAt);
+            j["message_count"] = r.messageCount;
             arr.push_back(j);
         }
         json out;
@@ -380,17 +362,17 @@ static int cmdSessionList(const std::string& a0Dir,
         out["sessions"] = arr;
         std::cout << out.dump() << "\n";
     } else {
-        if (rows.empty()) {
+        if (displayRows.empty()) {
             std::cout << "No sessions found.\n";
             return 0;
         }
         std::cout << "Recent sessions:\n";
-        for (const auto& r : rows) {
+        for (const auto& r : displayRows) {
             std::cout << "  " << r.uuid
-                      << "  " << epochToIso8601(r.started_at)
-                      << "  " << r.message_count << " messages\n";
+                      << "  " << epochToIso8601(r.startedAt)
+                      << "  " << r.messageCount << " messages\n";
         }
-        std::cout << "(Showing " << rows.size() << " of " << total << " total)\n";
+        std::cout << "(Showing " << displayRows.size() << " of " << total << " total)\n";
     }
     return 0;
 }
@@ -543,7 +525,7 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
     auto [cmdSender, cmdRcvr] = a0::mpsc::Channel<a0::mpsc::Command>::create();
     auto [evtSender, evtRcvr] = a0::mpsc::Channel<a0::mpsc::AppCoreEvent>::create();
 
-    a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek" : "mock",
+    a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek-v4-flash" : "mock",
                                  &stack.skillMgr, &stack.persistence);
     if (!mockUrl.empty())
         coreThread.setMockUrl(mockUrl);
@@ -715,7 +697,7 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
     auto [evtSender, evtRcvr] = a0::mpsc::Channel<a0::mpsc::AppCoreEvent>::create();
 
     // Start core thread
-    a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek" : "mock",
+    a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek-v4-flash" : "mock",
                                  &stack.skillMgr, &stack.persistence);
     if (!mockUrl.empty())
         coreThread.setMockUrl(mockUrl);

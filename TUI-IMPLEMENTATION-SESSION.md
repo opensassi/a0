@@ -25,7 +25,7 @@
 | `src/driven_provider.h/.cpp`   | Async curl_multi-based LLM provider base class                           |
 | `src/driven_core.h/.cpp`       | State-machine tool-calling loop: Idle → AwaitingLlm → ExecutingTools     |
 | `src/app_core_thread.h/.cpp`   | ppoll()-based event loop wrapping DrivenCore for background thread use   |
-| `src/llm_provider.h`           | Abstract async `LlmProvider` interface — replaces `InferenceProvider`    |
+| `src/llm_provider.h`           | Abstract async `LlmProvider` interface    |
 | `src/deepseek_provider.h/.cpp` | `DeepSeekProvider : DrivenProvider` — DeepSeek-specific URL/auth/payload |
 
 ### Files deleted
@@ -70,7 +70,7 @@
 | `test/tui/mock/mock_persistence_store.h` | Added `loadSessions` override                                                                                                                                                                                                                                                                              |
 
 **Removed from build (kept on disk as reference):**
-`src/agent_core.h/.cpp`, `src/skill_runner.h/.cpp`, `src/deepseek_provider.h/.cpp` (old `InferenceProvider` implementation)
+`src/agent_core.h/.cpp`, `src/skill_runner.h/.cpp`, `src/deepseek_provider.h/.cpp` (deprecated, kept as reference)
 
 ---
 

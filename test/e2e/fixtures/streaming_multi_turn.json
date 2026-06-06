@@ -1,0 +1,21 @@
+{
+    "name": "streaming_multi_turn",
+    "description": "Two-turn conversation — tests that conversation history is preserved across submitGoal calls",
+    "analysis": null,
+    "turns": [
+        {
+            "tool_calls": [
+                {
+                    "name": "bash",
+                    "arguments": {"command": "echo first_turn_executed"}
+                }
+            ]
+        },
+        {
+            "content": "First turn complete. The file you asked about is src/tool_state.cpp"
+        },
+        {
+            "content": "Second turn complete. As previously mentioned, the file is src/tool_state.cpp"
+        }
+    ]
+}

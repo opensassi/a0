@@ -1,6 +1,6 @@
 # Technical Specification: Concurrency Model
 
-## Version 1.0 — Cross-Cutting Thread & Async Architecture
+## Version 2.0 — Cross-Cutting Thread & Async Architecture
 
 ---
 
@@ -28,13 +28,15 @@ Each process contains one or more concurrency contexts. This document identifies
 graph TB
     subgraph "PROCESS: a0 (agent)"
         FTXUI["FTXUI Event Loop<br/>main thread<br/>src/tui/agent_tui.cpp"]
-        APPCT["AppCoreThread<br/>background thread<br/>src/app_core_thread.cpp<br/>(DESIGNED, UNUSED)"]
+        APPCT["AppCoreThread<br/>background thread<br/>src/app_core_thread.cpp<br/>(ACTIVE)"]
         STRM["Stream Reader Threads<br/>1 per subprocess<br/>src/command_runner.cpp"]
         SKEX["Skill Executor Threads<br/>1 per streaming skill<br/>src/skill_runner.cpp"]
         TINP["Terminal Input Thread<br/>1 per terminal<br/>src/main.cpp"]
         TSEL["Terminal Select Loop<br/>main thread<br/>src/main.cpp"]
+        DRIVEN("DrivenCore + DrivenProvider<br/>curl_multi / ResponseDecoder")
 
-        FTXUI -->|"tick()"| DRIVEN("DrivenCore + DrivenProvider<br/>curl_multi / ResponseDecoder")
+        FTXUI -.->|"MPSC: Command / AppCoreEvent"| APPCT
+        APPCT -->|"owns + ticks"| DRIVEN
     end
 
     subgraph "PROCESS: b1 (supervisor)"
@@ -46,7 +48,7 @@ graph TB
         C2LSTN["Listener Poll Loop<br/>background thread<br/>src/c2/c2_listener.cpp"]
     end
 
-    FTXUI -->|"unix socket IPC"| B1
+    APPCT -->|"unix socket IPC"| B1
     B1 -->|"unix socket IPC"| C2LSTN
     C2LSTN -->|"mutex: m_b1PidToFd"| C2HTTP
     C2HTTP -->|"SSE broadcast"| BROWSER["Web Browser"]
@@ -64,12 +66,12 @@ graph TB
 
 | # | Component | Type | Thread | Source Files | Status | Role |
 |---|-----------|------|--------|-------------|--------|------|
-| C1 | FTXUI Event Loop | Async (poll) | Main | `src/tui/agent_tui.cpp:58-86` | **Active** | Renders TUI, drives `DrivenCore::tick()`, owns `DrivenProvider` (curl_multi), processes user input |
-| C2 | AppCoreThread | Async (ppoll) | Background | `src/app_core_thread.cpp:61-162` | **Designed, not wired** | Owns `DrivenCore` + `DrivenProvider` in dedicated thread, communicates via MPSC channels |
-| C3 | Stream Reader Thread | Thread (per process) | Per-child | `src/command_runner.cpp:206-269` | **Active** | `poll()` on child stdout/stderr pipes, invokes `onChunk` callback |
-| C4 | Skill Executor Thread | Thread (per skill) | Per-skill | `src/skill_runner.cpp:348-364` | **Active** | Calls `InferenceProvider::complete()` (blocking curl), runs validators |
-| C5 | Terminal Input Thread | Thread | Per-terminal | `src/main.cpp:887-895` | **Active** | Reads IPC `STREAM_INPUT` from b1, writes to PTY master |
-| C6 | Terminal Select Loop | Async (select) | Main | `src/main.cpp:900-927` | **Active** | Reads PTY master output, forwards to b1 via IPC |
+| C1 | FTXUI Event Loop | Async (poll) | Main | `src/tui/agent_tui.cpp:51-79` | **Active** | Renders TUI, drains MPSC `AppCoreEvent` events, sends `Command` variants via MPSC sender — holds zero core references |
+| C2 | AppCoreThread | Async (ppoll) | Background | `src/app_core_thread.cpp:76-213` | **Active** | Owns `DrivenCore` + `DrivenProvider` in dedicated thread, communicates via MPSC channels, dispatches session/persistence queries |
+| C3 | Stream Reader Thread | Thread (per process) | Per-child | `src/command_runner.cpp:207-275` | **Active** | `poll()` on child stdout/stderr pipes, invokes `onChunk` callback |
+| C4 | Skill Executor Thread | Thread (per skill) | Per-skill | `src/skill_runner.cpp:348-364` | **Deprecated** | Called `InferenceProvider::complete()` (deleted). SkillRunner is no longer compiled. |
+| C5 | Terminal Input Thread | Thread | Per-terminal | `src/main.cpp:870-879` | **Active** | Reads IPC `STREAM_INPUT` from b1, writes to PTY master |
+| C6 | Terminal Select Loop | Async (select) | Main | `src/main.cpp:882-911` | **Active** | Reads PTY master output, forwards to b1 via IPC |
 
 #### Process: b1 (supervisor)
 
@@ -82,14 +84,15 @@ graph TB
 | # | Component | Type | Thread | Source Files | Status | Role |
 |---|-----------|------|--------|-------------|--------|------|
 | C8 | Dashboard HTTP | Async (epoll) | Main | `src/c2/dashboard_server.cpp`, `src/c2/c2_main.cpp:124` | **Active** | uWebSockets HTTP/SSE server, REST API, SSE broadcasts |
-| C9 | Listener Poll Loop | Async (poll) | Background | `src/c2/c2_listener.cpp:39-238`, `src/c2/c2_main.cpp:112-117` | **Active** | Accept b1 connections, receive IPC messages, dispatch handlers |
+| C9 | Listener Poll Loop | Async (poll) | Background | `src/c2/c2_listener.cpp:39-238`, `src/c2/c2_main.cpp:113` | **Active** | Accept b1 connections, receive IPC messages, dispatch handlers |
 
 ### 2.3 Process Lifecycle Diagram
 
 ```mermaid
 sequenceDiagram
     participant USER as User
-    participant A0 as a0 (main)
+    participant A0 as a0 (main thread)
+    participant ACT as AppCoreThread
     participant B1 as b1 (supervisor)
     participant C2 as c2 (dashboard)
 
@@ -109,15 +112,32 @@ sequenceDiagram
     end
     B1->>C2: Unix socket connect + IPC REGISTER
 
-    Note over A0: FTXUI event loop starts<br/>(or terminal mode select loop)
+    Note over A0: Create MPSC channels
+    A0->>ACT: start(cmdRcvr, evtSender, wakeupFn)
+    ACT-->>ACT: background thread starts
+
+    A0->>ACT: cmdSender.send(SetSession{dbId, sid})
+    ACT->>ACT: core.setSession(), sends SessionReady event
+
+    Note over A0: Create AgentTui (NO core refs)
+    Note over A0: FTXUI event loop starts
+    Note over ACT: ppoll() loop starts (ticks DrivenCore)
     Note over B1: poll() loop starts
     Note over C2: listener thread + dashboard HTTP start
+
+    loop every ~16ms
+        A0->>ACT: drainEvents() / send SubmitGoal via MPSC
+        ACT->>ACT: tick DrivenCore → send events via MPSC
+        ACT->>A0: wakeupFn() → screen->Post(Task{})
+    end
 
     loop every 5s
         B1->>C2: IPC UPDATE (agent snapshot)
     end
 
-    USER->>A0: Ctrl+C / SIGTERM
+    USER->>A0: Ctrl+Q / :quit
+    A0->>ACT: cmdSender.send(Shutdown{})
+    ACT->>ACT: ppoll exits, thread joins
     A0->>B1: socket disconnect
     B1->>B1: poll() detects POLLHUP → state=CRASHED
     B1->>C2: IPC UPDATE (crashed agents)
@@ -134,74 +154,140 @@ sequenceDiagram
 
 ```cpp
 // src/tui/agent_tui.cpp — AgentTui::run()
-int AgentTui::run(bool testMode) {
+int AgentTui::run() {
     // ...
     auto loop = ftxui::Loop(m_screen, m_mainComponent);
     while (!loop.HasQuitted()) {
         loop.RunOnce();              // FTXUI renders, processes events
-        xTickCore();                 // Drives DrivenCore + DrivenProvider
+        drainEvents();               // Drain MPSC events from AppCoreThread
         std::this_thread::sleep_for(std::chrono::milliseconds(16));  // ~60 FPS
     }
     // ...
 }
-```
 
-**Wakeup mechanisms:**
-- `m_screen->Post(Task{})` — enqueue a no-op to force a frame (used in `xHandleSubmit`)
-- `m_screen->RequestAnimationFrame()` — request next frame (used in `xTickCore` when core is busy)
-- `std::this_thread::sleep_for(16ms)` — frame rate limiter, also the idle poll timeout
-
-**Owns:**
-- `DrivenProvider` (curl_multi async HTTP)
-- `DrivenCore` (state machine: Idle → AwaitingLlm → ExecutingTools)
-- `MessagePanel`, `InputPanel`, `StatusBar`, `DialogManager` (FTXUI components)
-- `SessionManager` (PersistenceStore CRUD)
-
-**Thread safety:** This component is **not thread-safe**. All DrivenCore/DrivenProvider calls are made from the main thread. Any cross-thread event injection must use `Screen::Post(Task{})` for FTXUI-side processing.
-
-### 3.2 AppCoreThread (C2 — Unused)
-
-```cpp
-// src/app_core_thread.cpp — AppCoreThread::xRun()
-void AppCoreThread::xRun() {
-    // Block SIGCHLD in this thread
-    pthread_sigmask(SIG_BLOCK, &sigmask, nullptr);
-
-    while (m_running.load()) {
-        ppoll(fds, nfds, timeout, &waitset);  // poll wakeupFd + cmdFd
-
-        // Drain dead children
-        while (waitpid(-1, nullptr, WNOHANG) > 0) {}
-
-        // Drain commands from MPSC channel
-        auto commands = m_cmdReceiver.drain();
-        for (auto& cmd : commands) {
-            // SubmitGoal → core.submitGoal()
-            // Cancel → core.cancel()
-            // Shutdown → stop
+void AgentTui::drainEvents() {
+    auto events = m_evtReceiver.drain();
+    if (!events.empty()) {
+        for (auto& ev : events) {
+            xHandleCoreEvent(ev);    // Dispatch LlmToken, ToolStart, Complete, etc.
         }
-
-        // Tick the core → collect events → send via MPSC
-        if (!core.idle()) {
-            auto events = core.tick();
-            for (auto& ev : events) m_evtSender.send(ev);
-            if (!events.empty() && m_wakeupFn) m_wakeupFn();
-        }
+        m_screen->RequestAnimationFrame();
     }
 }
 ```
 
+**Wakeup mechanisms:**
+- `AppCoreThread` calls `wakeupFn()` (set to `screen->Post(Task{})`) after sending MPSC events
+- `m_screen->RequestAnimationFrame()` — request next frame when events were drained
+- `std::this_thread::sleep_for(16ms)` — frame rate limiter, also the idle poll timeout
+
+**Owns:**
+- `MessagePanel`, `InputPanel`, `StatusBar`, `DialogManager`, `MarkdownRenderer` (FTXUI components)
+- `m_cmdSender` (MPSC Sender — sends `Command` variants to `AppCoreThread`)
+- `m_evtReceiver` (MPSC Receiver — drains `AppCoreEvent` variants from `AppCoreThread`)
+
+**Does NOT own or reference:**
+- `DrivenProvider`, `DrivenCore`, `DeepSeekProvider` — owned by `AppCoreThread`
+- `SkillManager`, `PersistenceStore` — owned by main thread's `AgentStack`
+- `SessionManager` — deleted; session operations go through MPSC (`ListSessions`, `ResumeSession`)
+
+**Thread safety:** This component is **not thread-safe**. All MPSC drain and render calls happen from the main thread. The only cross-thread interaction is `wakeupFn()` which calls `Screen::Post(Task{})` (FTXUI's thread-safe re-render queue). No core component reference exists in this thread.
+
+### 3.2 AppCoreThread (C2 — Active)
+
+```cpp
+// src/app_core_thread.cpp — AppCoreThread::xRun()
+void AppCoreThread::xRun() {
+    TRACE_LOG("AppCoreThread started");
+    DrivenCore core(m_apiKey, m_model, "DrivenCore", m_skillMgr);
+    core.setPersistence(m_persistence);
+    if (!m_mockUrl.empty()) {
+        core.drivenProvider().setMockUrl(m_mockUrl);
+    }
+
+    // Block SIGCHLD in this thread
+    sigset_t sigmask;
+    sigemptyset(&sigmask);
+    sigaddset(&sigmask, SIGCHLD);
+    pthread_sigmask(SIG_BLOCK, &sigmask, nullptr);
+
+    // Build ppoll fd set: cmdReceiver fd + wakeup eventfd
+    int cmdFd = m_cmdReceiver.poll_fd();
+    struct pollfd fds[2];
+    fds[0].fd = cmdFd;
+    fds[0].events = POLLIN;
+    fds[1].fd = m_wakeupFd;
+    fds[1].events = POLLIN;
+
+    while (m_running.load()) {
+        int timeout = core.idle() ? 100 : core.timeoutMs();
+        if (timeout < 0) timeout = 100;
+
+        int rc = ppoll(fds, 2, &timeout, &sigmask);
+
+        // Drain dead children (tool subprocesses)
+        while (waitpid(-1, nullptr, WNOHANG) > 0) {}
+
+        if (rc > 0) {
+            if (fds[1].revents & POLLIN) {
+                uint64_t u;
+                read(m_wakeupFd, &u, sizeof(u));
+            }
+            if (fds[0].revents & POLLIN) {
+                auto commands = m_cmdReceiver.drain();
+                for (auto& cmd : commands) {
+                    std::visit([&](auto& arg) {
+                        using T = std::decay_t<decltype(arg)>;
+                        if constexpr (std::is_same_v<T, mpsc::SubmitGoal>) {
+                            core.submitGoal(arg.goal);
+                        } else if constexpr (std::is_same_v<T, mpsc::Cancel>) {
+                            core.cancel();
+                        } else if constexpr (std::is_same_v<T, mpsc::SetSession>) {
+                            core.setSession(arg.sessionDbId, arg.sessionUuid);
+                            m_evtSender.send(mpsc::SessionReady{arg.sessionDbId, arg.sessionUuid});
+                        } else if constexpr (std::is_same_v<T, mpsc::ListSessions>) {
+                            std::vector<mpsc::SessionList::Entry> entries;
+                            auto sessions = m_persistence->loadSessions(arg.limit);
+                            for (auto& s : sessions)
+                                entries.push_back({s.uuid, s.dbId, s.startedAt, s.messageCount});
+                            m_evtSender.send(mpsc::SessionList{entries});
+                        } else if constexpr (std::is_same_v<T, mpsc::ResumeSession>) {
+                            int64_t dbId = m_persistence->findSessionByUuid(arg.uuid);
+                            auto msgs = m_persistence->loadMessages(dbId);
+                            core.setSession(dbId, arg.uuid);
+                            m_evtSender.send(mpsc::SessionHistory{dbId, arg.uuid, true, msgs});
+                        } else if constexpr (std::is_same_v<T, mpsc::Shutdown>) {
+                            m_running = false;
+                        }
+                    }, cmd);
+                }
+            }
+        }
+
+        if (!core.idle()) {
+            auto events = core.tick();
+            for (auto& ev : events)
+                m_evtSender.send(ev);
+            if (!events.empty() && m_wakeupFn)
+                m_wakeupFn();
+        }
+    }
+
+    TRACE_LOG("AppCoreThread stopped");
+}
+```
+
 **Key design properties:**
-- Thread ownership: owns `DrivenProvider` + `DrivenCore` directly (stack-allocated in `xRun()`)
-- Communication: bidirectional MPSC channels for commands and events
-- Wakeup: eventfd for shutdown, MPSC Receiver::poll_fd() for command arrival
+- Thread ownership: owns `DrivenCore` (stack-allocated in `xRun()`), which in turn owns `DrivenProvider`
+- Communication: bidirectional MPSC channels for commands (`m_cmdReceiver`) and events (`m_evtSender`)
+- Wakeup: eventfd for shutdown signal; MPSC `Receiver::poll_fd()` for command arrival; `wakeupFn()` callback to wake the UI thread after sending events
 - Signal handling: SIGCHLD blocked via `pthread_sigmask`, handled via `waitpid(WNOHANG)` drain
 - Timeout: curl-driven from `DrivenProvider::timeoutMs()`, minimum 100ms idle
 
 ### 3.3 Stream Reader Thread (C3)
 
 ```cpp
-// src/command_runner.cpp — reader thread lambda (lines 206-269)
+// src/command_runner.cpp — reader thread lambda
 state->thread = std::thread([state, stdoutPipe0, stderrPipe0, stdinPipe1, onChunk, timeoutSecs, pid]() {
     // Set SIGALRM for timeout
     alarm(timeoutSecs);
@@ -212,8 +298,13 @@ state->thread = std::thread([state, stdoutPipe0, stderrPipe0, stdinPipe1, onChun
         // read from stderr pipe → onChunk(data, "stderr")
     }
 
+    alarm(0);
     close(outFd); close(errFd);
-    close(stdinPipe1);                        // ⚠️ unprotected close (Issue #1)
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        ::close(stdinPipe1);
+        state->stdinFd = -1;   // invalidate fd under lock
+    }
 
     waitpid(pid, &status, 0);
     state->exitCode = ec;
@@ -222,21 +313,23 @@ state->thread = std::thread([state, stdoutPipe0, stderrPipe0, stdinPipe1, onChun
 ```
 
 **Shared state:** `std::shared_ptr<StreamHandle::State>` containing:
-- `std::mutex mutex` — protects `stdinFd` during `sendInput()`
-- `int stdinFd` — written before thread starts, read under mutex, closed in thread
+- `std::mutex mutex` — protects `stdinFd` during `sendInput()` and close
+- `int stdinFd` — written before thread starts, read under mutex, closed under mutex
 - `std::atomic<bool> done` — completion signal (non-blocking check via `isDone()`)
 - `std::atomic<int> exitCode` — thread-safe exit code read
 
-**Thread safety concern:** `close(stdinPipe1)` at line 256 executes without holding `state->mutex`. If `sendInput()` is called concurrently from another thread, it may write to a file descriptor that has been closed and potentially reused.
+**Thread safety:** `close(stdinPipe1)` is performed under `state->mutex` with `state->stdinFd = -1` invalidation, ensuring any concurrent `sendInput()` sees a closed fd and skips the write.
 
 ### 3.4 Skill Executor Thread (C4)
 
 ```cpp
-// src/skill_runner.cpp — executeStreaming() thread (lines 348-364)
+// src/skill_runner.cpp — executeStreaming() thread
 state->thread = std::thread([this, prompt, fullSystemPrompt, expanded, onChunk, state]() {
     std::string llmResult = m_provider->complete(fullSystemPrompt, expanded);
     json finalResult = runValidators(prompt, llmResult);
-    std::string output = finalResult.is_string() ? ... : finalResult.dump();
+    std::string output = finalResult.is_string()
+        ? finalResult.get<std::string>()
+        : finalResult.dump();
     if (onChunk) onChunk(output, "stdout");
 
     if (!prompt.composeFile.empty() && m_composeMgr &&
@@ -249,29 +342,38 @@ state->thread = std::thread([this, prompt, fullSystemPrompt, expanded, onChunk, 
 });
 ```
 
-**Thread safety concern:** `m_provider` is `InferenceProvider*` (raw pointer to `DeepSeekProvider`). `DeepSeekProvider::complete()` uses non-thread-safe `curl_easy_perform()` and shares `m_baseUrl` with `setMockUrl()`. There is **no mutex** protecting the provider from concurrent access. Currently safe because `executeStreaming()` is never called while the provider is being reconfigured via `setMockUrl()`, but there is no guard against future misuse.
+**Note:** This code path is from the deprecated `SkillRunner` (no longer compiled). `InferenceProvider` has been deleted. The TUI and headless modes use `AppCoreThread`/`DrivenProvider` (async curl_multi) exclusively.
 
 ### 3.5 Terminal Threads (C5, C6)
 
 ```cpp
-// src/main.cpp — terminal mode
+// src/main.cpp — cmdTerminal()
 // Input thread (C5):
 std::thread inputThread([&]() {
     while (!done) {
-        recvMessage(b1Sock, inputMsg, 100);
-        if (inputMsg.type == STREAM_INPUT && inputMsg.streamId == streamId)
+        ipc::Message inputMsg;
+        int rc = b1Sock.recv(inputMsg, 100);
+        if (rc == ipc::RECV_OK
+            && inputMsg.type == STREAM_INPUT
+            && inputMsg.streamId == streamId)
             write(master, inputMsg.chunkData.data(), inputMsg.chunkData.size());
     }
 });
 
 // Select loop (C6, main thread):
 while (!done) {
+    FD_ZERO(&rdfs);
+    FD_SET(master, &rdfs);
+    tv.tv_sec = 0; tv.tv_usec = 100000;
     select(master + 1, &rdfs, nullptr, nullptr, &tv);
     if (FD_ISSET(master, &rdfs)) {
         n = read(master, buf, sizeof(buf));
-        // appendChunk + send STREAM_DATA to b1
+        if (n > 0) {
+            appendChunk(streamId, seq++, "stdout", data);
+            send STREAM_DATA to b1
+        } else { done = true; }
     }
-    waitpid(shellPid, &status, WNOHANG); // reap child shell
+    waitpid(shellPid, &status, WNOHANG);
 }
 
 // Synchronization:
@@ -306,7 +408,7 @@ while (m_running) {
 std::thread listenerThread([&listener]() {
     listener.run();  // C9: poll loop in background
 });
-dashboard.run();  // C8: uWS HTTP/SSE in main thread
+dashboard.run();  // C8: uWS HTTP/SSE in main thread; blocks until shutdown
 ```
 
 **Shared state across C8↔C9:**
@@ -384,7 +486,7 @@ graph TB
 | `C2Listener::m_b1PidToFd` | `std::mutex` | PID→fd map | `src/c2/c2_listener.h:37` |
 | `AppCoreThread::m_running` | `std::atomic<bool>` | Thread start/stop flag | `src/app_core_thread.h:75` |
 | `hex_session_id` RNG | `thread_local` | Per-thread random device | `src/hex_session_id.h:9-11` |
-| `g_timeoutFired` | `volatile sig_atomic_t` | Signal handler flag | `src/command_runner.cpp:15` |
+| `g_timeoutFired` | `std::atomic&lt;int&gt;` | Signal handler flag | `src/command_runner.cpp:16` |
 | `Terminal done` | `std::atomic<bool>` | Input thread / select loop coordination | `src/main.cpp:885` |
 
 ### 4.3 Absence of Synchronization (Design Intent)
@@ -393,80 +495,78 @@ The following components have **no internal locks** by design:
 
 | Component | Reason | Risk if misused |
 |-----------|--------|-----------------|
-| `DrivenProvider` | Designed for single-thread access; all calls from FTXUI event loop | Data race if called from >1 thread |
-| `DrivenCore` | Owns `DrivenProvider`; driven from same thread | Same as above |
-| `DefaultAgentCore` | Not thread-safe; raw pointer members | Undefined behavior |
-| `DefaultSkillRunner` | `executeStreaming()` spawns thread calling `m_provider` | Cross-thread `DeepSeekProvider` access |
+| `DrivenProvider` | Designed for single-thread access; all calls from AppCoreThread | Already correct — single-thread enforced by thread ownership |
+| `DrivenCore` | Owns `DrivenProvider`; driven from `AppCoreThread` only | Already correct — single-thread enforced by thread ownership |
+| `AppCoreThread` | Not thread-safe; all `DrivenCore` calls from `xRun()` only | Already correct — single-thread by design |
+| `DefaultSkillRunner` | `executeStreaming()` spawns thread calling `m_provider` | Legacy — cross-thread `DeepSeekProvider` access possible |
 | `b1::Supervisor` | Single-threaded design | Already correct |
 
 ---
 
 ## 5. Detailed Data Flow
 
-### 5.1 FTXUI Event Loop — Goal Submission
+### 5.1 FTXUI Event Loop — Goal Submission via MPSC
 
 ```mermaid
 sequenceDiagram
     participant USER as User (keyboard)
-    participant IP as InputPanel
     participant AT as AgentTui
+    participant CMD as MPSC Sender
+    participant EVT as MPSC Receiver
+    participant ACT as AppCoreThread
     participant DC as DrivenCore
     participant DP as DrivenProvider
     participant SM as SkillManager
     participant MP as MessagePanel
     participant SB as StatusBar
-    participant MS as MockServer / DeepSeek
 
-    USER->>IP: type + Enter
-    IP->>AT: onSubmit("find log files")
+    USER->>AT: type + Enter
     AT->>SB: setAgentState(Thinking)
 
-    AT->>DC: submitGoal("find log files")
-    DC->>SM: executeToolWithMeta("tools_for_prompt")
-    Note over SM,MS: BLOCKING synchronous call via DeepSeekProvider
-    SM->>MS: HTTP POST /v1/chat/completions
-    MS-->>SM: analysis JSON (recommended tools)
-    SM-->>DC: analysis output
+    AT->>CMD: send(SubmitGoal{"find log files"})
 
+    Note over CMD,ACT: ═══ Thread boundary: MPSC channel ═══
+
+    CMD-->>ACT: drain → SubmitGoal
+    ACT->>DC: submitGoal("find log files")
     DC->>DP: startRequestStreaming(sysPrompt, messages, tools)
-    Note over DP,MS: NON-BLOCKING — curl_multi_add_handle
-    DP->>DP: curl_multi_add_handle(easy)
+    Note over DP: NON-BLOCKING — curl_multi_add_handle
     DP->>DC: (returns immediately)
 
-    AT->>AT: xTickCore() (immediate first tick)
-
     loop every ~16ms (FTXUI frame)
-        AT->>DC: tick()
-        DC->>DP: tick()
-        DP->>DP: curl_multi_perform()
-        DP->>MS: HTTP POST (establish connection)
+        AT->>EVT: drainEvents()
+        EVT-->>AT: [LlmToken, ToolStart, ToolEnd, Complete, Error]
 
-        alt token received
-            MS-->>DP: SSE data chunk
-            DP->>DC: LlmToken("Found")
-            DC->>AT: LlmToken("Found")
-            AT->>MP: streamUpdate("Found")
-        else tool call received
-            MS-->>DP: ToolStart("glob", args)
-            DP->>DC: ToolStart, ToolEnd
-            DC->>AT: ToolStart, ToolEnd
-            AT->>MP: appendToolCall / updateToolCall
-            DC->>DC: xExecuteTools()
-            DC->>SM: executeTool("glob", params)
-            SM-->>DC: result
-        else complete
-            MS-->>DP: Complete("Found 3 log files")
-            DP->>DC: Complete("Found 3 log files")
-            DC->>AT: Complete
+        rect rgb(230, 255, 230)
+            Note over DP,ACT: Background thread drives curl_multi
+            ACT->>DC: tick()
+            DC->>DP: tick()
+            DP->>DP: curl_multi_perform()
+            DP-->>DC: AppCoreEvent events
+            DC-->>ACT: events
+            ACT->>AT: wakeupFn() = screen->Post(Task{})
+        end
+
+        AT->>AT: xHandleCoreEvent(event)
+
+        alt LlmToken
+            AT->>MP: streamUpdate("Found 3 log files")
+        else ToolStart
+            AT->>MP: appendToolCall("glob", Running)
+            AT->>SB: setAgentState(Executing)
+        else ToolEnd
+            AT->>MP: updateToolCall("glob", Completed, output)
+            AT->>SB: setAgentState(Thinking)
+        else Complete
             AT->>MP: endStream / append
             AT->>SB: setAgentState(Idle)
         end
 
-        AT->>AT: if !core.idle() → RequestAnimationFrame()
+        AT->>AT: if events drained → RequestAnimationFrame()
     end
 ```
 
-**Key characteristic:** Everything runs on one thread. The `tools_for_prompt` call is **blocking** — it calls the old `DeepSeekProvider` which uses synchronous `curl_easy_perform()`. During this call, the FTXUI event loop is frozen. After it returns, the rest is driven by `curl_multi_perform()` on each frame.
+**Key characteristic:** The TUI and core run on separate threads. All communication passes through MPSC channels. The `AppCoreThread` owns `DrivenCore` and `DrivenProvider` and ticks them in its own `ppoll()` loop. The TUI (`AgentTui`) drains events from the MPSC receiver each frame and sends commands through the MPSC sender. No blocking LLM calls happen on the FTXUI thread.
 
 ### 5.2 CommandRunner Streaming — Subprocess Execution
 
@@ -573,7 +673,7 @@ sequenceDiagram
     end
 ```
 
-### 5.4 AppCoreThread Design Data Flow (Unused)
+### 5.4 AppCoreThread Data Flow
 
 ```mermaid
 sequenceDiagram
@@ -615,62 +715,28 @@ sequenceDiagram
 
 ## 6. Critical Coordination Points
 
-| # | Point | Components | Shared State | Protection | Risk | Recommendation |
-|---|-------|-----------|-------------|-----------|------|----------------|
-| 1 | `close(stdinPipe1)` in reader thread | C3 ↔ caller | `stdinFd` | `std::mutex` for writes, **no lock on close** | LOW — `sendInput()` is typically called before child exits; close happens after pipes EOF | Wrap `close(stdinPipe1)` in `lock_guard` |
-| 2 | `DeepSeekProvider::complete()` from skill thread | C4 ↔ C1 | `m_baseUrl`, curl easy handle | **NONE** | MEDIUM — no concurrent calls today, but no guard. A background `executeStreaming()` calling `complete()` while the main thread calls `setMockUrl()` would race on `m_baseUrl` | Add mutex to `DeepSeekProvider`, or document as single-thread-only |
-| 3 | `DrivenProvider::tick()` from single thread | C1 (or C2) | `m_handle`, `m_multi` | **NONE by design** | CORRECT — single-thread access enforced by architecture | Document the contract |
-| 4 | `C2Listener::sendToB1()` + `xCleanupPeer()` | C8 ↔ C9 | `m_b1PidToFd` | `std::mutex` | CORRECT — all accesses covered |
-| 5 | `B1Registry` mutations + SSE broadcasts | C9 | `m_b1s` + `m_clients` | Independent mutexes | CORRECT — no nested lock acquisition |
-| 6 | `g_timeoutFired` signal flag | C3 signal handler | `sig_atomic_t` | `volatile sig_atomic_t` | CORRECT — only written in handler, read in same thread |
-| 7 | `AppCoreThread::m_running` | C2 ↔ caller | `std::atomic<bool>` | `exchange()`, `load()` | CORRECT — acquire-release semantics |
-| 8 | `b1::Supervisor` all state | C7 only | `m_agents`, etc. | **None** | CORRECT — single-threaded |
-| 9 | `mpsc::Channel` send/drain | Any ↔ C2 | deque + eventfd | `std::mutex` + `std::atomic<int>` | CORRECT — proven MPSC pattern |
-| 10 | Terminal `done` flag | C5 ↔ C6 | `std::atomic<bool>` | `std::atomic` | CORRECT |
+| # | Point | Components | Shared State | Protection | Status |
+|---|-------|-----------|-------------|-----------|--------|
+| 1 | `DrivenProvider::tick()` from AppCoreThread | C2 | `m_handle`, `m_multi` | **None by design** | CORRECT — single-thread access enforced by thread ownership |
+| 2 | `C2Listener::sendToB1()` + `xCleanupPeer()` | C8 ↔ C9 | `m_b1PidToFd` | `std::mutex` | CORRECT — all accesses covered |
+| 3 | `B1Registry` mutations + SSE broadcasts | C9 | `m_b1s` + `m_clients` | Independent mutexes | CORRECT — no nested lock acquisition |
+| 4 | `AppCoreThread::m_running` | C2 ↔ caller | `std::atomic<bool>` | `exchange()`, `load()` | CORRECT — acquire-release semantics |
+| 5 | `b1::Supervisor` all state | C7 only | `m_agents`, etc. | **None** | CORRECT — single-threaded |
+| 6 | `mpsc::Channel` send/drain | C1 ↔ C2 | deque + eventfd | `std::mutex` + `std::atomic<int>` | CORRECT — proven MPSC pattern |
+| 7 | Terminal `done` flag | C5 ↔ C6 | `std::atomic<bool>` | `std::atomic` | CORRECT |
+| 8 | `DeepSeekProvider::complete()` from skill thread | C4 | `m_baseUrl`, curl easy handle | **None** | LEGACY — TUI uses `AppCoreThread`/`DrivenProvider` instead; path exists via `SkillRunner::executeStreaming()` |
 
-### 6.1 Issue Detail: `close(stdinPipe1)` Without Lock
-
-**File:** `src/command_runner.cpp:256`
+### 6.1 Legacy: `DeepSeekProvider` from Background Thread
 
 ```cpp
-// In reader thread:
-close(outFd);
-close(errFd);
-close(stdinPipe1);  // <-- no lock_guard(state->mutex)
-```
-
-`stdinPipe1` is the parent's end of the stdin pipe to the child process. The reader thread closes it after detecting EOF on stdout/stderr. However, `StreamHandle::sendInput()` (called from another thread) does this:
-
-```cpp
-// src/command_runner.cpp:147
-void StreamHandle::sendInput(const std::string& data) {
-    auto s = m_state.lock();
-    if (!s) return;
-    std::lock_guard<std::mutex> lock(s->mutex);
-    if (s->stdinFd >= 0) {
-        write(s->stdinFd, data.data(), data.size());
-    }
-}
-```
-
-If `sendInput()` is called concurrently with the reader thread's `close(stdinPipe1)`, the write may go to a file descriptor that has been recycled by another `fork()`/`accept()`/`open()` call.
-
-**Impact:** Low probability in practice. `sendInput()` is typically called before the child exits, and `close(stdinPipe1)` happens after pipe EOF. But the race window exists.
-
-### 6.2 Issue Detail: `DeepSeekProvider` from Background Thread
-
-**File:** `src/skill_runner.cpp:348`
-
-```cpp
+// src/skill_runner.cpp — executeStreaming()
 state->thread = std::thread([this, ...]() {
     std::string llmResult = m_provider->complete(fullSystemPrompt, expanded);
     // ...
 });
 ```
 
-Where `m_provider` is `InferenceProvider*` pointing to a `DeepSeekProvider` instance also accessible from the main thread via `DefaultAgentCore`. `DeepSeekProvider::complete()` calls `curl_easy_perform()` which modifies internal curl state, and reads `m_baseUrl` which is written by `setMockUrl()` from another thread.
-
-**Impact:** Medium. The streaming skill execution path is currently not used in the default TUI mode (which uses `DrivenCore`/`DrivenProvider` instead). But the code path exists and could be triggered by `SkillRunner::executeStreaming()`.
+**Note:** This code path is from the deprecated `SkillRunner` (no longer compiled). `InferenceProvider` has been deleted. This path is not used by the TUI or headless modes — both use `AppCoreThread`/`DrivenProvider` exclusively.
 
 ---
 
@@ -701,7 +767,7 @@ This guarantees that commands sent from any thread are visible to the event loop
 
 | Signal | Handler | Safety |
 |--------|---------|--------|
-| `SIGALRM` | Sets `volatile sig_atomic_t g_timeoutFired` | **Safe** — only `sig_atomic_t` writes, no async-signal-unsafe calls |
+| `SIGALRM` | Sets `std::atomic&lt;int&gt; g_timeoutFired` | **Safe** — only `sig_atomic_t` / `std::atomic` writes, no async-signal-unsafe calls |
 | `SIGCHLD` (AppCoreThread) | Blocked via `pthread_sigmask` | **Safe** — handled via `waitpid(WNOHANG)` drain |
 | `SIGINT`/`SIGTERM` (c2) | Calls `shutdown()`, `unlink()`, `_exit()` | **Acceptable** — signal handler exits immediately via `_exit()`, no stdlib cleanup needed |
 | `SIGTERM` (CommandRunner cancel) | Kills child process group | **Safe** — `kill(-pid, SIGTERM)` is async-signal-safe |
@@ -757,77 +823,14 @@ The following tests must be run with `-fsanitize=thread` enabled in CMake:
 
 ---
 
-## 9. Identified Issues and Recommendations
-
-### Issue 1: Unprotected `close(stdinPipe1)` in Reader Thread
-
-**Location:** `src/command_runner.cpp:256`
-
-**Problem:** `close(stdinPipe1)` in the reader thread does not hold `state->mutex`. If `sendInput()` is called concurrently, it may write to a file descriptor that has been closed and potentially reused.
-
-**Fix:** Wrap the close in a `lock_guard`:
-
-```cpp
-{
-    std::lock_guard<std::mutex> lock(state->mutex);
-    ::close(stdinPipe1);
-    state->stdinFd = -1;  // invalidate fd
-}
-```
-
-### Issue 2: `DeepSeekProvider` Cross-Thread Access
-
-**Location:** `src/skill_runner.cpp:348` → `m_provider->complete()`
-
-**Problem:** `DeepSeekProvider::complete()` is called from a background thread created by `executeStreaming()`. The provider uses non-thread-safe `curl_easy_perform()` and shares `m_baseUrl` with `setMockUrl()`. No mutex protects concurrent access.
-
-**Status:** Not triggered in current usage (TUI uses `DrivenProvider` instead of streaming skills). But the code path exists.
-
-**Recommendations:**
-1. **Short-term:** Add a `std::mutex` to `DeepSeekProvider` and lock in both `complete()` and `setMockUrl()`
-2. **Long-term:** Route all streaming skill execution through `DrivenCore`/`DrivenProvider` instead of creating background threads in `SkillRunner`
-
-### Issue 3: `g_timeoutFired` Read Without Volatile
-
-**Location:** `src/command_runner.cpp:348`
-
-```cpp
-// In xRunSingle, after alarm returns:
-if (g_timeoutFired) {  // read site — NOT volatile-qualified
-    result.timedOut = true;
-    ...
-}
-```
-
-**Problem:** `g_timeoutFired` is declared `volatile sig_atomic_t` but only the **write** in the signal handler has volatile semantics. The read site at line 348 is not expressed as a volatile access. On some architectures, the compiler may hoist the read before the `alarm()` syscall, losing the signal.
-
-**Fix:**
-```cpp
-if (*(volatile sig_atomic_t*)&g_timeoutFired) {
-```
-
-Or use `std::atomic_signal_fence` to enforce visibility.
-
-### Issue 4: AppCoreThread is Unwired
-
-**Location:** `src/app_core_thread.h/.cpp`
-
-**Status:** The component is fully implemented but unused. `main.cpp::cmdTui()` constructs `AgentTui` directly with `DrivenCore`/`DrivenProvider` on the FTXUI thread instead of launching `AppCoreThread`.
-
-**Impact:** The elegant MPSC-based architecture with thread isolation and eventfd wakeup is dead code. When someone later needs to run the agent core on a separate thread (e.g., for headless mode), `AppCoreThread` is ready but untested in production.
-
-**Recommendation:** Wire `AppCoreThread` into the `--headless` or command-line `run` mode as a migration path. Verify with TSAN that the MPSC channels and eventfd wakeup work correctly under load.
-
----
-
 ## 10. File Layout Reference
 
 The concurrency model is not a sub-module — it cross-cuts the entire source tree. This table maps each concurrency context to its implementation files:
 
 | Context | Implementation Files |
 |---------|---------------------|
-| C1 — FTXUI Event Loop | `src/tui/agent_tui.h/.cpp`, `src/driven_provider.h/.cpp`, `src/driven_core.h/.cpp`, `src/response_decoder.h/.cpp` |
-| C2 — AppCoreThread | `src/app_core_thread.h/.cpp`, `src/driven_provider.h/.cpp`, `src/driven_core.h/.cpp`, `src/mpsc.h` |
+| C1 — FTXUI Event Loop | `src/tui/agent_tui.h/.cpp`, `src/tui/message_panel.h/.cpp`, `src/tui/input_panel.h/.cpp`, `src/tui/status_bar.h/.cpp`, `src/mpsc.h` |
+| C2 — AppCoreThread | `src/app_core_thread.h/.cpp`, `src/driven_provider.h/.cpp`, `src/driven_core.h/.cpp`, `src/response_decoder.h/.cpp`, `src/mpsc.h` |
 | C3 — Stream Reader | `src/command_runner.h/.cpp` |
 | C4 — Skill Executor | `src/skill_runner.h/.cpp`, `src/deepseek_provider.h/.cpp` |
 | C5 — Terminal Input Thread | `src/main.cpp` |

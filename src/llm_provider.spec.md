@@ -72,4 +72,4 @@ Construct → startRequest() / startRequestStreaming() → tick()* until complet
 - `DrivenCore` depends on `LlmProvider*`, not on any concrete implementation
 - `DrivenProvider` provides the universal `curl_multi` machinery as a base class
 - Subclasses (e.g. `DeepSeekProvider`) override `xBuildPayload` + `xAddAuth` for provider-specific format and auth
-- The synchronous `InferenceProvider` interface is deprecated — replaced by the async `LlmProvider` everywhere
+- `InferenceProvider` (synchronous, deprecated) has been deleted — `LlmProvider` is the only provider interface

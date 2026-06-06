@@ -88,11 +88,10 @@ private:
 
     static constexpr int MAX_TURNS = 25;
 
-    void xBuildInitialMessages(const std::string& goal);
     void xBuildToolSchemas();
     void xStartLlmRequest(bool includeTools = true);
     void xHandleLlmEvents(const std::vector<mpsc::AppCoreEvent>& events);
-    void xExecuteTools();
+    std::vector<mpsc::AppCoreEvent> xExecuteTools();
     void xFinishGoal(const std::string& text);
     void xFailGoal(const std::string& error);
     void xPersistMessage(const std::string& role, const std::string& content,

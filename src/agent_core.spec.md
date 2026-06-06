@@ -11,7 +11,7 @@ DefaultAgentCore is the central orchestrator of the agent system. It owns pointe
 
 All tool dispatch (both system C++ handlers and command-based subprocess tools) goes through `SkillManager` exclusively.
 
-**Dependencies:** `SkillManager`, `ToolRunner`, `SkillRunner`, `InferenceProvider`, `ContextManager`, `PersistenceStore`, `DependencyResolver`, optionally `DockerToolRunner` + `ComposeManager`
+**Dependencies (original, for reference):** `SkillManager`, `ToolRunner`, `SkillRunner`, `ContextManager`, `PersistenceStore`, `DependencyResolver`, optionally `DockerToolRunner` + `ComposeManager`
 
 ## 2. Component Specifications
 
@@ -20,7 +20,6 @@ class DefaultAgentCore : public AgentCore {
 public:
     DefaultAgentCore(ToolRunner* toolRunner,
                      SkillRunner* skillRunner,
-                     InferenceProvider* provider,
                      ContextManager* context,
                      DependencyResolver* depResolver,
 
@@ -62,7 +61,6 @@ private:
     DockerToolRunner* m_dockerRunner;
     ComposeManager* m_composeMgr;
     SkillRunner* m_skillRunner;
-    InferenceProvider* m_provider;
     ContextManager* m_context;
     DependencyResolver* m_depResolver;
     std::string m_sessionId;
@@ -98,7 +96,6 @@ graph TB
     SM --> TR[ToolRunner]
     SM --> DTR[DockerToolRunner]
     AC --> SR[SkillRunner]
-    AC --> IP[InferenceProvider]
     AC --> CM[ContextManager]
     AC --> DR[DependencyResolver]
 

@@ -26,7 +26,7 @@ SessionContext::SessionContext(const std::string& cwd,
 int SessionContext::init(a0::skills::SkillManager* skillMgr) {
     if (!skillMgr) return -1;
 
-    int seq = 0;
+    int seq = -1;
 
     int rc = xDetectGit(skillMgr, seq);
     if (rc != 0) {
@@ -100,7 +100,7 @@ int SessionContext::restore(a0::skills::SkillManager* skillMgr) {
     m_hasWorktree = true;
 
     // Re-detect git for fresh vars
-    int seq = 0;
+    int seq = -1;
     xDetectGit(skillMgr, seq);
 
     TRACE_LOG("restored worktree at " << m_worktreePath);

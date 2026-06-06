@@ -461,10 +461,6 @@ void copyToClipboard(const std::string& text);
 3. If `WAYLAND_DISPLAY` is set → pipe to `wl-copy`
 4. Else if `xclip` exists → pipe to `xclip -selection clipboard -i`
 
-### 2.11 SessionManager — DELETED
-
-`SessionManager` no longer exists. All session operations (list, resume, create) are handled by `AppCoreThread` on the background thread and communicated to the TUI via MPSC events (`ListSessions` command → `SessionList` event, `ResumeSession` command → `SessionHistory` event). The TUI has zero knowledge of SQLite or session persistence mechanics.
-
 ---
 
 ## 3. System Architecture
@@ -822,7 +818,7 @@ a0 tui [--resume <uuid>] [--no-permissions]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--resume <uuid>` | — | Resume an existing session on startup |
-| `--no-permissions` | `false` | Auto-approve tool execution (currently no effect — future) |
+| `--no-permissions` | `false` | Auto-approve tool execution |
 
 ### 5.2 In-TUI Commands
 
@@ -844,7 +840,7 @@ a0 tui [--resume <uuid>] [--no-permissions]
 | `Ctrl+C` | Send Cancel via MPSC |
 | `Ctrl+Q` | Send Shutdown via MPSC, quit TUI |
 | `Ctrl+L` | Redraw screen |
-| `Tab` | (Future) Autocomplete |
+| `Tab` | (reserved) |
 | `Escape` | Close dialog / cancel |
 
 ### 5.4 Environment Variables
@@ -901,14 +897,6 @@ a0 tui [--resume <uuid>] [--no-permissions]
 | **MPSC** | `SendGoal` through channel | Eventfd readable, drain returns command |
 | **MPSC** | `SessionList` through channel | Eventfd readable, drain returns event |
 | **MPSC** | Multiple senders | No data race, all messages received |
-
-**Deleted tests (SessionManager no longer exists):**
-- ~~SessionManager::create new session~~
-- ~~SessionManager::list with 5 sessions~~
-- ~~SessionManager::resume existing UUID~~
-- ~~SessionManager::resume missing UUID~~
-
-These are now covered by AppCoreThread/MPSC integration tests.
 
 ### 6.2 Integration Tests
 
@@ -1062,7 +1050,7 @@ public:
 
 ### 7.4 Build System
 
-`src/tui/CMakeLists.txt` — `session_manager.cpp` removed from build:
+`src/tui/CMakeLists.txt`:
 
 ```cmake
 include(FetchContent)
@@ -1115,8 +1103,6 @@ src/tui/
 ├── status_bar.cpp
 ├── dialog_manager.h            # Modal dialog system
 ├── dialog_manager.cpp
-├── session_manager.h           # DELETED. All session ops go through MPSC.
-├── session_manager.cpp         # DELETED. No longer part of TUI.
 ├── markdown_renderer.h         # MD4C -> FTXUI element
 ├── markdown_renderer.cpp
 ├── clipboard.h                 # OSC 52 / xclip / wl-clipboard
@@ -1130,83 +1116,6 @@ The concurrency model spec is updated:
 - **C2** (AppCoreThread): Changed from "Designed, not wired" to **"Active"** — core agent on background thread
 - **C4** (Skill Executor Thread): Removed — `skill_runner.cpp` no longer compiled
 - New event types added to the MPSC protocol section
-
----
-
-## 8. Implementation Outline
-
-### Phase 1: Protocol Extension + AppCoreThread Refinement
-
-- Add `SetSession`, `ListSessions`, `ResumeSession` to `Command` variant in `src/mpsc.h`
-- Add `SessionReady`, `SessionList`, `SessionHistory` to `AppCoreEvent` variant
-- Extend `AppCoreThread::xRun()` to handle new command types:
-  - `SetSession` → `core.setSession()`, send `SessionReady` event
-  - `ListSessions` → query `PersistenceStore::loadSessions()`, send `SessionList` event
-  - `ResumeSession` → query persistence for session + messages, set core session, send `SessionHistory` event
-- Update `AppCoreThread` spec in `src/app_core_thread.spec.md`
-
-### Phase 2: AgentTui Rewrite
-
-- Rewrite `agent_tui.h` — remove all core includes, replace with `m_cmdSender` + `m_evtReceiver`
-- Rewrite `agent_tui.cpp`:
-  - Constructor takes MPSC handles only (no provider, no skillMgr, no persistence)
-  - `run()` loop: `drainEvents()` instead of `xTickCore()`; no Renderer-wrapper `xTickCore()`
-  - `drainEvents()` → `m_evtReceiver.drain()` → `xHandleCoreEvent()` for each
-  - `xHandleSubmit()` → `m_cmdSender.send(SubmitGoal{...})` + `m_screen->Post(Task{})`
-  - `xHandleInterrupt()` → `m_cmdSender.send(Cancel{})`
-  - `xCmdSessions()` → `m_cmdSender.send(ListSessions{20})` (no direct DB access)
-  - New: `xOnSessionReady()`, `xOnSessionList()`, `xOnSessionHistory()`
-  - Remove: `xTickCore()`, `resumeSession()`, `setMockUrl()`, `currentSessionId()`
-  - Remove: `m_provider`, `m_drivenCore`, `m_persistence`, `m_sessionMgr`, `m_agentId`
-- Wakeup: AppCoreThread calls `wakeupFn()` after sending events; wakeupFn = `screen->Post(Task{[] {}})`
-
-### Phase 3: SessionManager Removal
-
-- Delete `src/tui/session_manager.h`
-- Delete `src/tui/session_manager.cpp`
-- Remove from `src/tui/CMakeLists.txt`
-- Remove from root `CMakeLists.txt` if referenced
-
-### Phase 4: Test Harness Updates
-
-- Create a `MockAppCore` test utility that creates MPSC channels, spawns a thread sending `AppCoreEvent` variants, and allows the test to assert on received `Command` variants
-- Update all `AgentTui` unit tests:
-  - Construction: `AgentTui(cmdSender, evtReceiver, b1Status, testMode)`
-  - `submitInput` → assert `SubmitGoal` appears on cmd channel
-  - `drainEvents` with injected `LlmToken` → assert message panel updated
-  - `drainEvents` with `SessionList` → assert dialog shown
-  - Ctrl+C → assert `Cancel` appears on cmd channel
-- Remove tests that call `SessionManager` directly
-- Add MPSC channel throughput/stress tests
-
-### Phase 5: main.cpp Rewiring
-
-- `cmdTui`: Create MPSC channels → create + start `AppCoreThread` → send `SetSession` → construct `AgentTui` with MPSC handles → handle `--resume` via MPSC `ResumeSession` → `tui.run()` → cleanup
-- `cmdRun`: Same pattern but synchronous: create `AppCoreThread` → send `SetSession` + `SubmitGoal` → poll `evtReceiver` for `Complete`/`Error` → print → shutdown
-- Remove old `LlmProvider*` injection into `AgentTui`
-- Remove `AgentTui::resumeSession()` and `AgentTui::setMockUrl()` calls
-
-### Phase 6: Spec Updates
-
-- Rewrite `src/tui/technical-specification.md` (this document)
-- Rewrite `specs/concurrency-model.md`:
-  - C1 → "TUI Render Client" (no core access)
-  - C2 → "Active" (AppCoreThread background core)
-  - Remove C4 (Skill Executor Thread — dead code)
-  - Update synchronization primitive inventory for new MPSC event types
-  - Update all C4 and sequence diagrams
-
----
-
-## 9. Future Extensions
-
-- **Permission prompts**: Modal dialog on tool execution showing tool name, args, diff. Approve/reject per tool. Requires new `PermissionRequest`/`PermissionResponse` MPSC event/command types.
-- **Autocomplete**: `@file`, `/command` autocomplete in InputPanel
-- **Remote handoff**: When b1/c2 signals a remote operator, TUI enters "monitoring" mode — displays actions but doesn't accept local input
-- **Model switching**: `/model` command sends `SwitchModel{name}` via MPSC
-- **Theme support**: Configurable color schemes via FTXUI styles
-- **Split-view terminal**: Embed PTY viewer in a TUI panel
-- **Session export**: `/export` command sends `ExportSession{uuid}` via MPSC, core returns `ExportData{jsonl}` event
 
 ---
 
@@ -1226,19 +1135,4 @@ Every pull request touching `src/tui/` MUST pass this checklist:
 | `session_manager.h/.cpp` | Do not exist. |
 | `src/tui/CMakeLists.txt` | Does NOT link `a0_lib` or `persistence_lib`. |
 
----
 
-## Appendix B: v2.0 → v3.0 Migration Guide
-
-| v2.0 (old) | v3.0 (new) |
-|-----------|------------|
-| `AgentTui(LlmProvider*, SkillManager*, PersistenceStore*, agentId, b1Status, sessionDbId, sessionUuid)` | `AgentTui(Sender<Command>, Receiver<AppCoreEvent>, b1Status)` |
-| `xTickCore()` → drives `DrivenCore::tick()` | `drainEvents()` → drains `evtReceiver` |
-| `xHandleEvent(AppCoreEvent)` | `xHandleCoreEvent(AppCoreEvent)` — same dispatch, different source |
-| `xHandleSubmit` → `m_drivenCore->submitGoal()` | `xHandleSubmit` → `m_cmdSender.send(SubmitGoal{})` |
-| `xHandleInterrupt` → `m_drivenCore->cancel()` | `xHandleInterrupt` → `m_cmdSender.send(Cancel{})` |
-| `SessionManager` in TUI | SessionManager deleted. ListSessions/ResumeSession via MPSC. |
-| `setMockUrl(url)` on TUI | `coreThread.setMockUrl(url)` before `start()` in main.cpp |
-| `resumeSession(uuid)` on TUI | `cmdSender.send(ResumeSession{uuid})` from main.cpp |
-| Renderer wrapper calls `xTickCore()` | No tick in renderer. Events drained from main loop. |
-| `sleep_for(16ms)` throttling | Same. `RequestAnimationFrame()` still used when events pending. |

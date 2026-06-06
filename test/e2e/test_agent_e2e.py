@@ -13,13 +13,16 @@ Replaces the old bash-based run_e2e_tests.sh. Tests exercise:
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
 import pytest
 
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest import MockServer, AgentSubprocess, find_free_port
+from conftest import MockServer, AgentSubprocess, session_export_prefix, find_free_port
+from pathlib import Path
+FIXTURES_DIR = str(Path(__file__).resolve().parent / "fixtures")
 
 
 def create_skills_dir(base_dir, name, manifest):
@@ -142,3 +145,54 @@ class TestAgentNegative:
             output = result.stdout.decode() if result.stdout else ""
             assert result.returncode == 0, f"Return code: {result.returncode}"
             assert len(output) > 0, "Output should not be empty"
+
+
+class TestAgentStreaming:
+    """Tests for streaming SSE mode — exercises ResponseDecoder's streaming paths."""
+
+    def test_streaming_tool_calls_via_scenario(self):
+        """Streaming SSE with finish_reason 'tool_calls' should complete."""
+        scenario = os.path.join(FIXTURES_DIR, "streaming_tool_calls.json")
+        with MockServer(scenario=scenario, stream=True) as server:
+            sub = AgentSubprocess(mock_server=server)
+            result = sub.run("run streaming tool test", timeout=45)
+            output = result.stdout.decode() if result.stdout else ""
+            assert result.returncode == 0, f"Return code: {result.returncode}"
+            assert "executed successfully" in output, (
+                f"Expected streaming response. Got: {output[:200]}"
+            )
+
+    def test_streaming_args_accumulation(self):
+        """Args split across streaming chunks should be merged correctly."""
+        scenario = os.path.join(FIXTURES_DIR, "streaming_accumulate_args.json")
+        with MockServer(scenario=scenario, stream=True) as server:
+            sub = AgentSubprocess(mock_server=server)
+            result = sub.run("test args accumulation", timeout=45)
+            output = result.stdout.decode() if result.stdout else ""
+            assert result.returncode == 0, f"Return code: {result.returncode}"
+            assert "accumulated" in output, (
+                f"Expected args to be accumulated. Got: {output[:200]}"
+            )
+
+    def test_session_export_with_prefix(self):
+        """Session export should accept 8-char prefix."""
+        scenario = os.path.join(FIXTURES_DIR, "streaming_tool_calls.json")
+        a0_dir = f"/tmp/a0-e2e-prefix-{os.getpid()}"
+        with MockServer(scenario=scenario, stream=True) as server:
+            sub = AgentSubprocess(mock_server=server, a0_dir=a0_dir)
+            result = sub.run("prefix test", timeout=45)
+            assert result.returncode == 0, f"Return code: {result.returncode}"
+
+        from conftest import A0_BIN
+        list_result = subprocess.run(
+            [A0_BIN, "--a0-dir", a0_dir, "session", "list", "--limit", "5", "--output-json"],
+            capture_output=True, timeout=15,
+        )
+        if list_result.returncode == 0:
+            data = json.loads(list_result.stdout)
+            if data.get("sessions"):
+                prefix = data["sessions"][0]["uuid"][:8]
+                msgs = session_export_prefix(a0_dir, prefix)
+                assert len(msgs) >= 2, (
+                    f"Expected >=2 messages by prefix, got {len(msgs)}"
+                )

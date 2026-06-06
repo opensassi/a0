@@ -103,6 +103,7 @@ public:
         int64_t id = 0;
         std::string uuid;
         int64_t startedAt = 0;
+        int64_t endedAt = 0;
         int messageCount = 0;
     };
 

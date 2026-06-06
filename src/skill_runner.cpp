@@ -48,7 +48,6 @@ static a0::StreamHandle runToolStreaming(const a0::skills::SkillTool& skillTool,
 }
 
 DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
-                                        InferenceProvider* provider,
                                         a0::skills::SkillManager* skillMgr,
                                         DependencyResolver* depResolver,
                                         DockerToolRunner* dockerRunner,
@@ -56,7 +55,6 @@ DefaultSkillRunner::DefaultSkillRunner(ToolRunner* toolRunner,
     : m_toolRunner(toolRunner)
     , m_dockerRunner(dockerRunner)
     , m_composeMgr(composeMgr)
-    , m_provider(provider)
     , m_skillMgr(skillMgr)
     , m_depResolver(depResolver)
 {

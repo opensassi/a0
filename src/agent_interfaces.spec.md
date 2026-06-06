@@ -62,14 +62,6 @@ struct Message {
 };
 ```
 
-### `CompletionResponse` struct
-```cpp
-struct CompletionResponse {
-    std::string content;               // text response (empty if tool_calls)
-    std::vector<ToolCall> toolCalls;   // tool calls (empty if text response)
-};
-```
-
 ### `ValidatorBinding` struct
 ```cpp
 struct ValidatorBinding {
@@ -216,30 +208,6 @@ public:
     virtual a0::StreamHandle runStreaming(const Tool& tool,
                                            const json& params,
                                            a0::StreamCallback onChunk);
-};
-```
-
-### `InferenceProvider` (abstract)
-```cpp
-class InferenceProvider {
-public:
-    virtual ~InferenceProvider() = default;
-    /** @param systemPrompt System-level instruction
-     *  @param userPrompt   User query
-     *  @return Generated completion text */
-    virtual std::string complete(const std::string& systemPrompt,
-                                  const std::string& userPrompt) = 0;
-    /** Tool-calling variant: sends message history + tool schemas.
-     *  @param systemPrompt  System-level instruction
-     *  @param messages      Conversation history including tool results
-     *  @param tools         JSON Schema tool definitions for function calling
-     *  @return CompletionResponse with content and/or tool_calls array */
-    virtual CompletionResponse complete(
-        const std::string& systemPrompt,
-        const std::vector<Message>& messages,
-        const std::vector<ToolSchema>& tools) = 0;
-    /** @param url Mock endpoint URL (for testing) */
-    virtual void setMockUrl(const std::string& url) = 0;
 };
 ```
 
@@ -413,7 +381,6 @@ graph TB
         SKR[SkillRegistry]
         SM[SkillManager]
         TR[ToolRunner]
-        IP[InferenceProvider]
         CM[ContextManager]
     end
 
@@ -455,10 +422,8 @@ sequenceDiagram
     participant AC as AgentCore
     participant SR as SkillRunner
     participant TR as ToolRunner
-    participant IP as InferenceProvider
     participant SM as SkillManager
     participant CM as ContextManager
-    participant DR as DependencyResolver
 
     participant SM as SkillManager
     participant CM as ContextManager
@@ -520,12 +485,6 @@ sequenceDiagram
 | Method | Test Case |
 |---|---|
 | `run` | Tool with stdin mode, args mode, empty params, timeout |
-
-### `InferenceProvider`
-| Method | Test Case |
-|---|---|
-| `complete` | Valid prompts, empty prompt, network failure |
-| `setMockUrl` | Valid URL, invalid URL, null URL |
 
 ### `ContextManager`
 | Method | Test Case |
