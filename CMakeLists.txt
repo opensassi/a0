@@ -131,6 +131,11 @@ add_agent_test(test_driven_core_persistence test/unit/test_driven_core_persisten
 target_include_directories(test_driven_core_persistence PRIVATE test/tui)
 target_link_libraries(test_driven_core_persistence PRIVATE pthread)
 
+add_agent_test(test_personas test/unit/test_personas.cpp)
+
+add_agent_test(test_task_system test/unit/test_task_system.cpp)
+target_link_libraries(test_task_system PRIVATE persistence_lib)
+
 # --- TUI tests ---
 function(add_tui_test TEST_NAME TEST_SOURCE)
     add_executable(${TEST_NAME} ${TEST_SOURCE})

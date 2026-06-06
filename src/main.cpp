@@ -1015,7 +1015,7 @@ int main(int argc, char* argv[]) {
     app.add_option("--log-dir", logDir, "Log directory -- auto-names a0-<sessionId>-<pid>.log");
 
     std::string apiKey, mockUrl, skillsDir = "./skills", resumeSessionId;
-    std::string personaName;
+    std::string personaName = "software-engineer";
     std::string idleTimeoutStr = "300", maxIdleStr = "10", defaultImage = "ubuntu:22.04";
     bool noDocker = false, noContainerPool = false, noB1 = false, outputJson = false;
     app.add_flag("--output-json", outputJson, "Output results as JSON");

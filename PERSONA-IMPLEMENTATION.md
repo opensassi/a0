@@ -2,19 +2,23 @@
 
 ## What Was Built (This Session)
 
-### New files created (7)
+### New files created (11)
 
 | File | Purpose |
 |------|---------|
 | `personas/schema.json` | Draft-07 JSON Schema validating `persona.json` (name, description, promptFile, skills, tools) |
-| `personas/system/software-engineer/persona.json` | Software Engineer persona config: `skills: ["system_task-manager"]`, `tools: ["system_fs_read", "system_fs_glob", "system_fs_grep"]` |
+| `personas/system/software-engineer/persona.json` | Software Engineer persona config: `skills: ["system_task-manager"]`, `tools: ["system_fs_read", "system_fs_glob", "system_fs_grep", "system_bash_bash"]` |
 | `personas/system/software-engineer/prompt.md` | Full system prompt (174 lines) — planning & task management agent, no execution |
 | `personas/system/product-designer/persona.json` | Product Designer persona config: empty skills/tools |
 | `personas/system/product-designer/prompt.md` | Product design prompt (343 lines) — non-technical conversational designer |
 | `src/personas.h` | Persona data structures (`PersonaManifest`, `Persona`) + `PersonaLoader` class |
 | `src/personas.cpp` | `PersonaLoader` implementation: walks system/local/github namespaces, parses persona.json, reads prompt.md |
+| `src/personas.spec.md` | Spec for PersonaLoader, PersonaManifest, Persona, lifecycle diagram |
+| `personas/README.md` | Developer guide for persona authors (8 sections, 295 lines) |
+| `test/unit/test_personas.cpp` | 14 PersonaLoader unit tests (loadAll, getPersona, case sensitivity, error handling) |
+| `test/unit/test_task_system.cpp` | 21 Task handler + SqliteStore task method tests |
 
-### Existing files modified (16)
+### Existing files modified (29)
 
 | File | Change |
 |------|--------|
@@ -31,9 +35,24 @@
 | `src/system_handlers.h` | Added 4 task manager handler declarations (`xAddTask`, `xRemoveTask`, `xListTasks`, `xSetTaskPriority`) |
 | `src/system_handlers.cpp` | 4 handler implementations for task CRUD + update help text for renamed tools |
 | `src/driven_core.h` | Added `m_personaName`, `m_personaSkills`, `m_personaTools` members; `setPersona()`, `setPersonaSkills()`, `setPersonaTools()` |
-| `src/driven_core.cpp` | `xBuildToolSchemas()` filters by persona skills/tools when present; falls back to all default tools when empty. `xStartLlmRequest()` persists system prompt + tool schemas once per session. |
+| `src/driven_core.cpp` | `xBuildToolSchemas()` always filters by persona skills/tools (no fallback to all tools). `xStartLlmRequest()` persists system prompt + tool schemas once per session. |
 | `src/app_core_thread.h/.cpp` | Threads persona name + skills/tools from constructor to `DrivenCore` |
 | `src/main.cpp` | Added `--persona` CLI flag (default: `"software-engineer"`). Loads persona skills/tools via `PersonaLoader` after skill load, passes to `AppCoreThread`. Registers 4 task manager handlers in `AgentStack` constructor. Root task creation + `ToolState::session_id` in both `cmdRun` and `cmdTui`. |
+| `src/driven_core.spec.md` | Updated: added `setPersona/Skills/Tools`, `m_personaName/Skills/Tools`, `m_systemPromptPersisted`; removed `xBuildInitialMessages` |
+| `src/persistence/persistence_store.spec.md` | Updated: added `Task` struct, `SessionRow`, `loadSessions`, `saveSessionSystemPrompt`, all 7 task methods |
+| `src/persistence/sqlite_store.spec.md` | Updated: added `task`/`session_tasks` tables, `system_prompt` columns, all task methods |
+| `src/persistence/technical-specification.md` | Updated: added task tables, system prompt columns, task testing requirements, root task creation in integration |
+| `src/system_handlers.spec.md` | Updated: added 4 task manager handler declarations, `_` separator, camelCase alias docs |
+| `src/main.spec.md` | Updated: `--persona` flag, `AppCoreThread` + MPSC architecture, `_` handler keys, `PersonaLoader` |
+| `src/base_prompt.spec.md` | Updated: `PersonaLoader`-based resolution, `personaName` parameter |
+| `src/app_core_thread.spec.md` | Updated: `personaName/Skills/Tools` constructor params and members, new MPSC commands |
+| `src/skills/skills.spec.md` | Updated: `subModules` field, `HandlerContext` const ref, 5-param `executeToolWithMeta` |
+| `src/skills/skill_manager.spec.md` | Updated: `executeToolStreaming`, `setRecordingSession`, `toolState()`, scope prefixes |
+| `src/skills/technical-specification.md` | Updated: persona integration notes, built-in skills section |
+| `technical-specification.md` | Updated: persona system overview, task management, new CLI flags, personas/ file layout |
+| `test/unit/test_driven_core_persistence.cpp` | Extended: 6 persona filtering tests (by skills, by tools, combined, empty), `NoPersona_EmptySchemas` |
+| `test/e2e/test_agent_e2e.py` | Added: `TestAgentPersona` class with 3 E2E tests (default, explicit, invalid no-crash) |
+| `CMakeLists.txt` | Registered `test_personas` and `test_task_system` test executables |
 | `session_context.cpp` | `"system_git_rev-parse"` (hyphenated tool name) |
 | `agent_core.cpp` | `"system_meta_tools-for-prompt"` (hyphenated tool name) |
 | `dependency_graph.cpp` | Reader/writer prefixes: `"system_fs_*"`, `"system_meta_"` |
@@ -83,7 +102,7 @@ The original wildcard matching used `rfind('_')` to find what was assumed to be 
 
 ### Persona skills/tools filtering
 
-When a persona has `skills` or `tools` defined in its `persona.json`, only those skills/tools are exposed to the LLM via `xBuildToolSchemas()`. When empty, all default tools are included (backward compatible). The `tools` list allows cherry-picking individual tools from a skill without including the entire skill's toolset.
+`xBuildToolSchemas()` always filters tool schemas by the active persona's `skills` and `tools` lists. When both are empty, no tools are exposed. The `tools` list allows cherry-picking individual tools from a skill without including the entire skill's toolset. There is no fallback to loading all default tools.
 
 ### Task tree storage (SQLite)
 
@@ -146,17 +165,14 @@ main.cpp
 
 ```
 xBuildToolSchemas()
-  ├─ if m_personaSkills + m_personaTools are empty:
-  │   └─ m_skillMgr->schemas(true)           ← all default tools
-  │
-  └─ if either is non-empty:
-      ├─ For each skill in m_personaSkills:
-      │   └─ getManifest() → iterate tools  ← all tools from that skill
-      ├─ For each tool in m_personaTools:
-      │   └─ getTool() → add single tool    ← specific cherry-picked tool
-      └─ Filter dispatch table entries:
-          └─ Only dispatch entries whose skill prefix or qualified name
-             matches persona config
+  ├─ Build allowed skill prefixes from m_personaSkills (e.g. "system_task-manager_")
+  ├─ For each loaded manifest component:
+  │   └─ For each default tool with parameters:
+  │       └─ Include if QN matches skill prefix or m_personaTools
+  ├─ Add individual tools from m_personaTools via getTool()
+  └─ Filter dispatch table entries:
+      └─ Only entries whose skill prefix or qualified name
+         matches persona config
 ```
 
 ---
@@ -165,5 +181,6 @@ xBuildToolSchemas()
 
 | Suite                       | Status     | Failures |
 | --------------------------- | ---------- | -------- |
-| C++ unit tests (32 targets) | 32/32 PASS | —        |
+| C++ unit tests (34 targets) | 34/34 PASS | —        |
+| Agent E2E tests (13 tests)  | 13/13 PASS | —        |
 

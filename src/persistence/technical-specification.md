@@ -14,6 +14,8 @@ The Persistence sub-module records every agent invocation into a SQLite database
 - Fingerprint the agent binary by SHA1 so replay uses the correct version
 - Support deterministic replay: inject stored LLM responses, re-execute tools, compare outputs
 - Enable sub-agent tracing via parent/root session links
+- Maintain a **task tree** for each session with priority sorting and automated/human verification fields
+- Persist **system prompt and tool definitions** once per session for replay without persona reload
 - Provide a clean abstract interface so SQLite can be swapped out
 
 **Dependencies:** SQLite3 (default), `CommandRunner` (for replay execution), `BuildIdentity` (for binary fingerprint)
@@ -43,7 +45,9 @@ CREATE TABLE session (
     root_session_id INTEGER REFERENCES session(id),
     parent_session_id INTEGER REFERENCES session(id),
     started_at INTEGER NOT NULL,
-    ended_at INTEGER
+    ended_at INTEGER,
+    system_prompt TEXT,
+    tool_definitions TEXT
 );
 
 CREATE TABLE message (
@@ -109,6 +113,29 @@ CREATE TABLE invocation (
 
 CREATE INDEX idx_invocation_skill ON invocation(skill_id, tool_name);
 CREATE INDEX idx_invocation_message ON invocation(message_id);
+
+CREATE TABLE task (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    root_task_id INTEGER NOT NULL,
+    parent_task_id INTEGER NOT NULL,
+    session_id INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    detailed_plan TEXT NOT NULL DEFAULT '',
+    automated_verification TEXT NOT NULL DEFAULT '',
+    human_verification TEXT NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_task_parent ON task(parent_task_id);
+CREATE INDEX idx_task_root ON task(root_task_id);
+
+CREATE TABLE session_tasks (
+    session_id INTEGER PRIMARY KEY,
+    root_task_id INTEGER NOT NULL
+);
 ```
 
 ### 2.2 Abstract Interface
@@ -189,13 +216,42 @@ public:
     virtual std::vector<InvocationRow> loadInvocations(int type,
                                                          const std::string& name) const = 0;
 
+    // --- System prompt + tool definitions ---
+    virtual int saveSessionSystemPrompt(int64_t sessionId,
+                                         const std::string& systemPrompt,
+                                         const std::string& toolDefinitionsJson) = 0;
+    virtual int loadSessionSystemPrompt(int64_t sessionId,
+                                         std::string& systemPrompt,
+                                         std::string& toolDefinitionsJson) const = 0;
+
+    // --- Task tree ---
+    virtual int64_t createSessionRootTask(int64_t sessionId) = 0;
+    virtual int64_t getSessionRootTask(int64_t sessionId) const = 0;
+    virtual int64_t addTask(const Task& task) = 0;
+    virtual int removeTask(int64_t taskId) = 0;
+    virtual std::vector<Task> listTasks(int64_t parentTaskId) const = 0;
+    virtual int updateTaskPriority(int64_t taskId, int priority) = 0;
+    virtual Task getTask(int64_t taskId) const = 0;
+
     // --- Session context ---
     virtual int saveSessionContext(const SessionContextRow& row) = 0;
     virtual SessionContextRow loadSessionContext(int64_t sessionId) const = 0;
+
+    // --- Session listing ---
+    struct SessionRow {
+        int64_t id;
+        std::string uuid;
+        int64_t startedAt, endedAt;
+        int messageCount;
+    };
+    virtual std::vector<SessionRow> loadSessions(int limit = 20) const = 0;
 };
 
 class NullStore : public PersistenceStore {
     // No-op implementations for testing (all methods return 0 or empty).
+    // Task methods: createSessionRootTask returns 1, addTask returns auto-increment,
+    // removeTask returns 0, listTasks returns empty, updateTaskPriority returns 0,
+    // getTask returns default Task{}. Key methods for NullStore default: returns generated IDs.
 };
 ```
 
@@ -240,6 +296,21 @@ struct SessionContextRow {
     std::string gitRepoRoot;
     std::string gitBranch;
     std::string gitCommit;
+};
+
+struct Task {
+    int64_t id = 0;
+    int64_t rootTaskId = 0;
+    int64_t parentTaskId = 0;
+    int64_t sessionId = 0;
+    std::string description;
+    std::string detailedPlan;
+    std::string automatedVerification;
+    std::string humanVerification;
+    int priority = 0;
+    std::string status = "pending";
+    int64_t createdAt = 0;
+    int64_t updatedAt = 0;
 };
 ```
 
@@ -491,6 +562,21 @@ sequenceDiagram
 | `loadSessionContext` | Existing sessionId | Returns SessionContextRow with matching fields |
 | `loadSessionContext` | Nonexistent sessionId | Returns empty/default SessionContextRow |
 
+### Task Operations
+
+| Method | Test Case | Expected |
+|--------|-----------|----------|
+| `createSessionRootTask` | New session | Root task with self-referencing ids, linked in session_tasks |
+| `getSessionRootTask` | Existing session | Returns root task id |
+| `getSessionRootTask` | Nonexistent session | Returns 0 |
+| `addTask` | Child task | Returns new id, all fields round-trip via getTask |
+| `removeTask` | Leaf task | 0, getTask returns default |
+| `removeTask` | Task with children | -1, task preserved |
+| `listTasks` | Has children | Children ordered by priority then id |
+| `listTasks` | No children | Empty vector |
+| `updateTaskPriority` | Valid task | Priority updated, getTask confirms |
+| `getTask` | Not found | Default Task (id=0) |
+
 ### ReplayEngine
 
 | Method | Test Case | Expected |
@@ -540,7 +626,9 @@ Wire-up in `main.cpp`:
 5. `DrivenCore` records `role=assistant` after LLM response
 6. `CommandRunner::run()` records `role=tool`
 7. `--root` and `--parent` CLI flags populate `createSession` params
-8. `a0 replay` reads DB and drives the agent deterministically
+8. `createSessionRootTask()` is called in `cmdRun`/`cmdTui` after session creation, creating the session's root task
+9. `saveSessionSystemPrompt()` is called by `DrivenCore::xStartLlmRequest()` on the first LLM request, persisting the persona prompt and tool schemas
+10. `a0 replay` reads DB and drives the agent deterministically
 
 ## 10. Implementation Outline
 

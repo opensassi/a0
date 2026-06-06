@@ -2,18 +2,21 @@
 
 ## 1. Overview
 
-Loads a minimal identity prompt from `prompts/base.md` with `{{BUILD_HASH}}`, `{{OS_INFO}}`, and `{{CWD}}` template substitution. Skill discovery is handled by `tools_for_prompt` auto-injection in the forked loop — no tool descriptions are embedded in the base prompt.
+Loads the selected persona's `prompt.md` file with `{{BUILD_HASH}}`, `{{OS_INFO}}`, and `{{CWD}}` template substitution. Replaces the old `prompts/base.md` system — the persona manifest determines the prompt text.
 
-**Source files:** `src/base_prompt.h/.cpp`
+**Source files:** `src/base_prompt.h/.cpp`, `src/personas.h/.cpp`
 
 ## 2. Component Specifications
 
 ```cpp
 namespace a0 {
 
-/// Loads `prompts/base.md` and substitutes {{BUILD_HASH}}, {{OS_INFO}}, {{CWD}}.
-/// The template file contains only agent identity info — no tool listings.
-std::string buildBasePrompt(const skills::SkillManager* skillMgr);
+/// Loads the persona prompt and substitutes {{BUILD_HASH}}, {{OS_INFO}}, {{CWD}}.
+/// \param skillMgr     Loaded SkillManager (reserved for future use)
+/// \param personaName  Persona name (default: "software-engineer")
+/// \returns            Substituted prompt text, or "ERROR: ..." on failure
+std::string buildBasePrompt(const skills::SkillManager* skillMgr,
+                             const std::string& personaName = "software-engineer");
 
 } // namespace a0
 ```
@@ -26,6 +29,6 @@ std::string buildBasePrompt(const skills::SkillManager* skillMgr);
 | `{{OS_INFO}}` | `uname()` sysname + release + machine | `Linux 6.2.0 x86_64` |
 | `{{CWD}}` | `getcwd()` | `/home/user/project` |
 
-## 4. Template File
+## 4. Resolution
 
-Located at `prompts/base.md` relative to the project root (or `--a0-dir`). Loaded at startup and cached for the process lifetime.
+Creates a `PersonaLoader` with root `./personas`, calls `loadAll()`, then `getPersona(name)`. Returns the persona's prompt text with `{{VAR}}` substitution. A new `PersonaLoader` is created on each invocation (no caching).

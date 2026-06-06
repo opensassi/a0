@@ -2,13 +2,11 @@
 
 ## 1. Overview
 
-Thread-safe application core that owns a `DrivenCore` and runs it in a dedicated thread with a `ppoll()`-based event loop. Commands arrive via an MPSC `Receiver<mpsc::Command>`, events are sent back via an MPSC `Sender<mpsc::AppCoreEvent>`. Uses a wakeup eventfd for graceful shutdown.
+Thread-safe application core that owns a `DrivenCore` and runs it in a dedicated thread with a `ppoll()`-based event loop. Commands arrive via an MPSC `Receiver<mpsc::Command>`, events are sent back via an MPSC `Sender<mpsc::AppCoreEvent>`. Uses an eventfd wakeup for graceful shutdown. Receives persona name, skills, and tools at construction and passes them to `DrivenCore` on startup.
 
 **Source files:** `src/app_core_thread.h/.cpp`
 
 **Dependencies:** `driven_core.h`, `deepseek_provider.h`, `mpsc.h`, `skills/skills.h`, `persistence/persistence_store.h`
-
-**Note:** Internally constructs a `DeepSeekProvider` (the `DrivenProvider` subclass) and passes it to `DrivenCore`. This is the only non-abstract LLM provider used by the thread wrapper. To use a different provider, construct a new thread wrapper or pass the provider via dependency injection.
 
 ## 2. Component Specifications
 
@@ -20,11 +18,11 @@ public:
     AppCoreThread(const std::string& apiKey,
                   const std::string& model,
                   a0::skills::SkillManager* skillMgr,
-                  a0::persistence::PersistenceStore* persistence = nullptr);
+                  a0::persistence::PersistenceStore* persistence = nullptr,
+                  const std::string& personaName = "",
+                  const std::vector<std::string>& personaSkills = {},
+                  const std::vector<std::string>& personaTools = {});
     ~AppCoreThread();
-
-    AppCoreThread(const AppCoreThread&) = delete;
-    AppCoreThread& operator=(const AppCoreThread&) = delete;
 
     void setMockUrl(const std::string& url);
 
@@ -37,9 +35,10 @@ public:
     bool running() const { return m_running.load(); }
 
 private:
-    std::string m_apiKey;
-    std::string m_model;
-    std::string m_mockUrl;
+    std::string m_apiKey, m_model, m_mockUrl;
+    std::string m_personaName;
+    std::vector<std::string> m_personaSkills;
+    std::vector<std::string> m_personaTools;
     a0::skills::SkillManager* m_skillMgr;
     a0::persistence::PersistenceStore* m_persistence;
 
@@ -47,11 +46,11 @@ private:
     mpsc::Sender<mpsc::AppCoreEvent> m_evtSender;
     std::function<void()> m_wakeupFn;
 
-    int m_wakeupFd = -1;          // eventfd for poll loop wakeup
+    int m_wakeupFd = -1;
     std::thread m_thread;
     std::atomic<bool> m_running{false};
 
-    void xRun();                  // thread entry point
+    void xRun();
 };
 
 } // namespace a0
@@ -69,7 +68,7 @@ graph TB
 
     subgraph AppCoreThread
         THD[std::thread]
-        RUN[xRun poll loop]
+        RUN[xRun ppoll loop]
 
         subgraph Poll_FDs
             WFD[wakeupFd]
@@ -77,7 +76,7 @@ graph TB
         end
 
         subgraph Owned_Objects
-            PROV[DrivenProvider]
+            PROV[DeepSeekProvider]
             CORE[DrivenCore]
         end
     end
@@ -87,21 +86,15 @@ graph TB
         EVT_CH[mpsc::Channel&lt;AppCoreEvent&gt;]
     end
 
-    UI -->|submitGoal / cancel / shutdown| CMD_S
+    UI -->|SubmitGoal / Cancel / SetSession / ListSessions / ResumeSession / Shutdown| CMD_S
     CMD_S --> CMD_CH
-    CMD_CH -->|Receiver.poll_fd| CFD
+    CMD_CH --> CFD
     CFD --> RUN
-
-    RUN -->|drain commands| CORE
-    RUN -->|tick core| CORE
+    RUN --> CORE
     CORE --> PROV
-
     CORE -->|events| EVT_CH
-    EVT_CH -->|Sender.send| EVT_R
-    EVT_R --> UI
-
-    UI -->|stop() write wakeupFd| WFD
-    WFD --> RUN
+    EVT_CH --> EVT_R --> UI
+    UI -->|stop()| WFD --> RUN
 ```
 
 ## 4. Data Flow
@@ -111,13 +104,18 @@ sequenceDiagram
     participant UI as CLI/UI
     participant ACT as AppCoreThread
     participant CORE as DrivenCore
-    participant PROV as DrivenProvider
+    participant PROV as DeepSeekProvider
 
     UI->>ACT: start(cmdRcvr, evtSender)
     ACT->>ACT: spawn thread → xRun()
+    ACT->>CORE: setPersona, setPersonaSkills, setPersonaTools
 
-    UI->>ACT: cmdSender.send(SubmitGoal{...})
-    ACT->>ACT: poll() returns → drain commands
+    UI->>ACT: cmdSender.send(SetSession{dbId, uuid})
+    ACT->>ACT: poll returns → drain commands
+    ACT->>CORE: setSession(dbId, uuid)
+    ACT->>UI: evtSender.send(SessionReady{...})
+
+    UI->>ACT: cmdSender.send(SubmitGoal{goal})
     ACT->>CORE: submitGoal(goal)
     ACT->>UI: evtSender.send(LlmToken{"[thinking]\\n"})
 
@@ -145,13 +143,12 @@ sequenceDiagram
 |------|-------------|
 | start() launches thread | running() returns true |
 | SubmitGoal command | Core receives goal, events sent back |
+| SetSession command | Core session set, SessionReady sent |
+| ListSessions command | Persistence queried, SessionList sent |
+| ResumeSession command | Messages loaded, SessionHistory sent |
 | Cancel command | Core.cancel() called, returns to idle |
 | Shutdown command | Thread exits, running() returns false |
 | stop() from idle | Thread joins cleanly, no crash |
-| Double start() | No-op (second call ignored) |
-| Double stop() | No-op (second call ignored) |
-| wakeupFn callback | Called after events are sent |
 | SIGCHLD handling | Zombie children reaped in poll loop |
-| provider timeout in poll | ppoll timeout matches provider.timeoutMs() |
 | setMockUrl before start | Provider created with mock URL |
-| Destruction | stop() called, resources cleaned up |
+| Persona setters called | core.setPersona/Skills/Tools invoked in xRun() |

@@ -109,79 +109,71 @@ void DrivenCore::xBuildToolSchemas() {
 
     m_dispatch = m_skillMgr->buildDispatchTable();
 
-    if (m_personaSkills.empty() && m_personaTools.empty()) {
-        // No filter: all default tools (backward compatible)
-        m_toolSchemas = m_skillMgr->schemas(true);
-    } else {
-        // Build set of allowed skill prefixes ("system_task-manager" → "system_task-manager_")
-        std::unordered_set<std::string> allowedPrefixes;
-        for (const auto& s : m_personaSkills) {
-            if (s.find('_') != std::string::npos)
-                allowedPrefixes.insert(s + "_");
+    // Build set of allowed skill prefixes ("system_task-manager" → "system_task-manager_")
+    std::unordered_set<std::string> allowedPrefixes;
+    for (const auto& s : m_personaSkills) {
+        if (s.find('_') != std::string::npos)
+            allowedPrefixes.insert(s + "_");
+    }
+
+    // Helper: check if a qualified name is allowed
+    auto isAllowed = [&](const std::string& qn) -> bool {
+        if (std::find(m_personaTools.begin(), m_personaTools.end(), qn) != m_personaTools.end())
+            return true;
+        for (const auto& prefix : allowedPrefixes) {
+            if (qn.find(prefix) == 0) return true;
         }
+        return false;
+    };
 
-        // Helper: check if a qualified name is allowed
-        auto isAllowed = [&](const std::string& qn) -> bool {
-            if (std::find(m_personaTools.begin(), m_personaTools.end(), qn) != m_personaTools.end())
-                return true;
-            for (const auto& prefix : allowedPrefixes) {
-                if (qn.find(prefix) == 0) return true;
+    // Add tools from manifest components matching persona skills
+    for (auto ns : {a0::skills::SkillNamespace::SYSTEM,
+                    a0::skills::SkillNamespace::LOCAL,
+                    a0::skills::SkillNamespace::GITHUB}) {
+        auto components = m_skillMgr->listSkills(ns);
+        for (const auto& comp : components) {
+            a0::skills::SkillManifest manifest;
+            if (m_skillMgr->getManifest(ns, comp, manifest) != 0) continue;
+            std::string nsStr = (ns == a0::skills::SkillNamespace::SYSTEM) ? "system"
+                              : (ns == a0::skills::SkillNamespace::LOCAL) ? "local" : "github";
+            for (const auto& tool : manifest.tools) {
+                if (!tool.default_) continue;
+                if (tool.parameters.is_null() || tool.parameters.empty()) continue;
+                std::string qn = nsStr + "_" + comp + "_" + tool.name;
+                if (!isAllowed(qn)) continue;
+                ToolSchema ts;
+                ts.name = tool.name;
+                ts.description = tool.description;
+                ts.inputSchema = tool.parameters;
+                m_toolSchemas.push_back(std::move(ts));
             }
-            return false;
-        };
-
-        // Add tools from manifest components matching persona skills
-        for (auto ns : {a0::skills::SkillNamespace::SYSTEM,
-                        a0::skills::SkillNamespace::LOCAL,
-                        a0::skills::SkillNamespace::GITHUB}) {
-            auto components = m_skillMgr->listSkills(ns);
-            for (const auto& comp : components) {
-                a0::skills::SkillManifest manifest;
-                if (m_skillMgr->getManifest(ns, comp, manifest) != 0) continue;
-                std::string nsStr = (ns == a0::skills::SkillNamespace::SYSTEM) ? "system"
-                                  : (ns == a0::skills::SkillNamespace::LOCAL) ? "local" : "github";
-                for (const auto& tool : manifest.tools) {
-                    if (!tool.default_) continue;
-                    if (tool.parameters.is_null() || tool.parameters.empty()) continue;
-                    std::string qn = nsStr + "_" + comp + "_" + tool.name;
-                    if (!isAllowed(qn)) continue;
-                    ToolSchema ts;
-                    ts.name = tool.name;
-                    ts.description = tool.description;
-                    ts.inputSchema = tool.parameters;
-                    m_toolSchemas.push_back(std::move(ts));
-                }
-            }
-        }
-
-        // Add individual persona tool references
-        for (const auto& toolRef : m_personaTools) {
-            a0::skills::SkillTool st;
-            if (m_skillMgr->getTool(toolRef, st) != 0) continue;
-            if (st.parameters.is_null() || st.parameters.empty()) continue;
-            bool dup = false;
-            for (const auto& existing : m_toolSchemas) {
-                if (existing.name == st.name) { dup = true; break; }
-            }
-            if (dup) continue;
-            ToolSchema ts;
-            ts.name = st.name;
-            ts.description = st.description;
-            ts.inputSchema = st.parameters;
-            m_toolSchemas.push_back(std::move(ts));
         }
     }
 
-    for (const auto& [shortName, qualified] : m_dispatch) {
-        // Skip if persona has filters and this tool is not allowed
-        if (!m_personaSkills.empty() || !m_personaTools.empty()) {
-            std::string ns, comp, name;
-            a0::skills::parseQualifiedName(qualified, ns, comp, name);
-            std::string skillRef = ns + "_" + comp;
-            bool inSkills = std::find(m_personaSkills.begin(), m_personaSkills.end(), skillRef) != m_personaSkills.end();
-            bool inTools = std::find(m_personaTools.begin(), m_personaTools.end(), qualified) != m_personaTools.end();
-            if (!inSkills && !inTools) continue;
+    // Add individual persona tool references
+    for (const auto& toolRef : m_personaTools) {
+        a0::skills::SkillTool st;
+        if (m_skillMgr->getTool(toolRef, st) != 0) continue;
+        if (st.parameters.is_null() || st.parameters.empty()) continue;
+        bool dup = false;
+        for (const auto& existing : m_toolSchemas) {
+            if (existing.name == st.name) { dup = true; break; }
         }
+        if (dup) continue;
+        ToolSchema ts;
+        ts.name = st.name;
+        ts.description = st.description;
+        ts.inputSchema = st.parameters;
+        m_toolSchemas.push_back(std::move(ts));
+    }
+
+    for (const auto& [shortName, qualified] : m_dispatch) {
+        std::string ns, comp, name;
+        a0::skills::parseQualifiedName(qualified, ns, comp, name);
+        std::string skillRef = ns + "_" + comp;
+        bool inSkills = std::find(m_personaSkills.begin(), m_personaSkills.end(), skillRef) != m_personaSkills.end();
+        bool inTools = std::find(m_personaTools.begin(), m_personaTools.end(), qualified) != m_personaTools.end();
+        if (!inSkills && !inTools) continue;
 
         bool alreadyIn = false;
         for (const auto& ts : m_toolSchemas) {

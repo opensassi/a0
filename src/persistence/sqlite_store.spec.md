@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Concrete SQLite-backed implementation of `PersistenceStore`. Stores agent fingerprints, sessions, and messages in three tables. Uses WAL mode for concurrent read/write performance. Lives under `.a0/db/sessions.db`.
+Concrete SQLite-backed implementation of `PersistenceStore`. Stores agent fingerprints, sessions, messages, streams, invocations, and a task tree in 10 tables. Uses WAL mode for concurrent read/write performance. Lives under `.a0/db/sessions.db`.
 
 **Source files:** `src/persistence/sqlite_store.h/.cpp`
 
@@ -34,6 +34,7 @@ public:
     std::vector<Message> loadMessages(int64_t sessionId,
                                        std::optional<int64_t> subSessionId = std::nullopt) override;
     int64_t findSessionByUuid(const std::string& uuid) const override;
+    std::vector<SessionRow> loadSessions(int limit = 20) const override;
     void flush() override;
 
     int64_t createStream(int64_t sessionId,
@@ -60,10 +61,24 @@ public:
     std::vector<InvocationRow> loadInvocations(int type,
                                                 const std::string& name) const override;
 
+    int saveSessionSystemPrompt(int64_t sessionId,
+                                 const std::string& systemPrompt,
+                                 const std::string& toolDefinitionsJson) override;
+    int loadSessionSystemPrompt(int64_t sessionId,
+                                 std::string& systemPrompt,
+                                 std::string& toolDefinitionsJson) const override;
+
+    int64_t createSessionRootTask(int64_t sessionId) override;
+    int64_t getSessionRootTask(int64_t sessionId) const override;
+    int64_t addTask(const Task& task) override;
+    int removeTask(int64_t taskId) override;
+    std::vector<Task> listTasks(int64_t parentTaskId) const override;
+    int updateTaskPriority(int64_t taskId, int priority) override;
+    Task getTask(int64_t taskId) const override;
+
     int saveSessionContext(const SessionContextRow& row) override;
     SessionContextRow loadSessionContext(int64_t sessionId) const override;
 
-    /// Expose the raw sqlite3 handle for ad-hoc queries.
     void* handle() const;
 
 private:
@@ -89,7 +104,8 @@ CREATE TABLE session (
     agent_id INTEGER NOT NULL REFERENCES agent(id),
     root_session_id INTEGER REFERENCES session(id),
     parent_session_id INTEGER REFERENCES session(id),
-    started_at INTEGER NOT NULL, ended_at INTEGER
+    started_at INTEGER NOT NULL, ended_at INTEGER,
+    system_prompt TEXT, tool_definitions TEXT
 );
 
 CREATE TABLE message (
@@ -97,8 +113,9 @@ CREATE TABLE message (
     session_id INTEGER NOT NULL REFERENCES session(id),
     sub_session_id INTEGER,
     seq INTEGER NOT NULL DEFAULT 0,
-    role TEXT, content TEXT, tool_calls_json TEXT,
-    tool_call_id TEXT, name TEXT, result_json TEXT, created_at INTEGER,
+    role TEXT NOT NULL, content TEXT NOT NULL DEFAULT '',
+    tool_calls_json TEXT, tool_call_id TEXT,
+    name TEXT, result_json TEXT, created_at INTEGER NOT NULL,
     UNIQUE(session_id, sub_session_id, seq)
 );
 
@@ -144,12 +161,32 @@ CREATE INDEX idx_invocation_message ON invocation(message_id);
 
 CREATE TABLE session_context (
     session_id INTEGER PRIMARY KEY REFERENCES session(id),
-    session_uuid TEXT DEFAULT '',
-    original_cwd TEXT DEFAULT '',
-    worktree_path TEXT DEFAULT '',
-    git_repo_root TEXT DEFAULT '',
-    git_branch TEXT DEFAULT '',
-    git_commit TEXT DEFAULT ''
+    session_uuid TEXT DEFAULT '', original_cwd TEXT DEFAULT '',
+    worktree_path TEXT DEFAULT '', git_repo_root TEXT DEFAULT '',
+    git_branch TEXT DEFAULT '', git_commit TEXT DEFAULT ''
+);
+
+CREATE TABLE task (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    root_task_id INTEGER NOT NULL,
+    parent_task_id INTEGER NOT NULL,
+    session_id INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    detailed_plan TEXT NOT NULL DEFAULT '',
+    automated_verification TEXT NOT NULL DEFAULT '',
+    human_verification TEXT NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_task_parent ON task(parent_task_id);
+CREATE INDEX idx_task_root ON task(root_task_id);
+
+CREATE TABLE session_tasks (
+    session_id INTEGER PRIMARY KEY,
+    root_task_id INTEGER NOT NULL
 );
 ```
 
@@ -158,9 +195,11 @@ CREATE TABLE session_context (
 The store runs the following migrations on existing databases:
 
 - Adds `terminal_id TEXT` column to `stream` table (safe to re-run)
+- Adds `system_prompt TEXT` and `tool_definitions TEXT` columns to `session` table
 - Adds `sub_session_id INTEGER` and `seq INTEGER NOT NULL DEFAULT 0` columns to `message` table, then backfills `seq` based on insertion order within each session
+- Creates `task`, `session_tasks`, `session_context` tables if not present
 
-Both migrations use `ALTER TABLE ... ADD COLUMN` which is a no-op if the column already exists.
+All migrations use `ALTER TABLE ... ADD COLUMN` or `CREATE TABLE IF NOT EXISTS`.
 
 ## 5. Testing Requirements
 
@@ -169,13 +208,21 @@ Both migrations use `ALTER TABLE ... ADD COLUMN` which is a no-op if the column 
 | registerAgent new | Returns unique agent id |
 | registerAgent duplicate | Returns existing agent id |
 | createSession | Returns session id, provided uuid stored |
-| appendMessage then loadMessages | Returns matching message list, sub_session_id and seq preserved |
+| appendMessage then loadMessages | Round-trip preserves sub_session_id and seq |
 | flush | WAL checkpoint runs without error |
-| createStream + appendChunk + loadStreamChunks | Round-trip: chunks stored and retrieved in order |
+| createStream + chunks | Round-trip: chunks stored and retrieved in order |
 | endStream | exit_code set, stream closed |
 | ensureSkill new | Returns new skill id |
 | ensureSkill duplicate | Returns existing skill id |
-| appendInvocation + loadInvocations | Invocation rows stored and retrieved with correct skill/type filter |
-| saveSessionContext + loadSessionContext | Round-trip: all fields preserved |
-| loadSessionContext unknown session | Returns empty `SessionContextRow` (defaults) |
-| `handle()` | Returns non-null pointer |
+| appendInvocation + loadInvocations | Round-trip with correct skill/type filter |
+| saveSessionContext + loadSessionContext | All fields preserved |
+| loadSessionContext unknown | Returns empty SessionContextRow |
+| createSessionRootTask | Root task created, self-referencing, linked in session_tasks |
+| addTask + getTask | Round-trip: all fields preserved |
+| removeTask leaf | Removed, getTask returns default |
+| removeTask with children | Returns -1, task preserved |
+| listTasks | Children ordered by priority then id |
+| updateTaskPriority | Priority updated |
+| saveSessionSystemPrompt + loadSessionSystemPrompt | System prompt and tool definitions round-trip |
+| loadSessions | Returns sessions ordered by started_at DESC |
+| handle() | Returns non-null pointer |

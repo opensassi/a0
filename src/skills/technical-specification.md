@@ -21,9 +21,10 @@ The Skills sub-module manages the lifecycle of agent skills — bundles of tools
 - `agent_interfaces.h` — core data structures (`Tool`, `SkillPrompt`)
 - `ToolRunner` / `DockerToolRunner` — executes tools at runtime
 - `LlmProvider` (via `DrivenProvider`) — executes LLM inference at runtime
-- `PersistenceStore` (SQLite) — provides historical invocation records for upgrade validation
-
+- `PersistenceStore` (SQLite) — provides historical invocation records for upgrade validation and task storage
 - `DependencyResolver` — validates transitive skill/tool dependencies
+
+**Persona integration:** The persona system (`PersonaLoader` in `src/personas.h/.cpp`) declares which skills and tools a persona exposes. `DrivenCore::xBuildToolSchemas()` uses the persona's `skills` and `tools` lists to filter the LLM-visible tool schemas. The default `software-engineer` persona exposes `system_task-manager` (all its tools) and individually selected FS/bash tools. When a persona has no skills or tools declared, no tools are exposed — the "all default tools" fallback has been removed.
 
 **Lifecycle stages:**
 
@@ -32,6 +33,12 @@ The Skills sub-module manages the lifecycle of agent skills — bundles of tools
 3. Create (agent infers new tools/prompts, adds to `local/`)
 4. Validate (replay historical logs on upgrade)
 5. Archive (version snapshots in `.a0/store/`, GC old refs)
+
+**Built-in skills:**
+
+- `system/task-manager` — Defines 4 task CRUD tools (`add-task`, `remove-task`, `list-tasks`, `set-task-priority`) as `systemTool: true, default: true` entries. These are C++ handlers registered in `main.cpp` via `SkillManager::registerHandler()`, using `PersistenceStore*` to persist tasks to SQLite.
+- `system/meta` — 3 tools (`show-skills`, `show-skill-tools`, `tools-for-prompt`) for LLM skill discovery. Tool names use hyphens (e.g. `show-skills`) since `_` is the qualified-name separator.
+- `system/git` — Wildcard `system_git_*` handler covering all git subcommands.
 
 ---
 

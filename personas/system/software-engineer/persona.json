@@ -3,5 +3,5 @@
   "description": "A skilled software engineer persona focused on writing clean, efficient code",
   "promptFile": "prompt.md",
   "skills": ["system_task-manager"],
-  "tools": ["system_fs_read", "system_fs_glob", "system_fs_grep"]
+  "tools": ["system_fs_read", "system_fs_glob", "system_fs_grep", "system_bash_bash"]
 }

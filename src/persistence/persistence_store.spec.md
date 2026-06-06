@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Abstract interface for session persistence. Records every agent I/O (user input, LLM request/response, tool calls/results) into an append-only message log, keyed by session. Supports registration of agent binary fingerprints, session tree tracking (root/parent links), and full session replay. Also provides a `NullStore` no-op implementation for testing.
+Abstract interface for session persistence. Records every agent I/O (user input, LLM request/response, tool calls/results) into an append-only message log, keyed by session. Supports agent binary fingerprints, session tree tracking (root/parent links), streaming I/O, skill invocation tracking, system prompt persistence, and a task tree. Provides a `NullStore` no-op implementation for testing.
 
 **Source files:** `src/persistence/persistence_store.h`
 
@@ -47,27 +47,39 @@ struct InvocationRow {
 
 struct SessionContextRow {
     int64_t sessionId;
-    std::string sessionUuid;
-    std::string originalCwd;
-    std::string worktreePath;
-    std::string gitRepoRoot;
-    std::string gitBranch;
-    std::string gitCommit;
+    std::string sessionUuid, originalCwd, worktreePath;
+    std::string gitRepoRoot, gitBranch, gitCommit;
+};
+
+struct SessionRow {
+    int64_t id;
+    std::string uuid;
+    int64_t startedAt, endedAt;
+    int messageCount;
+};
+
+struct Task {
+    int64_t id = 0, rootTaskId = 0, parentTaskId = 0, sessionId = 0;
+    std::string description, detailedPlan;
+    std::string automatedVerification, humanVerification;
+    int priority = 0;
+    std::string status = "pending";
+    int64_t createdAt = 0, updatedAt = 0;
 };
 
 class PersistenceStore {
 public:
     virtual ~PersistenceStore() = default;
     virtual int registerAgent(const BuildFingerprint& fp) = 0;
+
     virtual int64_t createSession(const std::string& uuid,
-                                   int64_t rootId,
-                                   int64_t parentId,
+                                   int64_t rootId, int64_t parentId,
                                    int agentId) = 0;
     virtual void endSession(int64_t sessionId) = 0;
+
     virtual int64_t appendMessage(int64_t sessionId,
                                    std::optional<int64_t> subSessionId,
-                                   int seq,
-                                   const std::string& role,
+                                   int seq, const std::string& role,
                                    const std::string& content,
                                    const std::string& toolCallsJson,
                                    const std::string& toolCallId,
@@ -76,6 +88,7 @@ public:
     virtual std::vector<Message> loadMessages(int64_t sessionId,
                                                std::optional<int64_t> subSessionId = std::nullopt) = 0;
     virtual int64_t findSessionByUuid(const std::string& uuid) const = 0;
+    virtual std::vector<SessionRow> loadSessions(int limit = 20) const = 0;
     virtual void flush() = 0;
 
     // --- Streaming ---
@@ -97,13 +110,29 @@ public:
 
     // --- Skill invocation tracking ---
     virtual int ensureSkill(int type, const std::string& name) = 0;
-    virtual int64_t appendInvocation(int64_t messageId,
-                                      int skillId,
+    virtual int64_t appendInvocation(int64_t messageId, int skillId,
                                       const std::string& toolName,
                                       const std::string& paramsJson,
                                       const std::string& outputJson) = 0;
     virtual std::vector<InvocationRow> loadInvocations(int type,
                                                         const std::string& name) const = 0;
+
+    // --- System prompt persistence ---
+    virtual int saveSessionSystemPrompt(int64_t sessionId,
+                                         const std::string& systemPrompt,
+                                         const std::string& toolDefinitionsJson) = 0;
+    virtual int loadSessionSystemPrompt(int64_t sessionId,
+                                         std::string& systemPrompt,
+                                         std::string& toolDefinitionsJson) const = 0;
+
+    // --- Task tree ---
+    virtual int64_t createSessionRootTask(int64_t sessionId) = 0;
+    virtual int64_t getSessionRootTask(int64_t sessionId) const = 0;
+    virtual int64_t addTask(const Task& task) = 0;
+    virtual int removeTask(int64_t taskId) = 0;
+    virtual std::vector<Task> listTasks(int64_t parentTaskId) const = 0;
+    virtual int updateTaskPriority(int64_t taskId, int priority) = 0;
+    virtual Task getTask(int64_t taskId) const = 0;
 
     // --- Session context ---
     virtual int saveSessionContext(const SessionContextRow& row) = 0;
@@ -111,7 +140,8 @@ public:
 };
 
 class NullStore : public PersistenceStore {
-    // No-op implementations for testing (all methods return 0 or empty)
+    // Stub implementations for testing.
+    // Returns dummy IDs and empty collections.
 };
 
 } // namespace a0::persistence
@@ -121,11 +151,9 @@ class NullStore : public PersistenceStore {
 
 ```mermaid
 graph TB
-    subgraph Interfaces
-        PS[PersistenceStore]
-        NULL[NullStore]
-    end
-
+    PS[PersistenceStore]
+    NULL[NullStore]
     PS --> SQLITE[SqliteStore]
     PS --> REPLAY[ReplayEngine]
-    AGENT_CORE[AgentCore] --> PS
+    AGENT_CORE[AgentCore/DrivenCore] --> PS
+```

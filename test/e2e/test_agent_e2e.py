@@ -196,3 +196,40 @@ class TestAgentStreaming:
                 assert len(msgs) >= 2, (
                     f"Expected >=2 messages by prefix, got {len(msgs)}"
                 )
+
+
+class TestAgentPersona:
+    """Persona system E2E tests."""
+
+    def test_default_persona(self):
+        """No --persona flag should use default software-engineer persona."""
+        with MockServer() as server:
+            sub = AgentSubprocess(mock_server=server)
+            result = sub.run("hello", timeout=30)
+            assert result.returncode == 0, f"Return code: {result.returncode}"
+            output = result.stdout.decode() if result.stdout else ""
+            assert len(output) > 0, "Output should not be empty"
+
+    def test_explicit_persona_software_engineer(self):
+        """Explicit --persona software-engineer should work."""
+        with MockServer() as server:
+            sub = AgentSubprocess(
+                mock_server=server,
+                extra_args=["--persona", "software-engineer"]
+            )
+            result = sub.run("hello", timeout=30)
+            assert result.returncode == 0, f"Return code: {result.returncode}"
+            output = result.stdout.decode() if result.stdout else ""
+            assert len(output) > 0, "Output should not be empty"
+
+    def test_invalid_persona_does_not_crash(self):
+        """Invalid --persona name should not crash the agent."""
+        with MockServer() as server:
+            sub = AgentSubprocess(
+                mock_server=server,
+                extra_args=["--persona", "nonexistent-persona"]
+            )
+            result = sub.run("hello", timeout=15)
+            output = result.stdout.decode() if result.stdout else ""
+            assert result.returncode == 0, f"Return code: {result.returncode}"
+            assert len(output) > 0, "Output should not be empty"

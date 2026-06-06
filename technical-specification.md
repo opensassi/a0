@@ -6,10 +6,12 @@
 
 ## 1. Overview
 
-This document provides the complete technical specification and development plan for a **minimal self‑evolving agent** written in **C++17**. The agent connects to the DeepSeek API, maintains a file‑based repository of **tools** (atomic bash commands) and **skills** (LLM prompts with eager tool calls, parameter substitution, optional validators), and runs inside a VM isolation environment (or directly on a host). All logs are stored locally.
+This document provides the complete technical specification and development plan for a **minimal self‑evolving agent** written in **C++17**. The agent connects to the DeepSeek API, maintains a file‑based repository of **tools** (atomic bash commands) and **skills** (LLM prompts with eager tool calls, parameter substitution, optional validators), and runs inside a VM isolation environment (or directly on a host). A **persona system** selects the system prompt and filters available tools per session. All logs are stored locally.
 
 **Core features**:
 
+- **Persona system**: Each session selects a persona (`--persona` flag, default `"software-engineer"`). The persona provides the system prompt and declares which skills/tools are available, filtering the LLM's tool schema list.
+- **Task tree management**: Sessions maintain a tree of tasks in SQLite with priority, status, automated verification, and human verification fields. Four built-in handlers (`add-task`, `remove-task`, `list-tasks`, `set-task-priority`) provide CRUD.
 - Tools and skills share JSON Schema I/O (strings, arrays, objects).
 - Skills support **eager tool calls** (`{{tool:name ...}}`) that execute before the LLM request.
 - Skills support **parameter substitution** (`{{key}}`) where `key` is a field from the invocation parameters (e.g., `{{goal}}`).
@@ -66,12 +68,14 @@ public:
 **Implementation hierarchy:**
 
 ```
-LlmProvider  (pure virtual, DrivedCore depends on this)
+LlmProvider  (pure virtual, DrivenCore depends on this)
     ↑
 DrivenProvider  (universal curl_multi machinery, protected virtual hooks)
     ↑                        ↑
 DeepSeekProvider
 ```
+
+**Persona system**: The `PersonaLoader` class (`src/personas.h/.cpp`) reads `persona.json` manifests from a three-tier directory tree (`personas/system/`, `personas/local/`, `personas/github_<user>/`). Each manifest declares `skills` (component references like `"system_task-manager"`) and `tools` (individual qualified names like `"system_fs_read"`). These lists are passed through `AppCoreThread` to `DrivenCore::setPersonaSkills()` / `setPersonaTools()`, where `xBuildToolSchemas()` filters the LLM tool schemas to only the allowed set. When both lists are empty, no tools are exposed.
 
 ### 2.1 Core Data Structures
 
@@ -160,6 +164,29 @@ public:
 /// @deprecated No longer compiled. Kept as reference.
 /// InferenceProvider was deleted — the async LlmProvider interface
 /// replaced it. This block documents the old contract.
+
+// --- Task struct (SQLite-backed) ---
+// struct Task {
+//     int64_t id, rootTaskId, parentTaskId, sessionId;
+//     std::string description, detailedPlan;
+//     std::string automatedVerification, humanVerification;
+//     int priority;
+//     std::string status;   // "pending" | "in_progress" | "root"
+//     int64_t createdAt, updatedAt;
+// };
+// PersistenceStore extensions:
+//   createSessionRootTask(sessionId) → root task id
+//   getSessionRootTask(sessionId) → root task id
+//   addTask(task) → new task id
+//   removeTask(taskId) → 0 on success, -1 if has children
+//   listTasks(parentTaskId) → vector<Task>
+//   updateTaskPriority(taskId, priority) → 0 on success
+//   getTask(taskId) → Task (default if not found)
+// System prompt persistence:
+//   saveSessionSystemPrompt(sessionId, prompt, toolDefsJson) → 0 on success
+//   loadSessionSystemPrompt(sessionId, &prompt, &toolDefsJson) → 0 on success
+// Session listing:
+//   loadSessions(limit) → vector<SessionRow>
 
 class ContextManager {
 public:
@@ -251,6 +278,12 @@ public:
 
 // mpsc::Channel — header-only MPSC channel with eventfd wakeup (src/mpsc.h)
 
+// PersonaLoader — persona manifest loader (src/personas.h/.cpp)
+//   Walks personas/{system,local,github_<user>}/ directories
+//   Parses persona.json (name, description, promptFile, skills[], tools[])
+//   Reads prompt.md with {{BUILD_HASH}}, {{OS_INFO}}, {{CWD}} substitution
+//   buildBasePrompt() uses PersonaLoader internally
+
 // ResponseDecoder — stateful SSE/JSON decoder (src/response_decoder.h/.cpp)
 //   feed(bytes) → decodes tokens/tool_calls, events() returns vector<AppCoreEvent>
 
@@ -265,9 +298,13 @@ public:
 //   submitGoal(goal) → tick() drives provider + tool execution
 //   runSync(goal) → synchronous wrapper for CLI headless mode
 //   Uses LlmProvider* — works with any provider
+//   xBuildToolSchemas() filters tool schemas by m_personaSkills + m_personaTools
+//   setPersona/Skills/Tools — called from AppCoreThread before first submitGoal
 
 // AppCoreThread — thread-safe wrapper (src/app_core_thread.h/.cpp)
 //   Owns DrivenCore in dedicated thread with ppoll()-based event loop
+//   Receives persona name, skills, tools at construction
+//   Calls core.setPersona/Skills/Tools() on startup
 ```
 
 ---
@@ -729,6 +766,7 @@ agent [--a0-dir <path>] [--env-file <path>] [--log-file <path>] [--resume <sessi
 
 **Execution flags**:
 
+- `--persona <name>` : Persona to use for system prompt and tool filtering (default `"software-engineer"`). Loaded from `personas/{system,local,github_<user>}/<name>/persona.json`.
 - `--max-parallel <n>` : Maximum concurrent tool executions for the DependencyGraph batching subsystem (default `4`). Controls how many subprocesses run simultaneously in a READER batch.
 - `--external-repo <url>` : External a0 repository URL for self-development scripts and tool resources. The repo is cloned into `a0Dir/external/a0/` at startup (or fetched/checkout/reset if already present). Sets global var `A0_SRC_DIR`.
 - `--skill-arg <key=val>` : Repeatable flag. Passes arguments to skill tool handlers via `ToolState` (keyed `"args:<skill>-<arg>"`). Bare keys (without `=`) are treated as `key=true`.
@@ -905,7 +943,18 @@ project/
 │   │       ├── skill.json
 │   │       └── prompts/
 │   │           └── e2e_test.md
-│   └── github_<user>/               # installed from GitHub (read-only)
+│             └── github_<user>/               # installed from GitHub (read-only)
+├── personas/                         # persona system (three-tier)
+│   ├── schema.json                   # Draft-07 JSON Schema for persona.json validation
+│   ├── system/                       # built-in personas (read-only)
+│   │   ├── software-engineer/
+│   │   │   ├── persona.json          # name, description, promptFile, skills[], tools[]
+│   │   │   └── prompt.md             # system prompt for software engineer persona
+│   │   └── product-designer/
+│   │       ├── persona.json
+│   │       └── prompt.md
+│   ├── local/                        # user-created personas (writable)
+│   └── github_<user>/               # installed personas (read-only)
 ├── .a0/                             # agent internal state (auto-created, gitignored)
 │   ├── b1.pid                       # b1 supervisor PID file
 │   ├── b1.sock                      # b1 supervisor Unix socket

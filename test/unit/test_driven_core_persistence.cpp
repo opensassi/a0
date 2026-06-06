@@ -15,13 +15,21 @@ public:
     std::vector<mpsc::AppCoreEvent> m_responses;
     bool m_requestActive = false;
     int m_tickCalls = 0;
+    std::vector<ToolSchema> m_lastToolSchemas;
+    std::string m_lastSystemPrompt;
 
-    void startRequest(const std::string&, const std::vector<Message>&,
-                       const std::vector<ToolSchema>&) override {
+    void startRequest(const std::string& sys,
+                       const std::vector<Message>&,
+                       const std::vector<ToolSchema>& tools) override {
+        m_lastSystemPrompt = sys;
+        m_lastToolSchemas = tools;
         m_requestActive = true;
     }
-    void startRequestStreaming(const std::string&, const std::vector<Message>&,
-                                const std::vector<ToolSchema>&) override {
+    void startRequestStreaming(const std::string& sys,
+                                const std::vector<Message>&,
+                                const std::vector<ToolSchema>& tools) override {
+        m_lastSystemPrompt = sys;
+        m_lastToolSchemas = tools;
         m_requestActive = true;
     }
     std::vector<mpsc::AppCoreEvent> tick() override {
@@ -180,4 +188,168 @@ TEST_F(DrivenCorePersistenceTest, TickFromIdleReturnsEmpty) {
     DrivenCore core = makeCore();
     auto events = core.tick();
     EXPECT_TRUE(events.empty());
+}
+
+// ============================================================================
+// Persona filtering tests (need a real SkillManager with manifests)
+// ============================================================================
+
+#include "skills/skills.h"
+#include <filesystem>
+#include <fstream>
+
+namespace fs = std::filesystem;
+using namespace a0::skills;
+
+struct DrivenCorePersonaTest : ::testing::Test {
+    MockLlmProvider provider;
+    a0::persistence::MockPersistenceStore store;
+    SkillManager* skillMgr = nullptr;
+    std::string m_skillsRoot;
+    std::string m_storeRoot;
+
+    void SetUp() override {
+        std::string pid = std::to_string(::getpid());
+        m_skillsRoot = "/tmp/a0_persona_core_test_skills_" + pid;
+        m_storeRoot = "/tmp/a0_persona_core_test_store_" + pid;
+        fs::remove_all(m_skillsRoot);
+        fs::remove_all(m_storeRoot);
+        fs::create_directories(m_skillsRoot + "/system/task-manager");
+        fs::create_directories(m_skillsRoot + "/system/fs");
+        {
+            nlohmann::json j;
+            j["name"] = "task-manager";
+            j["version"] = "1.0";
+            j["ns"] = "system";
+            j["tools"] = nlohmann::json::array();
+            nlohmann::json addTask, listTasks, removeTask;
+            addTask = {{"name", "add-task"}, {"description", "add a task"},
+                       {"default", true}, {"systemTool", true},
+                       {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}};
+            listTasks = {{"name", "list-tasks"}, {"description", "list tasks"},
+                         {"default", true}, {"systemTool", true},
+                         {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}};
+            removeTask = {{"name", "remove-task"}, {"description", "remove a task"},
+                          {"default", true}, {"systemTool", true},
+                          {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}};
+            j["tools"].push_back(addTask);
+            j["tools"].push_back(listTasks);
+            j["tools"].push_back(removeTask);
+            {
+                std::ofstream f(m_skillsRoot + "/system/task-manager/skill.json");
+                f << j.dump(2) << "\n";
+            }
+        }
+        {
+            nlohmann::json j;
+            j["name"] = "fs";
+            j["version"] = "1.0";
+            j["ns"] = "system";
+            j["tools"] = nlohmann::json::array();
+            nlohmann::json readT, writeT, globT;
+            readT = {{"name", "read"}, {"description", "read a file"},
+                     {"default", true}, {"systemTool", true},
+                     {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}};
+            writeT = {{"name", "write"}, {"description", "write a file"},
+                      {"default", true}, {"systemTool", true},
+                      {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}};
+            globT = {{"name", "glob"}, {"description", "glob for files"},
+                     {"default", true}, {"systemTool", true},
+                     {"parameters", {{"type", "object"}, {"properties", nlohmann::json::object()}}}};
+            j["tools"].push_back(readT);
+            j["tools"].push_back(writeT);
+            j["tools"].push_back(globT);
+            {
+                std::ofstream f(m_skillsRoot + "/system/fs/skill.json");
+                f << j.dump(2) << "\n";
+            }
+        }
+        skillMgr = new SkillManager(m_skillsRoot, m_storeRoot);
+        skillMgr->loadAll();
+    }
+
+    void TearDown() override {
+        delete skillMgr;
+        fs::remove_all(m_skillsRoot);
+        fs::remove_all(m_storeRoot);
+    }
+
+    DrivenCore makeCore() {
+        DrivenCore core(&provider, skillMgr, &store);
+        return core;
+    }
+
+    bool hasToolSchema(const std::vector<::ToolSchema>& schemas, const std::string& name) {
+        for (const auto& ts : schemas) {
+            if (ts.name == name) return true;
+        }
+        return false;
+    }
+};
+
+TEST_F(DrivenCorePersonaTest, NoPersona_EmptySchemas) {
+    auto core = makeCore();
+    provider.m_responses = {mpsc::Complete{"done"}};
+    core.runSync("test");
+    EXPECT_TRUE(provider.m_lastToolSchemas.empty());
+}
+
+TEST_F(DrivenCorePersonaTest, FilterBySkills) {
+    auto core = makeCore();
+    core.setPersonaSkills({"system_task-manager"});
+    provider.m_responses = {mpsc::Complete{"done"}};
+    core.runSync("test");
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "add-task"));
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "list-tasks"));
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "remove-task"));
+    EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "read"));
+    EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "write"));
+    EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "glob"));
+}
+
+TEST_F(DrivenCorePersonaTest, FilterByTools) {
+    auto core = makeCore();
+    core.setPersonaTools({"system_fs_read"});
+    provider.m_responses = {mpsc::Complete{"done"}};
+    core.runSync("test");
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "read"));
+    EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "write"));
+    EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "glob"));
+    EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "add-task"));
+}
+
+TEST_F(DrivenCorePersonaTest, FilterBySkillsAndTools) {
+    auto core = makeCore();
+    core.setPersonaSkills({"system_task-manager"});
+    core.setPersonaTools({"system_fs_glob"});
+    provider.m_responses = {mpsc::Complete{"done"}};
+    core.runSync("test");
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "add-task"));
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "list-tasks"));
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "remove-task"));
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "glob"));
+    EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "read"));
+    EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "write"));
+}
+
+TEST_F(DrivenCorePersonaTest, FilterEmptyResults) {
+    auto core = makeCore();
+    core.setPersonaSkills({"system_nonexistent"});
+    provider.m_responses = {mpsc::Complete{"done"}};
+    core.runSync("test");
+    EXPECT_TRUE(provider.m_lastToolSchemas.empty());
+}
+
+TEST_F(DrivenCorePersonaTest, SetPersonaSetters) {
+    auto core = makeCore();
+    core.setPersona("software-engineer");
+    core.setPersonaSkills({"system_fs"});
+    core.setPersonaTools({"system_task-manager_add-task"});
+    provider.m_responses = {mpsc::Complete{"done"}};
+    core.runSync("test");
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "read") ||
+                hasToolSchema(provider.m_lastToolSchemas, "write") ||
+                hasToolSchema(provider.m_lastToolSchemas, "glob"));
+    EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "add-task") ||
+                hasToolSchema(provider.m_lastToolSchemas, "read"));
 }
