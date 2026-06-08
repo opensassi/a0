@@ -11,120 +11,83 @@ namespace a0::tui {
 class MessagePanel::Impl {
 public:
     std::vector<MessageEntry> entries;
-    ftxui::Component scrollContainer;
     ftxui::Component renderer;
-    int m_scrollTop = 0;
+    int focusIndex = 0;
     bool autoScroll = true;
-
-    void ensureScroll() {
-        if (autoScroll && !entries.empty()) {
-            int total = static_cast<int>(entries.size());
-            m_scrollTop = std::max(0, total - VISIBLE_ENTRIES);
-            scrollToBottom = true;
-        }
-    }
-
-    bool scrollToBottom = false;
 };
-
-static int xWindowStart(int scrollTop, int total, int window) {
-    return std::max(0, std::min(scrollTop, std::max(0, total - window)));
-}
 
 MessagePanel::MessagePanel()
     : m_impl(std::make_unique<Impl>()) {
     m_impl->renderer = ftxui::Renderer([this] {
-        if (m_impl->entries.empty()) {
-            ftxui::Elements emptyElems;
-            emptyElems.push_back(ftxui::text("") | ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1));
-            return ftxui::vbox(std::move(emptyElems));
+        int total = static_cast<int>(m_impl->entries.size());
+
+        if (total == 0) {
+            return ftxui::vbox({
+                ftxui::text("") | ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)
+            });
         }
 
-        int total = static_cast<int>(m_impl->entries.size());
-        int start = xWindowStart(m_impl->m_scrollTop, total, VISIBLE_ENTRIES);
-        int end = std::min(total, start + VISIBLE_ENTRIES);
+        // Determine which entry to focus for yframe viewport positioning
+        int focusIdx;
+        if (m_impl->autoScroll) {
+            focusIdx = total - 1;
+        } else {
+            focusIdx = std::min(m_impl->focusIndex, total - 1);
+        }
 
         ftxui::Elements elems;
 
-        if (start > 0) {
+        // ↑ hint at top of vbox (may be clipped by yframe when focused below)
+        if (focusIdx > 0) {
             elems.push_back(
-                ftxui::text("\u2191 " + std::to_string(start) + " more") |
+                ftxui::text("\u2191 " + std::to_string(focusIdx) + " more") |
                 ftxui::dim | ftxui::bold
             );
         }
 
-        for (int i = start; i < end; ++i) {
+        for (int i = 0; i < total; ++i) {
             auto entry = xRenderEntry(m_impl->entries[i]);
-            if (m_impl->autoScroll && i == end - 1 && m_impl->scrollToBottom) {
+            if (i == focusIdx) {
                 entry = entry | ftxui::focus;
-                m_impl->scrollToBottom = false;
             }
             elems.push_back(std::move(entry));
         }
 
-        if (end < total) {
+        // ↓ hint at bottom of vbox (may be clipped by yframe when focused above)
+        int below = total - 1 - focusIdx;
+        if (below > 0) {
             elems.push_back(
-                ftxui::text("\u2193 " + std::to_string(total - end) + " more") |
+                ftxui::text("\u2193 " + std::to_string(below) + " more") |
                 ftxui::dim | ftxui::bold
             );
         }
 
         return ftxui::vbox(std::move(elems)) | ftxui::yframe | ftxui::vscroll_indicator;
     });
-
-    auto eventHandler = ftxui::CatchEvent(m_impl->renderer, [this](ftxui::Event event) -> bool {
-        if (event == ftxui::Event::PageUp) {
-            scrollUp(VISIBLE_ENTRIES);
-            return true;
-        }
-        if (event == ftxui::Event::PageDown) {
-            scrollDown(VISIBLE_ENTRIES);
-            return true;
-        }
-        if (event == ftxui::Event::Home) {
-            scrollToTop();
-            return true;
-        }
-        if (event == ftxui::Event::End) {
-            scrollToBottom();
-            return true;
-        }
-        return false;
-    });
-
-    ftxui::Components children;
-    children.push_back(eventHandler);
-    m_impl->scrollContainer = ftxui::Container::Vertical(std::move(children));
 }
 
 MessagePanel::~MessagePanel() = default;
 
 ftxui::Component MessagePanel::component() const {
-    return m_impl->scrollContainer;
+    return m_impl->renderer;
 }
 
 int MessagePanel::append(const MessageEntry& entry) {
     m_impl->entries.push_back(entry);
-    int idx = static_cast<int>(m_impl->entries.size()) - 1;
-    m_impl->ensureScroll();
-    return idx;
+    return static_cast<int>(m_impl->entries.size()) - 1;
 }
 
 int MessagePanel::beginStreaming(MessageRole role) {
     MessageEntry entry;
     entry.role = role;
     entry.streaming = true;
-    entry.timestamp = 0;
     m_impl->entries.push_back(entry);
-    int idx = static_cast<int>(m_impl->entries.size()) - 1;
-    m_impl->ensureScroll();
-    return idx;
+    return static_cast<int>(m_impl->entries.size()) - 1;
 }
 
 int MessagePanel::streamUpdate(int index, const std::string& text) {
     if (index < 0 || index >= static_cast<int>(m_impl->entries.size())) return -1;
     m_impl->entries[index].content = text;
-    m_impl->ensureScroll();
     return 0;
 }
 
@@ -144,9 +107,7 @@ int MessagePanel::appendToolCall(const std::string& name,
     entry.toolOutput = output;
     entry.collapsed = false;
     m_impl->entries.push_back(entry);
-    int idx = static_cast<int>(m_impl->entries.size()) - 1;
-    m_impl->ensureScroll();
-    return idx;
+    return static_cast<int>(m_impl->entries.size()) - 1;
 }
 
 int MessagePanel::updateToolCall(int index, ToolState state, const std::string& output) {
@@ -158,47 +119,63 @@ int MessagePanel::updateToolCall(int index, ToolState state, const std::string& 
     return 0;
 }
 
+int MessagePanel::updateToolCall(const std::string& name, ToolState state, const std::string& output) {
+    for (int i = static_cast<int>(m_impl->entries.size()) - 1; i >= 0; --i) {
+        auto& e = m_impl->entries[i];
+        if (e.role == MessageRole::Tool && e.toolName == name && e.toolState == ToolState::Running) {
+            e.toolState = state;
+            if (!output.empty()) e.toolOutput = output;
+            return i;
+        }
+    }
+    return -1;
+}
+
+void MessagePanel::setToolCallArgs(int index, const std::string& args) {
+    if (index >= 0 && index < static_cast<int>(m_impl->entries.size())) {
+        m_impl->entries[index].toolArgs = args;
+    }
+}
+
 void MessagePanel::clear() {
     m_impl->entries.clear();
-    m_impl->m_scrollTop = 0;
+    m_impl->focusIndex = 0;
     m_impl->autoScroll = true;
-    m_impl->scrollToBottom = false;
 }
 
 void MessagePanel::scrollToBottom() {
     m_impl->autoScroll = true;
-    m_impl->scrollToBottom = true;
-    m_impl->ensureScroll();
 }
 
 void MessagePanel::scrollUp(int n) {
+    int total = static_cast<int>(m_impl->entries.size());
+    int current = m_impl->autoScroll && total > 0 ? total - 1 : m_impl->focusIndex;
     m_impl->autoScroll = false;
-    m_impl->scrollToBottom = false;
-    m_impl->m_scrollTop = std::max(0, m_impl->m_scrollTop - n);
+    m_impl->focusIndex = std::max(0, current - n);
 }
 
 void MessagePanel::scrollDown(int n) {
     int total = static_cast<int>(m_impl->entries.size());
-    int maxStart = std::max(0, total - VISIBLE_ENTRIES);
-    m_impl->m_scrollTop = std::min(maxStart, m_impl->m_scrollTop + n);
-    if (m_impl->m_scrollTop >= maxStart) {
+    int current = m_impl->autoScroll && total > 0 ? total - 1 : m_impl->focusIndex;
+    int last = total > 0 ? total - 1 : 0;
+    m_impl->focusIndex = std::min(last, current + n);
+    if (total > 0 && m_impl->focusIndex >= last) {
         m_impl->autoScroll = true;
     }
 }
 
 void MessagePanel::scrollToTop() {
     m_impl->autoScroll = false;
-    m_impl->m_scrollTop = 0;
+    m_impl->focusIndex = 0;
 }
 
 int MessagePanel::scrollTop() const {
-    return m_impl->m_scrollTop;
+    return m_impl->focusIndex;
 }
 
 bool MessagePanel::isAtBottom() const {
-    int total = static_cast<int>(m_impl->entries.size());
-    int maxStart = std::max(0, total - VISIBLE_ENTRIES);
-    return m_impl->autoScroll || total == 0 || m_impl->m_scrollTop >= maxStart;
+    if (m_impl->entries.empty()) return true;
+    return m_impl->autoScroll || m_impl->focusIndex >= static_cast<int>(m_impl->entries.size()) - 1;
 }
 
 int MessagePanel::loadHistory(const std::vector<::a0::mpsc::SessionMessage>& messages) {
@@ -233,7 +210,15 @@ ftxui::Element MessagePanel::xRenderEntry(const MessageEntry& entry) const {
         content = ftxui::paragraph(entry.content);
     }
 
-    auto label = roleLabel(role, entry.toolName);
+    std::string label;
+    if (role == MessageRole::Tool && !entry.toolName.empty()) {
+        label = "\u250C\u2500 Tool: " + entry.toolName;
+        if (!entry.toolArgs.empty()) {
+            label += " " + entry.toolArgs;
+        }
+    } else {
+        label = roleLabel(role, entry.toolName);
+    }
     auto header = ftxui::text(label) | roleDecorator(role);
 
     ftxui::Elements elems;

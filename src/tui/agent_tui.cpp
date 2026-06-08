@@ -141,17 +141,27 @@ void AgentTui::xOnToken(const std::string& token) {
     m_statusBar->setMessageCount(m_messagePanel->count());
 }
 
-void AgentTui::xOnToolStart(const std::string& name, const std::string& /*arguments*/) {
+void AgentTui::xOnToolStart(const std::string& name, const std::string& arguments) {
     m_agentState = AgentState::Executing;
     m_statusBar->setAgentState(m_agentState);
-    m_messagePanel->appendToolCall(name, ToolState::Running);
+    int idx = m_messagePanel->appendToolCall(name, ToolState::Running);
+    m_messagePanel->setToolCallArgs(idx, arguments);
+    m_toolCallIndices.push_back(idx);
     m_inputPanel->setEnabled(false);
     m_statusBar->setMessageCount(m_messagePanel->count());
 }
 
 void AgentTui::xOnToolEnd(const std::string& name, const std::string& output, bool success) {
     ToolState state = success ? ToolState::Completed : ToolState::Failed;
-    m_messagePanel->appendToolCall(name, state, output);
+    if (!m_toolCallIndices.empty()) {
+        int idx = m_toolCallIndices.front();
+        m_toolCallIndices.erase(m_toolCallIndices.begin());
+        m_messagePanel->updateToolCall(idx, state, output);
+    } else {
+        // Queue empty — scan backwards for a Running entry with matching name
+        // and update it, avoiding duplicate entries from out-of-order events.
+        m_messagePanel->updateToolCall(name, state, output);
+    }
     if (m_agentState != AgentState::Thinking) {
         m_agentState = AgentState::Thinking;
         m_statusBar->setAgentState(m_agentState);
@@ -272,6 +282,9 @@ int AgentTui::xHandleSubmit(const std::string& input) {
         m_messagePanel->append(sysEntry);
     }
 
+    // Reset tool tracking for new turn
+    m_toolCallIndices.clear();
+
     // Update state
     m_agentState = AgentState::Thinking;
     m_statusBar->setAgentState(m_agentState);
@@ -290,6 +303,7 @@ int AgentTui::xHandleSubmit(const std::string& input) {
 
 int AgentTui::xHandleInterrupt() {
     if (m_agentState != AgentState::Idle) {
+        m_toolCallIndices.clear();
         m_cmdSender.send(mpsc::Cancel{});
 
         if (m_streamingEntryIndex >= 0) {
@@ -386,9 +400,27 @@ void AgentTui::xBuildLayout() {
         return wrapped->Render();
     });
 
-    // Outer CatchEvent for paste detection and mouse tracking
+    // Outer CatchEvent for scroll keys, paste detection, mouse tracking
     m_mainComponent = ftxui::CatchEvent(renderer, [this](ftxui::Event event) -> bool {
         auto& input = event.input();
+
+        // Scroll keys — forward to MessagePanel regardless of focus
+        if (event == ftxui::Event::PageUp) {
+            m_messagePanel->scrollUp(5);
+            return true;
+        }
+        if (event == ftxui::Event::PageDown) {
+            m_messagePanel->scrollDown(5);
+            return true;
+        }
+        if (event == ftxui::Event::Home) {
+            m_messagePanel->scrollToTop();
+            return true;
+        }
+        if (event == ftxui::Event::End) {
+            m_messagePanel->scrollToBottom();
+            return true;
+        }
 
         // Bracketed paste start marker
         if (input == "\x1b[200~") {
@@ -410,9 +442,21 @@ void AgentTui::xBuildLayout() {
             return true;
         }
 
-        // Mouse events for copy-on-select
+        // Mouse events for copy-on-select and scroll wheel
         if (event.is_mouse()) {
             auto& mouse = event.mouse();
+
+            // Mouse wheel → scroll message panel
+            if (mouse.button == ftxui::Mouse::WheelUp) {
+                m_messagePanel->scrollUp(3);
+                return true;
+            }
+            if (mouse.button == ftxui::Mouse::WheelDown) {
+                m_messagePanel->scrollDown(3);
+                return true;
+            }
+
+            // Left button → copy-on-select tracking
             if (mouse.button == ftxui::Mouse::Left) {
                 if (mouse.motion == ftxui::Mouse::Pressed) {
                     m_mouseDown = true;

@@ -5,6 +5,7 @@ which forks a child with a real pseudoterminal, injects keystrokes, and
 captures rendered output for assertion."""
 
 import os
+import re
 import sys
 import time
 import pytest
@@ -14,6 +15,12 @@ sys.path.insert(0, os.path.dirname(__file__))
 from conftest import TuiDriver, MockServer
 
 FIXTURES_DIR = str(Path(__file__).resolve().parent / "fixtures")
+
+
+def extract_scroll_up_count(text):
+    """Return the count from the LAST ``↑ N more`` scroll-hint, or 0 if absent."""
+    matches = re.findall(r"\u2191\s*(\d+)\s*more", text)
+    return int(matches[-1]) if matches else 0
 
 
 def wait_for_tui_ready(driver, timeout=10):
@@ -301,6 +308,98 @@ class TestTuiMultiTurn:
                 assert found_context, (
                     f"Second turn should reference first turn's context. "
                     f"Last output: {last_text[:300]}"
+                )
+
+
+class TestTuiScrolling:
+    """Tests for message panel scrolling.
+
+    Uses the scroll-hint ``\u2191 N more`` (↑ N more) as a deterministic
+    indicator of scroll position. At the bottom (auto-scroll) N is largest;
+    after PageUp it decreases; after returning to bottom it restores.
+    """
+
+    @staticmethod
+    def _submit_all(driver, count=5, timeout=20):
+        """Submit *count* goals rapidly, then wait for all to complete.
+
+        Returns the final captured frame (the Idle state screen with all
+        entries rendered at bottom-of-scrollback). Verifies the scroll
+        position is stable before returning.
+        """
+        for i in range(count):
+            driver.send_keys(f"msg {i}")
+            driver.send_enter()
+            time.sleep(0.5)
+
+        deadline = time.monotonic() + timeout
+        last = ""
+        while time.monotonic() < deadline:
+            t = driver.capture(timeout=2)
+            if t:
+                last = t
+                if "Tool executed" in t:
+                    break
+
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            t = driver.capture(timeout=2)
+            if t:
+                last = t
+
+        # Verify scroll position is stable — two consecutive reads produce
+        # the same ↑ N count (no late events shifting the viewport).
+        hint_a = extract_scroll_up_count(last)
+        time.sleep(1)
+        extra = driver.capture(timeout=1)
+        hint_b = extract_scroll_up_count(extra) if extra else hint_a
+        assert hint_a == hint_b, (
+            f"Scroll position not stable after drain: {hint_a} vs {hint_b}"
+        )
+        return last
+
+    def test_pageup_changes_visible_content(self):
+        """PgUp scrolls up changing which entries are visible."""
+        with MockServer() as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15)
+
+                text_bottom = self._submit_all(driver, count=5, timeout=20)
+
+                driver.send_page_up()
+                time.sleep(2)
+                text_up = driver.capture(timeout=3)
+
+                assert text_up and text_up != text_bottom, (
+                    f"PgUp should change visible content. "
+                    f"Bottom[:200]: {text_bottom[:200]} | "
+                    f"Up[:200]: {text_up[:200]}"
+                )
+
+    def test_scroll_survives_rerender(self):
+        """Scroll position holds after a render-triggering keystroke."""
+        with MockServer() as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15)
+                text_bottom = self._submit_all(driver, count=5, timeout=20)
+
+                driver.send_page_up()
+                time.sleep(2)
+                text_up = driver.capture(timeout=3)
+
+                # Type a character then backspace — triggers FTXUI re-render
+                driver.send_keys("x")
+                time.sleep(0.5)
+                driver.capture(timeout=1)
+                driver.send_keys("\b")
+                time.sleep(0.5)
+                t = driver.capture(timeout=2)
+
+                # Content should still show scrolled-up view, not bottom
+                assert t and t != text_bottom, (
+                    f"Scroll position reset after re-render. "
+                    f"Scrolled-up[:200]: {text_up[:200]} | "
+                    f"After render[:200]: {t[:200]}"
                 )
 
 

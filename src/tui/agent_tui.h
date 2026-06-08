@@ -73,6 +73,7 @@ private:
     bool m_testMode = false;
     std::string m_streamingText;
     int m_streamingEntryIndex = -1;
+    std::vector<int> m_toolCallIndices;
 
     std::string xExpandPastePlaceholders(const std::string& input);
     void xProcessPasteBuffer();

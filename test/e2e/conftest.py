@@ -209,6 +209,18 @@ class TuiDriver:
     def send_mouse_move(self, x, y):
         self._write_raw(f"\x1b[<{32};{x};{y}M".encode())
 
+    def send_page_up(self):
+        self._write_raw(b"\x1b[5~")
+
+    def send_page_down(self):
+        self._write_raw(b"\x1b[6~")
+
+    def send_home(self):
+        self._write_raw(b"\x1b[1~")
+
+    def send_end(self):
+        self._write_raw(b"\x1b[4~")
+
     def send_paste(self, text):
         self._write_raw(b"\x1b[200~")
         self._write_raw(text.encode())

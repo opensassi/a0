@@ -3,13 +3,12 @@
 ## 1. Component Tree
 
 ```
-app                          CatchEvent (paste/mouse tracking)
+app                          CatchEvent (paste/mouse/scroll tracking)
 └── bg-panel                 Renderer (DialogManager wrapper)
     └── dialog-overlay       Modal
         ├── main-scroll       Container::Vertical
         │   ├── status-bar    Renderer (StatusBar)
-        │   ├── msg-panel     CatchEvent (PgUp/PgDn/Home/End)
-        │   │   └── msg-list  Renderer (virtual window of 8 entries)
+        │   ├── msg-panel     Renderer (yframe + vscroll_indicator)
         │   └── input-bar     CatchEvent (Enter/Ctrl+C)
         │       ├── [enabled]  Input (multiline)         ← InputPanel::realInput
         │       └── [disabled] Renderer("Waiting...")    ← InputPanel::disabledInput
@@ -35,13 +34,14 @@ app                          CatchEvent (paste/mouse tracking)
 - `m_streamingText`, `m_streamingEntryIndex` — accumulator for in-flight assistant response
 - `m_pasteActive`, `m_pasteBuffer`, `m_pastedContents` — bracketed paste state
 - `m_mouseDown`, `m_mouseMoved` — copy-on-select drag tracking
+- `m_toolCallIndices` (`std::vector<int>`) — queue of msg-panel entry indices for tool calls awaiting ToolEnd; survives across xOnComplete boundaries (not cleared between LLM turns within one user goal) to handle multi-turn conversations
 
 **Events consumed (via `xHandleCoreEvent`):**
 | Event | Handler | Effect |
 |-------|---------|--------|
 | `LlmToken` | `xOnToken` | `msg-panel` → beginStreaming/streamUpdate |
-| `ToolStart` | `xOnToolStart` | `msg-panel` → appendToolCall; `status-bar` → setAgentState(Executing); `input-bar` → disable |
-| `ToolEnd` | `xOnToolEnd` | `msg-panel` → updateToolCall; `status-bar` → setAgentState(Thinking) |
+| `ToolStart` | `xOnToolStart` | `msg-panel` → appendToolCall + setToolCallArgs; `status-bar` → setAgentState(Executing); `input-bar` → disable; saves index to `m_toolCallIndices` queue |
+| `ToolEnd` | `xOnToolEnd` | `msg-panel` → updateToolCall (pops from `m_toolCallIndices` if non-empty, otherwise scans backwards by name); `status-bar` → setAgentState(Thinking) |
 | `Complete` | `xOnComplete` | `msg-panel` → endStream; `status-bar` → setIdle; `input-bar` → enable+focus |
 | `Error` | `xOnError` | `msg-panel` → endStream+append(Error); `status-bar` → setIdle; `input-bar` → enable+focus |
 | `SessionReady` | `xOnSessionReady` | `status-bar` → setSessionId |
@@ -91,33 +91,48 @@ showStatus(msg, secs)    → transient flash with auto-expire
 |-------|-------|
 | **Class** | `a0::tui::MessagePanel` in `src/tui/message_panel.h/.cpp` |
 | **Parent** | `main-scroll` (child 1, flex-grow) |
-| **FTXUI type** | `Container::Vertical` wrapping a `CatchEvent` (scroll keys) + `Renderer` |
+| **FTXUI type** | `Renderer` (yframe + vscroll_indicator) — no CatchEvent, no Container |
 | **Purpose** | Scrollable display of all messages: user queries, assistant responses (streamed or complete), tool call blocks with status/output, system messages. |
+
+**Scroll model:**
+- ALL entries are rendered in the vbox (no virtual window)
+- `yframe` clips the vbox to the container height
+- `ftxui::focus` decorator on the target entry tells `yframe` where to scroll
+- Scrolling is controlled by `focusIndex` (target entry index) and `autoScroll` bool:
+  - `autoScroll = true` → focus is always on the last entry (new content auto-follows)
+  - `autoScroll = false` (manual scroll) → focus stays on `focusIndex`
+- Scroll events (PgUp/PgDn/Home/End, mouse wheel) are handled by `app`'s outer `CatchEvent` and forwarded to `msg-panel` methods
 
 **Public API (used by `app` event handlers):**
 ```
 append(entry)               → adds user/assistant/system/tool message
 beginStreaming(role)        → creates placeholder for streaming tokens
-streamUpdate(index, text)   → updates placeholder text
+streamUpdate(index, text)   → updates placeholder text (NO ensureScroll — avoids janky viewport shift per token)
 endStream(index)            → finalizes streaming message
 appendToolCall(name, state, output)  → adds tool block (Pending→Running/Completed/Failed)
-updateToolCall(index, state, output)  → updates existing tool block
+updateToolCall(index, state, output)  → updates existing tool block by index
+updateToolCall(name, state, output)  → scans backwards for Running entry with matching name (fallback for out-of-order events)
+setToolCallArgs(index, args)           → stores tool call arguments for display in header
 loadHistory(msgs)           → bulk load from session restore
 clear()                     → wipe all messages
-scrollToBottom()            → auto-scroll on new messages
+scrollToBottom()            → re-enables autoScroll, focus follows last entry
 count()                     → number of entries
-scrollUp/Down(n)            → manual scroll
+scrollUp/Down(n)            → manual scroll (disables autoScroll, adjusts focusIndex)
 scrollToTop()               → jump to top
-isAtBottom()                → auto-scroll decision
+isAtBottom()                → autoScroll decision
 ```
 
-**Rendering details (virtual window):**
-- Visible window: 8 entries (`VISIBLE_ENTRIES`)
-- Each entry: role-colored prefix + content
-- Tool entries: collapsible block with name, spinner/icon, stdout, stderr
+**Rendering details (focus-based scrolling):**
+- All entries rendered in a single vbox
+- `yframe` clips to container; `vscroll_indicator` shows scrollbar
+- Focused entry receives `| ftxui::focus` decorator each frame:
+  - `autoScroll = true` → last entry (`total - 1`) gets focus
+  - `autoScroll = false` → entry at `focusIndex` gets focus
+- Scroll hints (`↑ N more` / `↓ N more`) rendered above/below all entries; may be clipped by `yframe`
+- Tool entries: collapsible block with name, arguments, spinner/icon, stdout
 - Streaming assistant: placeholder with `[thinking]` indicator, updated each frame
 - Markdown assistant messages rendered via `md-renderer`
-- Scroll via `PageUp`/`PageDown`/`Home`/`End`
+- Scroll via `PageUp`/`PageDown` (handled in `app`'s outer CatchEvent, forwarded to `msg-panel`)
 
 **Interaction effects:**
 | Incoming event → | msg-panel call |
@@ -125,8 +140,8 @@ isAtBottom()                → auto-scroll decision
 | User submits | `append(User, text)` |
 | LlmToken (first) | `beginStreaming(Assistant)` |
 | LlmToken (subsequent) | `streamUpdate(index, accumText)` |
-| ToolStart | `appendToolCall(name, Running)` |
-| ToolEnd | `updateToolCall(index, Completed/Failed, output)` |
+| ToolStart | `appendToolCall(name, Running)` + `setToolCallArgs(idx, args)` |
+| ToolEnd | `updateToolCall(index, Completed/Failed, output)` (or name-based fallback) |
 | Complete | `endStream(index)` |
 | Error | `endStream(index)` then `append(Error, msg)` |
 | SessionHistory | `clear()` then `loadHistory(messages)` |
@@ -255,8 +270,8 @@ renderInline(md)                  → inline only (no block-level)
 | Ctrl+C | `Cancel` | setAgentState(Idle) | endStream append(Error, "Interrupted") | enable focus | — |
 | `/sessions` | `ListSessions` | — | — | — | showList("Sessions") |
 | `LlmToken` | — | — | beginStreaming / streamUpdate | — | — |
-| `ToolStart` | — | setAgentState(Executing) | appendToolCall(Running) | disable | — |
-| `ToolEnd` | — | setAgentState(Thinking) | updateToolCall(Completed) | — | — |
+| `ToolStart` | — | setAgentState(Executing) | appendToolCall(Running) + setToolCallArgs | disable | — |
+| `ToolEnd` | — | setAgentState(Thinking) | updateToolCall(Completed) (pop from m_toolCallIndices) | — | — |
 | `Complete` | — | setAgentState(Idle) | endStream | enable focus | — |
 | `Error` | — | setAgentState(Idle) | endStream + append(Error) | enable focus | — |
 | `SessionList` | — | — | — | — | showList with entries |
@@ -289,7 +304,74 @@ USER INPUT (TUI → core):
     → AppCoreThread drains command    ← bg thread's ppoll loop
 ```
 
-## 5. Design Constraints (NO list)
+## 5. Lessons Learned
+
+### 5.1 Scrolling: one system, not two
+
+The first implementation had a custom virtual window (`m_scrollTop` + `VISIBLE_ENTRIES=8`) AND FTXUI's `yframe` element. Two independent scroll systems fought for viewport control; the `yframe` reacted to FTXUI's internal cursor tracking (shifted by mouse focus changes), while `m_scrollTop` managed its own independent slider window. This caused "jump to top" on mouse move and broken PgUp/PgDn.
+
+**Fix:** Remove the virtual window. Render ALL entries, let `yframe` clip the vbox. Use `ftxui::focus` on a single target entry to control scroll position. One system (`yframe` + `focus`) handles everything.
+
+### 5.2 Scroll position context for scrollUp/scrollDown
+
+When `autoScroll` is true, the `focusIndex` field may be stale (0, from initialization). A naive `scrollUp(n)` computes `max(0, focusIndex - n) = 0` — scrolling does nothing.
+
+**Fix:** Derive the "current position" from the `autoScroll` context:
+```
+current = autoScroll ? total - 1 : focusIndex
+focusIndex = max(0, current - n)
+```
+Apply the same pattern in `scrollDown`.
+
+### 5.3 Tool call indices must survive across LLM turn boundaries
+
+A single user goal may trigger multiple LLM responses: analysis (no tool calls) → tool calls → tool results. `xOnComplete` fires between turns. Clearing `m_toolCallIndices` on `xOnComplete` erased valid tool call indices for the pending turn.
+
+**Fix:** Only clear `m_toolCallIndices` on new goal submit (`xHandleSubmit`) and interrupt (`xHandleInterrupt`). `xOnComplete` and `xOnError` leave the queue intact. As a safety net, the fallback path (queue empty) scans backwards for a matching Running entry before creating a duplicate.
+
+### 5.4 Name-based updateToolCall fallback
+
+When `m_toolCallIndices` is empty but a `ToolEnd` arrives (e.g., from a late tool response after a queue-clearing event), `appendToolCall` would create a duplicate entry. The first entry (from `ToolStart`) remained in Running state forever — showing `⏳ running` indefinitely.
+
+**Fix:** `updateToolCall(name, state, output)` scans backwards through entries, finds the first Running Tool entry with matching name, and updates it in-place. If none is found, returns -1 and the caller does nothing (no duplicate created).
+
+### 5.5 Tool arguments display
+
+Arguments arrive in `ToolStart::arguments` (JSON string). Display them inline on the tool header line for debugging visibility:
+```
+┌─ Tool: read {"file_path": "/etc/passwd"}
+```
+
+Stored in `MessageEntry::toolArgs`, rendered in `xRenderEntry` by appending to the tool label. No separate args line needed.
+
+### 5.6 PTY 4KB buffer deadlock
+
+The kernel PTY buffer is 4096 bytes. The TUI writes ~10KB frames. If the test process sleeps without reading the PTY master, the buffer fills, the TUI blocks on `write()` to the slave, and the entire TUI event loop stalls. No more events are processed; no more frames are written.
+
+**Symptoms:** `capture()` timeouts returning empty strings, test taking much longer than expected.
+
+**Fix:** Never use bare `time.sleep()` to wait for TUI output. Always use a capture loop that drains the PTY at least every 500ms:
+```python
+deadline = time.monotonic() + timeout
+while time.monotonic() < deadline:
+    t = driver.capture(timeout=2)
+    if t and "expected marker" in t:
+        break
+```
+
+### 5.7 FTXUI Draw() optimization
+
+FTXUI's `ScreenInteractive` compares the current rendered output with the previous frame. If unchanged, no bytes are written to stdout. This means `capture()` returns empty between idle frames — not because the TUI stalled, but because FTXUI correctly deduplicated the output.
+
+**Fix:** Send a benign keystroke (e.g., type a space then backspace) to trigger a state change, forcing Draw() to emit a frame. Then capture.
+
+### 5.8 Scroll-hint instability
+
+The `↑ N more` / `↓ N more` scroll hints are rendered at positions 0 and `total` in the vbox. When `yframe` focuses on a distant entry, these hints are clipped above or below the viewport. Tests that rely on hint visibility in captured text give false negatives.
+
+**Fix:** Use content-change detection instead of scroll-hint assertions. Compare captured text before and after a scroll event — if different, scrolling worked. Do not assert on the specific `↑ N` value.
+
+## 6. Design Constraints (NO list)
 
 These are enforced by code review on every change to `src/tui/` files.
 

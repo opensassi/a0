@@ -15,6 +15,7 @@ struct MessageEntry {
     MessageRole role;
     std::string content;
     std::string toolName;
+    std::string toolArgs;
     ToolState toolState = ToolState::Completed;
     std::string toolOutput;
     int64_t timestamp = 0;
@@ -40,6 +41,8 @@ public:
                        const std::string& output = "");
 
     int updateToolCall(int index, ToolState state, const std::string& output);
+    int updateToolCall(const std::string& name, ToolState state, const std::string& output);
+    void setToolCallArgs(int index, const std::string& args);
 
     void clear();
     void scrollToBottom();
@@ -61,8 +64,6 @@ private:
     ftxui::Element xRenderToolBlock(const MessageEntry& entry) const;
     ftxui::Element xRenderStreamingPlaceholder(const MessageEntry& entry) const;
     ftxui::Element xRenderCollapsedToggle(const MessageEntry& entry) const;
-
-    static constexpr int VISIBLE_ENTRIES = 8;
 };
 
 } // namespace a0::tui
