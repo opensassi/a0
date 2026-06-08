@@ -90,7 +90,6 @@ void AgentTui::drainEvents() {
         for (auto& ev : events) {
             xHandleCoreEvent(ev);
         }
-        // Request re-render since we updated the message panel
         if (m_screen) {
             m_screen->RequestAnimationFrame();
         }
@@ -106,6 +105,8 @@ void AgentTui::xHandleCoreEvent(const mpsc::AppCoreEvent& ev) {
     } else if (std::holds_alternative<mpsc::ToolEnd>(ev)) {
         const auto& te = std::get<mpsc::ToolEnd>(ev);
         xOnToolEnd(te.toolName, te.output, te.exitCode == 0);
+    } else if (std::holds_alternative<mpsc::RoundComplete>(ev)) {
+        xOnRoundComplete(std::get<mpsc::RoundComplete>(ev).text);
     } else if (std::holds_alternative<mpsc::Complete>(ev)) {
         xOnComplete(std::get<mpsc::Complete>(ev).text);
     } else if (std::holds_alternative<mpsc::Error>(ev)) {
@@ -131,36 +132,26 @@ void AgentTui::submitInput(const std::string& input) {
 // ============================================================================
 
 void AgentTui::xOnToken(const std::string& token) {
-    if (m_streamingEntryIndex < 0) {
-        m_streamingText.clear();
-        m_streamingEntryIndex = m_messagePanel->beginStreaming(MessageRole::Assistant);
-    }
-
     m_streamingText += token;
-    m_messagePanel->streamUpdate(m_streamingEntryIndex, m_streamingText);
-    m_statusBar->setMessageCount(m_messagePanel->count());
+    if (m_assistantEntryIndex >= 0) {
+        m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, m_streamingText);
+    }
 }
 
 void AgentTui::xOnToolStart(const std::string& name, const std::string& arguments) {
     m_agentState = AgentState::Executing;
     m_statusBar->setAgentState(m_agentState);
-    int idx = m_messagePanel->appendToolCall(name, ToolState::Running);
-    m_messagePanel->setToolCallArgs(idx, arguments);
-    m_toolCallIndices.push_back(idx);
+    if (m_assistantEntryIndex >= 0) {
+        m_messagePanel->appendAssistantTool(m_assistantEntryIndex, name, ToolState::Running, arguments);
+    }
     m_inputPanel->setEnabled(false);
     m_statusBar->setMessageCount(m_messagePanel->count());
 }
 
 void AgentTui::xOnToolEnd(const std::string& name, const std::string& output, bool success) {
     ToolState state = success ? ToolState::Completed : ToolState::Failed;
-    if (!m_toolCallIndices.empty()) {
-        int idx = m_toolCallIndices.front();
-        m_toolCallIndices.erase(m_toolCallIndices.begin());
-        m_messagePanel->updateToolCall(idx, state, output);
-    } else {
-        // Queue empty — scan backwards for a Running entry with matching name
-        // and update it, avoiding duplicate entries from out-of-order events.
-        m_messagePanel->updateToolCall(name, state, output);
+    if (m_assistantEntryIndex >= 0) {
+        m_messagePanel->updateLastAssistantTool(m_assistantEntryIndex, state, output);
     }
     if (m_agentState != AgentState::Thinking) {
         m_agentState = AgentState::Thinking;
@@ -168,17 +159,24 @@ void AgentTui::xOnToolEnd(const std::string& name, const std::string& output, bo
     }
 }
 
-void AgentTui::xOnComplete(const std::string& fullOutput) {
-    if (m_streamingEntryIndex >= 0) {
-        m_messagePanel->streamUpdate(m_streamingEntryIndex, m_streamingText);
-        m_messagePanel->endStream(m_streamingEntryIndex);
-        m_streamingEntryIndex = -1;
+void AgentTui::xOnRoundComplete(const std::string& text) {
+    if (m_assistantEntryIndex >= 0) {
+        m_messagePanel->endCurrentAssistantText(m_assistantEntryIndex);
         m_streamingText.clear();
-    } else {
-        MessageEntry entry;
-        entry.role = MessageRole::Assistant;
-        entry.content = fullOutput;
-        m_messagePanel->append(entry);
+    }
+    m_statusBar->setMessageCount(m_messagePanel->count());
+    if (m_screen) {
+        m_screen->RequestAnimationFrame();
+    }
+}
+
+void AgentTui::xOnComplete(const std::string& fullOutput) {
+    if (m_assistantEntryIndex >= 0) {
+        const std::string& text = m_streamingText.empty() ? fullOutput : m_streamingText;
+        m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, text);
+        m_messagePanel->finalizeAssistant(m_assistantEntryIndex);
+        m_assistantEntryIndex = -1;
+        m_streamingText.clear();
     }
 
     m_agentState = AgentState::Idle;
@@ -189,10 +187,11 @@ void AgentTui::xOnComplete(const std::string& fullOutput) {
 }
 
 void AgentTui::xOnError(const std::string& error) {
-    if (m_streamingEntryIndex >= 0) {
-        m_messagePanel->streamUpdate(m_streamingEntryIndex, error);
-        m_messagePanel->endStream(m_streamingEntryIndex);
-        m_streamingEntryIndex = -1;
+    if (m_assistantEntryIndex >= 0) {
+        const std::string& text = m_streamingText.empty() ? error : m_streamingText;
+        m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, text);
+        m_messagePanel->finalizeAssistant(m_assistantEntryIndex);
+        m_assistantEntryIndex = -1;
         m_streamingText.clear();
     }
 
@@ -239,15 +238,26 @@ void AgentTui::xOnSessionHistory(int64_t dbId, const std::string& uuid,
         m_messagePanel->clear();
 
         for (const auto& m : messages) {
-            MessageRole role = MessageRole::User;
-            if (m.role == "assistant") role = MessageRole::Assistant;
-            else if (m.role == "tool") role = MessageRole::Tool;
-            else if (m.role == "system") role = MessageRole::System;
-
             MessageEntry entry;
-            entry.role = role;
-            entry.content = m.content;
-            entry.toolName = m.name;
+            if (m.role == "user") {
+                entry.role = MessageRole::User;
+                entry.content = m.content;
+            } else if (m.role == "assistant") {
+                entry.role = MessageRole::Assistant;
+                entry.content = m.content;
+            } else if (m.role == "tool") {
+                entry.role = MessageRole::Tool;
+                entry.toolName = m.name;
+                entry.toolOutput = m.content;
+                entry.collapsed = true;
+                entry.toolState = ToolState::Completed;
+            } else if (m.role == "system") {
+                entry.role = MessageRole::System;
+                entry.content = m.content;
+            } else {
+                entry.role = MessageRole::Error;
+                entry.content = m.content;
+            }
             m_messagePanel->append(entry);
         }
         m_statusBar->setMessageCount(messages.size());
@@ -261,15 +271,12 @@ void AgentTui::xOnSessionHistory(int64_t dbId, const std::string& uuid,
 int AgentTui::xHandleSubmit(const std::string& input) {
     if (input.empty()) return 0;
 
-    // Check for commands
     if (input[0] == '/') {
         return xHandleCommand(input);
     }
 
-    // Expand paste placeholders
     std::string expanded = xExpandPastePlaceholders(input);
 
-    // Add user message to display
     MessageEntry userEntry;
     userEntry.role = MessageRole::User;
     userEntry.content = expanded;
@@ -282,18 +289,17 @@ int AgentTui::xHandleSubmit(const std::string& input) {
         m_messagePanel->append(sysEntry);
     }
 
-    // Reset tool tracking for new turn
-    m_toolCallIndices.clear();
+    // Create the single assistant entry for this goal
+    m_assistantEntryIndex = m_messagePanel->beginAssistant();
+    m_streamingText.clear();
 
-    // Update state
     m_agentState = AgentState::Thinking;
     m_statusBar->setAgentState(m_agentState);
+    m_statusBar->setMessageCount(m_messagePanel->count());
     m_inputPanel->setEnabled(false);
 
-    // Submit goal to core via MPSC
     m_cmdSender.send(mpsc::SubmitGoal{expanded});
 
-    // Trigger a re-render to show the user message and [thinking]
     if (m_screen) {
         m_screen->Post([]{});  // Wake FTXUI event loop
     }
@@ -303,13 +309,12 @@ int AgentTui::xHandleSubmit(const std::string& input) {
 
 int AgentTui::xHandleInterrupt() {
     if (m_agentState != AgentState::Idle) {
-        m_toolCallIndices.clear();
         m_cmdSender.send(mpsc::Cancel{});
 
-        if (m_streamingEntryIndex >= 0) {
-            m_messagePanel->streamUpdate(m_streamingEntryIndex, m_streamingText);
-            m_messagePanel->endStream(m_streamingEntryIndex);
-            m_streamingEntryIndex = -1;
+        if (m_assistantEntryIndex >= 0) {
+            m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, m_streamingText);
+            m_messagePanel->finalizeAssistant(m_assistantEntryIndex);
+            m_assistantEntryIndex = -1;
             m_streamingText.clear();
         }
 
@@ -320,6 +325,7 @@ int AgentTui::xHandleInterrupt() {
 
         m_agentState = AgentState::Idle;
         m_statusBar->setAgentState(m_agentState);
+        m_statusBar->setMessageCount(m_messagePanel->count());
         m_inputPanel->setEnabled(true);
         m_inputPanel->component()->TakeFocus();
 
@@ -371,7 +377,6 @@ int AgentTui::xCmdQuit() {
 void AgentTui::xBuildLayout() {
     auto mainContainer = xBuildMainContainer();
 
-    // Wire input callbacks
     m_inputPanel->setOnSubmit([this](const std::string& input) {
         xHandleSubmit(input);
     });
@@ -395,16 +400,13 @@ void AgentTui::xBuildLayout() {
     m_dialogMgr->setMainComponent(mainContainer);
     auto wrapped = m_dialogMgr->component();
 
-    // Renderer wrapper — NO core tick. Just render.
     auto renderer = ftxui::Renderer(wrapped, [wrapped]() {
         return wrapped->Render();
     });
 
-    // Outer CatchEvent for scroll keys, paste detection, mouse tracking
     m_mainComponent = ftxui::CatchEvent(renderer, [this](ftxui::Event event) -> bool {
         auto& input = event.input();
 
-        // Scroll keys — forward to MessagePanel regardless of focus
         if (event == ftxui::Event::PageUp) {
             m_messagePanel->scrollUp(5);
             return true;
@@ -422,31 +424,32 @@ void AgentTui::xBuildLayout() {
             return true;
         }
 
-        // Bracketed paste start marker
         if (input == "\x1b[200~") {
             m_pasteActive = true;
             m_pasteBuffer.clear();
             return true;
         }
 
-        // Bracketed paste end marker
         if (input == "\x1b[201~") {
             m_pasteActive = false;
             xProcessPasteBuffer();
             return true;
         }
 
-        // During paste: accumulate and block children
         if (m_pasteActive) {
             m_pasteBuffer += input;
             return true;
         }
 
-        // Mouse events for copy-on-select and scroll wheel
+        // Ctrl+C — interrupt even when input is disabled
+        if (event == ftxui::Event::CtrlC) {
+            xHandleInterrupt();
+            return true;
+        }
+
         if (event.is_mouse()) {
             auto& mouse = event.mouse();
 
-            // Mouse wheel → scroll message panel
             if (mouse.button == ftxui::Mouse::WheelUp) {
                 m_messagePanel->scrollUp(3);
                 return true;
@@ -456,7 +459,6 @@ void AgentTui::xBuildLayout() {
                 return true;
             }
 
-            // Left button → copy-on-select tracking
             if (mouse.button == ftxui::Mouse::Left) {
                 if (mouse.motion == ftxui::Mouse::Pressed) {
                     m_mouseDown = true;

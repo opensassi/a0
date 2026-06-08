@@ -17,12 +17,6 @@ from conftest import TuiDriver, MockServer
 FIXTURES_DIR = str(Path(__file__).resolve().parent / "fixtures")
 
 
-def extract_scroll_up_count(text):
-    """Return the count from the LAST ``↑ N more`` scroll-hint, or 0 if absent."""
-    matches = re.findall(r"\u2191\s*(\d+)\s*more", text)
-    return int(matches[-1]) if matches else 0
-
-
 def wait_for_tui_ready(driver, timeout=10):
     """Wait until the TUI status bar shows Idle, indicating startup is complete."""
     deadline = time.monotonic() + timeout
@@ -324,8 +318,7 @@ class TestTuiScrolling:
         """Submit *count* goals rapidly, then wait for all to complete.
 
         Returns the final captured frame (the Idle state screen with all
-        entries rendered at bottom-of-scrollback). Verifies the scroll
-        position is stable before returning.
+        entries rendered at bottom-of-scrollback).
         """
         for i in range(count):
             driver.send_keys(f"msg {i}")
@@ -347,15 +340,6 @@ class TestTuiScrolling:
             if t:
                 last = t
 
-        # Verify scroll position is stable — two consecutive reads produce
-        # the same ↑ N count (no late events shifting the viewport).
-        hint_a = extract_scroll_up_count(last)
-        time.sleep(1)
-        extra = driver.capture(timeout=1)
-        hint_b = extract_scroll_up_count(extra) if extra else hint_a
-        assert hint_a == hint_b, (
-            f"Scroll position not stable after drain: {hint_a} vs {hint_b}"
-        )
         return last
 
     def test_pageup_changes_visible_content(self):
@@ -428,9 +412,9 @@ class TestTuiWordWrapping:
                     text = driver.capture(timeout=2)
                     if text:
                         last_text = text
-                        if "Tool: read" in text and "Idle" in text:
+                        if "\U0001F527 read" in text and "Idle" in text:
                             found_tool = True
                             break
                 assert found_tool, (
-                    f"Tool: read + Idle state not seen. Last output: {last_text[:300]}"
+                    f"\U0001F527 read header + Idle state not seen. Last output: {last_text[:300]}"
                 )

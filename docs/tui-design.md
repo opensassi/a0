@@ -123,28 +123,33 @@ Here is the content of `src/tool_state.cpp`:
 
 #### §2.2.3 `msg-tool` — Tool execution result
 
-**Appearance:**
+**Appearance (collapsed — default):**
 ```
-┌─ Tool: read
-🔧 read  ✅ completed
+🔧 read {"file_path": "/"}  ✅ completed
+```
+
+**Appearance (expanded):**
+```
+🔧 read {"file_path": "/"}  ✅ completed
 1: #include "tool_state.h"
 2:
 3: void ToolState::set(...)
 ```
 
-- Blue `┌─ Tool: <name>` prefix
-- Tool name repeated on the icon line with status
-- Stdout output shown below (monospace, dim)
+- Single-line header with 🔧 wrench icon, tool name, arguments (dimmed), status icon + text
+- Click the header line to toggle collapse/expand
+- Collapsed by default — output area hidden
+- Expanded: stdout shown below the header (dimmed, monospace)
 - Stderr shown separately if present (red-tinted)
 
 **Lifecycle within a single tool block:**
 
-| Phase | Icon | Status line | Output area |
-|-------|------|-------------|-------------|
-| Pending | 🔧 | `name` (dimmed) | (empty) |
-| Running | 🔧 | `name` ⏳ running | (empty or partial) |
-| Completed | 🔧 | `name` ✅ completed | full stdout/stderr |
-| Failed | 🔧 | `name` ❌ failed | error output |
+| Phase | Header display | Output area |
+|-------|----------------|-------------|
+| Pending | 🔧 `name` ⏳ pending | (empty) |
+| Running | 🔧 `name` ⏳ running | (empty or partial) |
+| Completed | 🔧 `name` ✅ completed | full stdout/stderr |
+| Failed | 🔧 `name` ❌ failed | error output |
 
 ---
 
@@ -188,23 +193,7 @@ The icon + status line updates automatically as the tool transitions through its
 
 ---
 
-#### §2.2.7 `scroll-hint` — Overflow indicator
-
-**Appearance at top of scrollback:**
-```
-↓ 5 more
-```
-
-**Appearance after scrolled up:**
-```
-↑ 3 more
-   ...messages...
-↓ 2 more
-```
-
-- Shown when `msg-panel` has more entries above or below the current viewport
-- Auto-updates as new messages arrive or user scrolls
-- Clicking is not supported — use PageUp/PageDown to navigate
+*(Removed — scrollbar provided by `vscroll_indicator`)*
 
 ---
 

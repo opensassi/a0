@@ -72,8 +72,7 @@ private:
 
     bool m_testMode = false;
     std::string m_streamingText;
-    int m_streamingEntryIndex = -1;
-    std::vector<int> m_toolCallIndices;
+    int m_assistantEntryIndex = -1;
 
     std::string xExpandPastePlaceholders(const std::string& input);
     void xProcessPasteBuffer();
@@ -90,6 +89,7 @@ private:
     void xOnToken(const std::string& token);
     void xOnToolStart(const std::string& name, const std::string& arguments);
     void xOnToolEnd(const std::string& name, const std::string& output, bool success);
+    void xOnRoundComplete(const std::string& text);
     void xOnComplete(const std::string& fullOutput);
     void xOnError(const std::string& error);
     void xOnSessionReady(int64_t dbId, const std::string& uuid);

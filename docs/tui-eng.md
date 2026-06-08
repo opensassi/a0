@@ -31,19 +31,20 @@ app                          CatchEvent (paste/mouse/scroll tracking)
 - `m_evtReceiver` (MPSC `Receiver<AppCoreEvent>`) — core → user
 - `m_sessionUuid`, `m_sessionDbId`
 - `m_agentState` — current `AgentState` enum
-- `m_streamingText`, `m_streamingEntryIndex` — accumulator for in-flight assistant response
+- `m_streamingText` — accumulator for in-flight assistant response
+- `m_assistantEntryIndex` — index of the single `┌─ Assistant` entry for the current user goal
 - `m_pasteActive`, `m_pasteBuffer`, `m_pastedContents` — bracketed paste state
 - `m_mouseDown`, `m_mouseMoved` — copy-on-select drag tracking
-- `m_toolCallIndices` (`std::vector<int>`) — queue of msg-panel entry indices for tool calls awaiting ToolEnd; survives across xOnComplete boundaries (not cleared between LLM turns within one user goal) to handle multi-turn conversations
 
 **Events consumed (via `xHandleCoreEvent`):**
 | Event | Handler | Effect |
 |-------|---------|--------|
-| `LlmToken` | `xOnToken` | `msg-panel` → beginStreaming/streamUpdate |
-| `ToolStart` | `xOnToolStart` | `msg-panel` → appendToolCall + setToolCallArgs; `status-bar` → setAgentState(Executing); `input-bar` → disable; saves index to `m_toolCallIndices` queue |
-| `ToolEnd` | `xOnToolEnd` | `msg-panel` → updateToolCall (pops from `m_toolCallIndices` if non-empty, otherwise scans backwards by name); `status-bar` → setAgentState(Thinking) |
-| `Complete` | `xOnComplete` | `msg-panel` → endStream; `status-bar` → setIdle; `input-bar` → enable+focus |
-| `Error` | `xOnError` | `msg-panel` → endStream+append(Error); `status-bar` → setIdle; `input-bar` → enable+focus |
+| `LlmToken` | `xOnToken` | `msg-panel` → appendOrUpdateAssistantText (accumulates into current text child) |
+| `ToolStart` | `xOnToolStart` | `msg-panel` → appendAssistantTool; `status-bar` → setAgentState(Executing); `input-bar` → disable |
+| `ToolEnd` | `xOnToolEnd` | `msg-panel` → updateLastAssistantTool; `status-bar` → setAgentState(Thinking) |
+| `RoundComplete` | `xOnRoundComplete` | `msg-panel` → endCurrentAssistantText (seals text child, next round starts fresh) |
+| `Complete` | `xOnComplete` | `msg-panel` → appendOrUpdateAssistantText + finalizeAssistant; `status-bar` → setIdle; `input-bar` → enable+focus |
+| `Error` | `xOnError` | `msg-panel` → appendOrUpdateAssistantText + finalizeAssistant; `status-bar` → setIdle; `input-bar` → enable+focus |
 | `SessionReady` | `xOnSessionReady` | `status-bar` → setSessionId |
 | `SessionList` | `xOnSessionList` | `dialog-stack` → show session picker |
 | `SessionHistory` | `xOnSessionHistory` | `msg-panel` → clear+loadHistory; `status-bar` → setId+count |
@@ -91,11 +92,30 @@ showStatus(msg, secs)    → transient flash with auto-expire
 |-------|-------|
 | **Class** | `a0::tui::MessagePanel` in `src/tui/message_panel.h/.cpp` |
 | **Parent** | `main-scroll` (child 1, flex-grow) |
-| **FTXUI type** | `Renderer` (yframe + vscroll_indicator) — no CatchEvent, no Container |
+| **FTXUI type** | `CatchEvent(Renderer(yframe + vscroll_indicator))` — click-to-toggle handled via `reflect`+`ToolHit` box tracking |
 | **Purpose** | Scrollable display of all messages: user queries, assistant responses (streamed or complete), tool call blocks with status/output, system messages. |
 
+**Per-assistant children model:**
+- One `┌─ Assistant` entry per user goal, created by `beginAssistant()` in `xHandleSubmit`
+- Assistant entries have a `children` vector (`std::vector<MessageEntry>`)
+- Text segments are appended as children with `role=Assistant`
+- Tool calls are appended as children with `role=Tool`
+- Multiple LLM rounds within one user goal accumulate into the same assistant entry
+- `RoundComplete` seals the current text child; new tokens create a new child
+- `Complete` finalizes the entire assistant entry
+
+**Rendering of an assistant entry:**
+```
+vbox
+├── text("┌─ Assistant") | green            ← header (one per goal)
+├── paragraph("I'll look up the files...")  ← child[0]: text
+├── xRenderToolBlock(child)                 ← child[1]: tool (collapsible)
+├── paragraph("Here are the results...")    ← child[2]: text
+└── text("")
+```
+
 **Scroll model:**
-- ALL entries are rendered in the vbox (no virtual window)
+- ALL entries are rendered in a single vbox element tree (no virtual window)
 - `yframe` clips the vbox to the container height
 - `ftxui::focus` decorator on the target entry tells `yframe` where to scroll
 - Scrolling is controlled by `focusIndex` (target entry index) and `autoScroll` bool:
@@ -103,18 +123,24 @@ showStatus(msg, secs)    → transient flash with auto-expire
   - `autoScroll = false` (manual scroll) → focus stays on `focusIndex`
 - Scroll events (PgUp/PgDn/Home/End, mouse wheel) are handled by `app`'s outer `CatchEvent` and forwarded to `msg-panel` methods
 
+**Click-to-toggle:**
+- The msg-panel `CatchEvent` uses `ftxui::reflect` boxes to detect clicks on tool entries
+- Top-level tool entries (from history) use `entryBoxes` — toggled directly
+- Tool children inside assistant entries use `toolHits` — `ToolHit{entryIdx, childIdx, box}` stored in `Impl` with `box` storage in the vector element (stable across frames)
+- Left mouse click (release, no drag) toggles `collapsed` on the matching tool entry
+- Returns `false` (propagate) so `app`'s outer handler still sees mouse events for copy-on-select
+
 **Public API (used by `app` event handlers):**
 ```
-append(entry)               → adds user/assistant/system/tool message
-beginStreaming(role)        → creates placeholder for streaming tokens
-streamUpdate(index, text)   → updates placeholder text (NO ensureScroll — avoids janky viewport shift per token)
-endStream(index)            → finalizes streaming message
-appendToolCall(name, state, output)  → adds tool block (Pending→Running/Completed/Failed)
-updateToolCall(index, state, output)  → updates existing tool block by index
-updateToolCall(name, state, output)  → scans backwards for Running entry with matching name (fallback for out-of-order events)
-setToolCallArgs(index, args)           → stores tool call arguments for display in header
-loadHistory(msgs)           → bulk load from session restore
+append(entry)               → adds user/assistant/system/tool message (top-level, for history)
 clear()                     → wipe all messages
+beginAssistant()            → creates a single Assistant entry with empty children, returns index
+appendOrUpdateAssistantText(asstIdx, text)  → appends/updates streaming text child
+endCurrentAssistantText(asstIdx)            → seals the current streaming text child
+appendAssistantTool(asstIdx, name, state, args)  → appends tool child to assistant
+updateLastAssistantTool(asstIdx, state, output)  → updates last Running tool child
+finalizeAssistant(asstIdx)                 → seals text + sets assistant to non-streaming
+loadHistory(msgs)           → bulk load from session restore (flat, no children)
 scrollToBottom()            → re-enables autoScroll, focus follows last entry
 count()                     → number of entries
 scrollUp/Down(n)            → manual scroll (disables autoScroll, adjusts focusIndex)
@@ -122,29 +148,28 @@ scrollToTop()               → jump to top
 isAtBottom()                → autoScroll decision
 ```
 
-**Rendering details (focus-based scrolling):**
-- All entries rendered in a single vbox
+**Rendering details:**
+- All entries rendered in a single vbox element tree
 - `yframe` clips to container; `vscroll_indicator` shows scrollbar
 - Focused entry receives `| ftxui::focus` decorator each frame:
-  - `autoScroll = true` → last entry (`total - 1`) gets focus
+  - `autoScroll = true` → last entry gets focus
   - `autoScroll = false` → entry at `focusIndex` gets focus
-- Scroll hints (`↑ N more` / `↓ N more`) rendered above/below all entries; may be clipped by `yframe`
-- Tool entries: collapsible block with name, arguments, spinner/icon, stdout
-- Streaming assistant: placeholder with `[thinking]` indicator, updated each frame
+- Tool entries (children): single-line `🔧 name args  ✅/⏳/❌ status` (collapsed by default), output shown when toggled open. Click-to-toggle via `reflect`+`ToolHit` box tracking.
+- Streaming assistant child: plain `paragraph(content)` when non-empty, `⏳ thinking` when empty. No blinking cursor.
 - Markdown assistant messages rendered via `md-renderer`
-- Scroll via `PageUp`/`PageDown` (handled in `app`'s outer CatchEvent, forwarded to `msg-panel`)
+- Scroll via `PageUp`/`PageDown` (handled in `app`'s outer `CatchEvent`, forwarded to `msg-panel`)
 
 **Interaction effects:**
 | Incoming event → | msg-panel call |
 |-----------------|----------------|
-| User submits | `append(User, text)` |
-| LlmToken (first) | `beginStreaming(Assistant)` |
-| LlmToken (subsequent) | `streamUpdate(index, accumText)` |
-| ToolStart | `appendToolCall(name, Running)` + `setToolCallArgs(idx, args)` |
-| ToolEnd | `updateToolCall(index, Completed/Failed, output)` (or name-based fallback) |
-| Complete | `endStream(index)` |
-| Error | `endStream(index)` then `append(Error, msg)` |
-| SessionHistory | `clear()` then `loadHistory(messages)` |
+| User submits | `append(User, text)` then `beginAssistant()` |
+| LlmToken | `appendOrUpdateAssistantText(asstIdx, m_streamingText)` |
+| ToolStart | `appendAssistantTool(asstIdx, name, Running, args)` |
+| ToolEnd | `updateLastAssistantTool(asstIdx, Completed/Failed, output)` |
+| RoundComplete | `endCurrentAssistantText(asstIdx)` |
+| Complete | `appendOrUpdateAssistantText` + `finalizeAssistant(asstIdx)` |
+| Error | `appendOrUpdateAssistantText` + `finalizeAssistant(asstIdx)` + `append(Error, msg)` |
+| SessionHistory | `clear()` then flat `append()` per message |
 | /clear command | `clear()` |
 
 ---
@@ -266,17 +291,18 @@ renderInline(md)                  → inline only (no block-level)
 
 | Trigger | `app` → sends | `status-bar` | `msg-panel` | `input-bar` | `dialog-stack` |
 |---------|---------------|--------------|-------------|-------------|----------------|
-| User types + Enter | `SubmitGoal` | setAgentState(Thinking) inc msgCount | append(User, text) beginStreaming | clear disable | — |
-| Ctrl+C | `Cancel` | setAgentState(Idle) | endStream append(Error, "Interrupted") | enable focus | — |
+| User types + Enter | `SubmitGoal` | setAgentState(Thinking) | append(User, text) + beginAssistant() | clear, disable | — |
+| Ctrl+C | `Cancel` | setAgentState(Idle) | finalizeAssistant + append(System, "Interrupted") | enable, focus | — |
 | `/sessions` | `ListSessions` | — | — | — | showList("Sessions") |
-| `LlmToken` | — | — | beginStreaming / streamUpdate | — | — |
-| `ToolStart` | — | setAgentState(Executing) | appendToolCall(Running) + setToolCallArgs | disable | — |
-| `ToolEnd` | — | setAgentState(Thinking) | updateToolCall(Completed) (pop from m_toolCallIndices) | — | — |
-| `Complete` | — | setAgentState(Idle) | endStream | enable focus | — |
-| `Error` | — | setAgentState(Idle) | endStream + append(Error) | enable focus | — |
+| `LlmToken` | — | — | appendOrUpdateAssistantText | — | — |
+| `ToolStart` | — | setAgentState(Executing) | appendAssistantTool(Running) | disable | — |
+| `ToolEnd` | — | setAgentState(Thinking) | updateLastAssistantTool(Completed) | — | — |
+| `RoundComplete` | — | — | endCurrentAssistantText | — | — |
+| `Complete` | — | setAgentState(Idle) | appendOrUpdateAssistantText + finalizeAssistant | enable, focus | — |
+| `Error` | — | setAgentState(Idle) | appendOrUpdateAssistantText + finalizeAssistant + append(Error) | enable, focus | — |
 | `SessionList` | — | — | — | — | showList with entries |
 | List item selected | `ResumeSession` | — | — | — | dismiss |
-| `SessionHistory` | — | setSessionId setMsgCount | clear + loadHistory | — | dismiss |
+| `SessionHistory` | — | setSessionId, setMsgCount | clear + flat append per message | — | dismiss |
 | `/clear` | — | — | clear | — | — |
 | `:q` / `/quit` | `Shutdown` | — | — | — | — |
 
@@ -299,9 +325,21 @@ USER INPUT (TUI → core):
     → xHandleSubmit(text)             ← main thread
       → expandPastePlaceholders
       → msg-panel->append(User, text)
+      → msg-panel->beginAssistant()     ← creates single ┌─ Assistant entry
       → cmdSender.send(SubmitGoal{})  ← writes eventfd + pushes to deque
       → RequestAnimationFrame()
     → AppCoreThread drains command    ← bg thread's ppoll loop
+
+EVENT DISPATCH (core → TUI):
+  DrivenCore::tick() → AppCoreThread → evtSender → drainEvents
+    ├── LlmToken    → xOnToken → appendOrUpdateAssistantText(asstIdx, accumText)
+    ├── ToolStart   → xOnToolStart → appendAssistantTool(asstIdx, name, Running, args)
+    ├── ToolEnd     → xOnToolEnd → updateLastAssistantTool(asstIdx, Completed/Failed, output)
+    ├── RoundComplete → xOnRoundComplete → endCurrentAssistantText(asstIdx)
+    │                  (emitted by DrivenCore when Complete arrives + pending tool calls)
+    ├── Complete    → xOnComplete → appendOrUpdateAssistantText + finalizeAssistant(asstIdx)
+    │                  (emitted by DrivenCore when core reaches Idle — final round)
+    └── Error       → xOnError → appendOrUpdateAssistantText + finalizeAssistant(asstIdx)
 ```
 
 ## 5. Lessons Learned
@@ -365,11 +403,91 @@ FTXUI's `ScreenInteractive` compares the current rendered output with the previo
 
 **Fix:** Send a benign keystroke (e.g., type a space then backspace) to trigger a state change, forcing Draw() to emit a frame. Then capture.
 
-### 5.8 Scroll-hint instability
+### 5.8 `ftxui::reflect` box storage must outlive the render frame
 
-The `↑ N more` / `↓ N more` scroll hints are rendered at positions 0 and `total` in the vbox. When `yframe` focuses on a distant entry, these hints are clipped above or below the viewport. Tests that rely on hint visibility in captured text give false negatives.
+`ftxui::reflect(Box&)` captures a reference to a box and fills it during rendering. If the box is a stack-local variable, storing a copy in a vector produces a **default-initialized (all-zeros)** value — the copy is made before FTXUI's layout engine fills the original. Click hit-testing against zero boxes never matches.
 
-**Fix:** Use content-change detection instead of scroll-hint assertions. Compare captured text before and after a scroll event — if different, scrolling worked. Do not assert on the specific `↑ N` value.
+**Symptoms:** Click-to-toggle on tool children silently fails; `Box{x_min=0, x_max=0, y_min=0, y_max=0}` in all tool hits.
+
+**Fix:** Store the `Box` directly in the vector element's storage (e.g., `toolHits[].box`) and pass a **reference** to that stable storage to `reflect`. The box is filled in-place by FTXUI and survives across frames because the vector owns the memory:
+
+```cpp
+// Wrong — box is a copy of stack-local
+ftxui::Box box;
+elems.push_back(element | ftxui::reflect(box));
+m_impl->toolHits.push_back({entryIdx, ci, box});  // box = {0,0,0,0}
+
+// Correct — box lives in the vector, reflect fills it in-place
+m_impl->toolHits.push_back({entryIdx, ci, ftxui::Box{}});
+elems.push_back(element | ftxui::reflect(m_impl->toolHits.back().box));
+```
+
+See `xRenderAssistant` in `message_panel.cpp`.
+
+### 5.9 Ctrl+C must be handled in the outer CatchEvent when input is disabled
+
+When the input bar is disabled (`setEnabled(false)`), `InputPanel::component()` returns a plain `Renderer("Waiting...")` that ignores all events. `Event::CtrlC` never reaches `setOnInterrupt`. If Ctrl+C is sent while a goal is processing, the interrupt handler never fires — the user sees "Thinking" indefinitely.
+
+**Symptoms:** Ctrl+C during goal processing has no effect. Status bar stays on "Thinking". No "Interrupted" message appears.
+
+**Fix:** Handle `Event::CtrlC` in `app`'s outer `CatchEvent` (in `agent_tui.cpp`) before it reaches any child component. The outer CatchEvent runs the handler regardless of child focus state:
+
+```cpp
+if (event == ftxui::Event::CtrlC) {
+    xHandleInterrupt();
+    return true;
+}
+```
+
+The `Event::CtrlC` check is at the CatchEvent level, before the event is forwarded to children. This ensures interrupt works even when `input-bar` is disabled, a dialog is open, or focus is on any non-handling component.
+
+### 5.10 Use `RoundComplete` for intermediate LLM rounds, `Complete` only for final
+
+The `Complete` event fires for every LLM response — both when the model returns tool calls (intermediate) and when it returns final text. Previously the TUI had to infer which was which by checking `m_toolCallIndices` or `m_state`, which was fragile.
+
+**Fix:** Add a `RoundComplete` event type to `AppCoreEvent` variant. In `DrivenCore::tick()`, after `xHandleLlmEvents` processes the events, convert `Complete` to `RoundComplete` when `m_state` is `ExecutingTools` (intermediate round). The final `Complete` passes through unchanged:
+
+```cpp
+for (auto& ev : events) {
+    if (auto* c = std::get_if<mpsc::Complete>(&ev)) {
+        if (m_state != CoreState::Idle) {
+            ev = mpsc::RoundComplete{std::move(c->text)};
+        }
+    }
+}
+```
+
+The TUI handles `RoundComplete` by sealing the current text child (`endCurrentAssistantText`), keeping the `┌─ Assistant` entry alive. `Complete` finalizes the entire assistant entry. This eliminated the need for `m_turnHadToolCalls` flag and the fragile state inference in the old `xOnComplete`.
+
+### 5.11 Tool entries as children of the assistant entry
+
+Originally tool calls were flat entries in the message panel. This caused ordering issues: after `RoundComplete` sealed the text and `ToolStart` appended a tool, the tool entry appeared AFTER the assistant entry (which was created earlier). The chronological order was wrong — tools should appear between text segments within a single assistant block.
+
+**Fix:** Make assistant entries a container with `children` — `std::vector<MessageEntry>`. Text segments (`role=Assistant`) and tool calls (`role=Tool`) are appended as ordered children. `xRenderAssistant` iterates children in order, producing the correct visual:
+
+```
+┌─ Assistant                                    ← single entry
+I'll look up the files...                       ← text child 0
+🔧 read {"file_path":"."} ✅ completed           ← tool child 1
+Here are the results I found.                   ← text child 2
+```
+
+This required rewriting all msg-panel API methods (`beginAssistant`, `appendOrUpdateAssistantText`, etc.) and the `app` event handlers.
+
+### 5.12 Non-streaming `Complete` needs fallback content
+
+When the mock server responds in non-streaming mode (no `stream` flag), no `LlmToken` events arrive — just a single `Complete` with the full text. With the old code, the synthetic `[thinking]\n` token provided accumulated text. After removing the `[thinking]` token, `m_streamingText` was empty when `Complete` arrived.
+
+**Symptoms:** `xOnComplete` creates a child with empty content (since `appendOrUpdateAssistantText` uses `m_streamingText`). The assistant appears to have no response text.
+
+**Fix:** In `xOnComplete`, use `fullOutput` (from `Complete.text`) when `m_streamingText` is empty:
+
+```cpp
+const std::string& text = m_streamingText.empty() ? fullOutput : m_streamingText;
+m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, text);
+```
+
+This handles both streaming (tokens in `m_streamingText`) and non-streaming (text in `fullOutput`) modes.
 
 ## 6. Design Constraints (NO list)
 

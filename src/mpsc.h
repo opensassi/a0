@@ -57,6 +57,10 @@ struct ToolEnd {
     std::string output;
 };
 
+struct RoundComplete {
+    std::string text;
+};
+
 struct Complete {
     std::string text;
 };
@@ -98,7 +102,7 @@ struct SessionHistory {
     std::vector<SessionMessage> messages;
 };
 
-using AppCoreEvent = std::variant<LlmToken, ToolStart, ToolEnd, Complete, Error,
+using AppCoreEvent = std::variant<LlmToken, ToolStart, ToolEnd, RoundComplete, Complete, Error,
                                   SessionReady, SessionList, SessionHistory>;
 
 // ============================================================================

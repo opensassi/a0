@@ -241,10 +241,16 @@ std::vector<mpsc::AppCoreEvent> DrivenCore::tick() {
         xHandleLlmEvents(events);
         // Streaming Complete events carry empty text (text was in LlmToken events).
         // Fill in the actual result text so consumers (cmdRun) get the answer.
+        // If state transitioned to ExecutingTools, this is an intermediate round —
+        // emit RoundComplete instead of Complete so the TUI keeps its streaming
+        // entry alive for the next LLM round.
         for (auto& ev : events) {
             if (auto* c = std::get_if<mpsc::Complete>(&ev)) {
                 if (c->text.empty() && !m_lastResult.empty())
                     c->text = m_lastResult;
+                if (m_state != CoreState::Idle) {
+                    ev = mpsc::RoundComplete{std::move(c->text)};
+                }
             }
         }
         return events;

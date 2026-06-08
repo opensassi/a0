@@ -159,7 +159,6 @@ void AppCoreThread::xRun() {
         for (auto& cmd : commands) {
             if (std::holds_alternative<mpsc::SubmitGoal>(cmd)) {
                 if (core.idle()) {
-                    m_evtSender.send(mpsc::LlmToken{"[thinking]\n"});
                     core.submitGoal(std::get<mpsc::SubmitGoal>(cmd).goal);
                 }
             } else if (std::holds_alternative<mpsc::Cancel>(cmd)) {

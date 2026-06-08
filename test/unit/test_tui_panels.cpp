@@ -54,44 +54,60 @@ TEST(TuiMessagePanelTest, ClearWithMessages) {
     EXPECT_EQ(panel.count(), 0);
 }
 
-TEST(TuiMessagePanelTest, BeginStreamingAndEnd) {
+TEST(TuiMessagePanelTest, BeginAssistantAndFinalize) {
     MessagePanel panel;
-    int idx = panel.beginStreaming(MessageRole::Assistant);
+    int idx = panel.beginAssistant();
     EXPECT_GE(idx, 0);
     EXPECT_EQ(panel.count(), 1);
 
-    panel.streamUpdate(idx, "hello");
-    panel.endStream(idx);
+    panel.appendOrUpdateAssistantText(idx, "hello");
+    panel.finalizeAssistant(idx);
     EXPECT_EQ(panel.count(), 1);
 }
 
-TEST(TuiMessagePanelTest, StreamUpdateInvalidIndex) {
+TEST(TuiMessagePanelTest, AppendAssistantTool) {
     MessagePanel panel;
-    int rc = panel.streamUpdate(-1, "test");
-    EXPECT_EQ(rc, -1);
-
-    rc = panel.streamUpdate(999, "test");
-    EXPECT_EQ(rc, -1);
-}
-
-TEST(TuiMessagePanelTest, AppendToolCall) {
-    MessagePanel panel;
-    int idx = panel.appendToolCall("glob", ToolState::Pending);
-    EXPECT_GE(idx, 0);
+    int asstIdx = panel.beginAssistant();
+    int toolIdx = panel.appendAssistantTool(asstIdx, "glob", ToolState::Pending);
+    EXPECT_GE(toolIdx, 0);
     EXPECT_EQ(panel.count(), 1);
 }
 
-TEST(TuiMessagePanelTest, UpdateToolCall) {
+TEST(TuiMessagePanelTest, UpdateAssistantTool) {
     MessagePanel panel;
-    int idx = panel.appendToolCall("glob", ToolState::Running);
-    panel.updateToolCall(idx, ToolState::Completed, "found 3 files");
+    int asstIdx = panel.beginAssistant();
+    panel.appendAssistantTool(asstIdx, "glob", ToolState::Running);
+    int rc = panel.updateLastAssistantTool(asstIdx, ToolState::Completed, "found 3 files");
+    EXPECT_GE(rc, 0);
     EXPECT_EQ(panel.count(), 1);
 }
 
-TEST(TuiMessagePanelTest, UpdateToolCallInvalidIndex) {
+TEST(TuiMessagePanelTest, UpdateAssistantToolInvalidIndex) {
     MessagePanel panel;
-    int rc = panel.updateToolCall(-1, ToolState::Completed, "out");
+    int rc = panel.updateLastAssistantTool(0, ToolState::Completed, "out");
     EXPECT_EQ(rc, -1);
+}
+
+TEST(TuiMessagePanelTest, AssistantRoundTrip) {
+    MessagePanel panel;
+    int asstIdx = panel.beginAssistant();
+    EXPECT_GE(asstIdx, 0);
+    EXPECT_EQ(panel.count(), 1);
+
+    // Text across multiple rounds
+    panel.appendOrUpdateAssistantText(asstIdx, "I'll look up the files...");
+    panel.endCurrentAssistantText(asstIdx);
+
+    // Tool call
+    int toolIdx = panel.appendAssistantTool(asstIdx, "read", ToolState::Running, ".");
+    EXPECT_GE(toolIdx, 0);
+    panel.updateLastAssistantTool(asstIdx, ToolState::Completed, "file1\nfile2\n");
+    EXPECT_EQ(panel.count(), 1);
+
+    // More text after tool
+    panel.appendOrUpdateAssistantText(asstIdx, "Here are the results...");
+    panel.finalizeAssistant(asstIdx);
+    EXPECT_EQ(panel.count(), 1);
 }
 
 TEST(TuiMessagePanelTest, ScrollToBottom) {
@@ -123,7 +139,7 @@ TEST(TuiMessagePanelTest, ScrollUpMovesScrollTop) {
         panel.append(e);
     }
     panel.scrollUp(3);
-    EXPECT_LT(panel.scrollTop(), 12 - 8);
+    EXPECT_EQ(panel.scrollTop(), 8);
     EXPECT_FALSE(panel.isAtBottom());
 }
 

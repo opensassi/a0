@@ -8,62 +8,87 @@
 
 namespace a0::tui {
 
+struct ToolHit {
+    int entryIdx;
+    int childIdx;
+    ftxui::Box box;
+};
+
 class MessagePanel::Impl {
 public:
     std::vector<MessageEntry> entries;
     ftxui::Component renderer;
     int focusIndex = 0;
     bool autoScroll = true;
+    std::vector<ftxui::Box> entryBoxes;
+    std::vector<ToolHit> toolHits;
 };
 
 MessagePanel::MessagePanel()
     : m_impl(std::make_unique<Impl>()) {
-    m_impl->renderer = ftxui::Renderer([this] {
-        int total = static_cast<int>(m_impl->entries.size());
+    m_impl->renderer = ftxui::CatchEvent(
+        ftxui::Renderer([this] {
+            int total = static_cast<int>(m_impl->entries.size());
 
-        if (total == 0) {
-            return ftxui::vbox({
-                ftxui::text("") | ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)
-            });
-        }
-
-        // Determine which entry to focus for yframe viewport positioning
-        int focusIdx;
-        if (m_impl->autoScroll) {
-            focusIdx = total - 1;
-        } else {
-            focusIdx = std::min(m_impl->focusIndex, total - 1);
-        }
-
-        ftxui::Elements elems;
-
-        // ↑ hint at top of vbox (may be clipped by yframe when focused below)
-        if (focusIdx > 0) {
-            elems.push_back(
-                ftxui::text("\u2191 " + std::to_string(focusIdx) + " more") |
-                ftxui::dim | ftxui::bold
-            );
-        }
-
-        for (int i = 0; i < total; ++i) {
-            auto entry = xRenderEntry(m_impl->entries[i]);
-            if (i == focusIdx) {
-                entry = entry | ftxui::focus;
+            if (total == 0) {
+                return ftxui::vbox({
+                    ftxui::text("") | ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)
+                });
             }
-            elems.push_back(std::move(entry));
-        }
 
-        // ↓ hint at bottom of vbox (may be clipped by yframe when focused above)
-        int below = total - 1 - focusIdx;
-        if (below > 0) {
-            elems.push_back(
-                ftxui::text("\u2193 " + std::to_string(below) + " more") |
-                ftxui::dim | ftxui::bold
-            );
-        }
+            int focusIdx;
+            if (m_impl->autoScroll) {
+                focusIdx = total - 1;
+            } else {
+                focusIdx = std::min(m_impl->focusIndex, total - 1);
+            }
 
-        return ftxui::vbox(std::move(elems)) | ftxui::yframe | ftxui::vscroll_indicator;
-    });
+            m_impl->entryBoxes.resize(total);
+
+            m_impl->toolHits.clear();
+            ftxui::Elements elems;
+            for (int i = 0; i < total; ++i) {
+                auto entry = xRenderEntry(i);
+                if (i == focusIdx) {
+                    entry = entry | ftxui::focus;
+                }
+                entry = entry | ftxui::reflect(m_impl->entryBoxes[i]);
+                elems.push_back(std::move(entry));
+            }
+
+            return ftxui::vbox(std::move(elems)) | ftxui::yframe | ftxui::vscroll_indicator;
+        }),
+        [this](ftxui::Event event) -> bool {
+            if (!event.is_mouse()) return false;
+            auto& mouse = event.mouse();
+            if (mouse.button == ftxui::Mouse::Left &&
+                mouse.motion == ftxui::Mouse::Released) {
+                for (int i = 0; i < static_cast<int>(m_impl->entryBoxes.size()); ++i) {
+                    auto& b = m_impl->entryBoxes[i];
+                    if (mouse.x >= b.x_min && mouse.x <= b.x_max &&
+                        mouse.y >= b.y_min && mouse.y <= b.y_max) {
+                        if (m_impl->entries[i].role == MessageRole::Tool &&
+                            !m_impl->entries[i].toolName.empty()) {
+                            m_impl->entries[i].collapsed = !m_impl->entries[i].collapsed;
+                        }
+                    }
+                }
+                // Check tool child hits inside assistant entries
+                if (!m_impl->toolHits.empty()) {
+                    for (auto& h : m_impl->toolHits) {
+                        if (mouse.x >= h.box.x_min && mouse.x <= h.box.x_max &&
+                            mouse.y >= h.box.y_min && mouse.y <= h.box.y_max &&
+                            h.entryIdx >= 0 &&
+                            h.childIdx < static_cast<int>(m_impl->entries[h.entryIdx].children.size())) {
+                            m_impl->entries[h.entryIdx].children[h.childIdx].collapsed ^= true;
+                            break;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+    );
 }
 
 MessagePanel::~MessagePanel() = default;
@@ -77,70 +102,102 @@ int MessagePanel::append(const MessageEntry& entry) {
     return static_cast<int>(m_impl->entries.size()) - 1;
 }
 
-int MessagePanel::beginStreaming(MessageRole role) {
+void MessagePanel::clear() {
+    m_impl->entries.clear();
+    m_impl->focusIndex = 0;
+    m_impl->autoScroll = true;
+    m_impl->entryBoxes.clear();
+}
+
+int MessagePanel::beginAssistant() {
     MessageEntry entry;
-    entry.role = role;
+    entry.role = MessageRole::Assistant;
     entry.streaming = true;
     m_impl->entries.push_back(entry);
     return static_cast<int>(m_impl->entries.size()) - 1;
 }
 
-int MessagePanel::streamUpdate(int index, const std::string& text) {
-    if (index < 0 || index >= static_cast<int>(m_impl->entries.size())) return -1;
-    m_impl->entries[index].content = text;
-    return 0;
-}
+int MessagePanel::appendOrUpdateAssistantText(int asstIdx, const std::string& text) {
+    if (asstIdx < 0 || asstIdx >= static_cast<int>(m_impl->entries.size())) return -1;
+    auto& asst = m_impl->entries[asstIdx];
+    if (asst.role != MessageRole::Assistant) return -1;
 
-int MessagePanel::endStream(int index) {
-    if (index < 0 || index >= static_cast<int>(m_impl->entries.size())) return -1;
-    m_impl->entries[index].streaming = false;
-    return 0;
-}
-
-int MessagePanel::appendToolCall(const std::string& name,
-                                  ToolState state,
-                                  const std::string& output) {
-    MessageEntry entry;
-    entry.role = MessageRole::Tool;
-    entry.toolName = name;
-    entry.toolState = state;
-    entry.toolOutput = output;
-    entry.collapsed = false;
-    m_impl->entries.push_back(entry);
-    return static_cast<int>(m_impl->entries.size()) - 1;
-}
-
-int MessagePanel::updateToolCall(int index, ToolState state, const std::string& output) {
-    if (index < 0 || index >= static_cast<int>(m_impl->entries.size())) return -1;
-    m_impl->entries[index].toolState = state;
-    if (!output.empty()) {
-        m_impl->entries[index].toolOutput = output;
+    bool found = false;
+    for (int i = static_cast<int>(asst.children.size()) - 1; i >= 0; --i) {
+        if (asst.children[i].role == MessageRole::Assistant && asst.children[i].streaming) {
+            asst.children[i].content = text;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        MessageEntry child;
+        child.role = MessageRole::Assistant;
+        child.content = text;
+        child.streaming = true;
+        asst.children.push_back(std::move(child));
     }
     return 0;
 }
 
-int MessagePanel::updateToolCall(const std::string& name, ToolState state, const std::string& output) {
-    for (int i = static_cast<int>(m_impl->entries.size()) - 1; i >= 0; --i) {
-        auto& e = m_impl->entries[i];
-        if (e.role == MessageRole::Tool && e.toolName == name && e.toolState == ToolState::Running) {
-            e.toolState = state;
-            if (!output.empty()) e.toolOutput = output;
+int MessagePanel::endCurrentAssistantText(int asstIdx) {
+    if (asstIdx < 0 || asstIdx >= static_cast<int>(m_impl->entries.size())) return -1;
+    auto& asst = m_impl->entries[asstIdx];
+    if (asst.role != MessageRole::Assistant) return -1;
+    for (int i = static_cast<int>(asst.children.size()) - 1; i >= 0; --i) {
+        if (asst.children[i].role == MessageRole::Assistant && asst.children[i].streaming) {
+            asst.children[i].streaming = false;
+            break;
+        }
+    }
+    return 0;
+}
+
+int MessagePanel::finalizeAssistant(int asstIdx) {
+    if (asstIdx < 0 || asstIdx >= static_cast<int>(m_impl->entries.size())) return -1;
+    auto& asst = m_impl->entries[asstIdx];
+    if (asst.role != MessageRole::Assistant) return -1;
+    for (int i = static_cast<int>(asst.children.size()) - 1; i >= 0; --i) {
+        if (asst.children[i].role == MessageRole::Assistant && asst.children[i].streaming) {
+            asst.children[i].streaming = false;
+            break;
+        }
+    }
+    asst.streaming = false;
+    return 0;
+}
+
+int MessagePanel::appendAssistantTool(int asstIdx, const std::string& name,
+                                       ToolState state, const std::string& args) {
+    if (asstIdx < 0 || asstIdx >= static_cast<int>(m_impl->entries.size())) return -1;
+    auto& asst = m_impl->entries[asstIdx];
+    if (asst.role != MessageRole::Assistant) return -1;
+
+    MessageEntry child;
+    child.role = MessageRole::Tool;
+    child.toolName = name;
+    child.toolState = state;
+    child.toolArgs = args;
+    child.collapsed = true;
+    asst.children.push_back(std::move(child));
+    return static_cast<int>(asst.children.size()) - 1;
+}
+
+int MessagePanel::updateLastAssistantTool(int asstIdx, ToolState state,
+                                           const std::string& output) {
+    if (asstIdx < 0 || asstIdx >= static_cast<int>(m_impl->entries.size())) return -1;
+    auto& asst = m_impl->entries[asstIdx];
+    if (asst.role != MessageRole::Assistant) return -1;
+
+    for (int i = static_cast<int>(asst.children.size()) - 1; i >= 0; --i) {
+        auto& child = asst.children[i];
+        if (child.role == MessageRole::Tool && child.toolState == ToolState::Running) {
+            child.toolState = state;
+            if (!output.empty()) child.toolOutput = output;
             return i;
         }
     }
     return -1;
-}
-
-void MessagePanel::setToolCallArgs(int index, const std::string& args) {
-    if (index >= 0 && index < static_cast<int>(m_impl->entries.size())) {
-        m_impl->entries[index].toolArgs = args;
-    }
-}
-
-void MessagePanel::clear() {
-    m_impl->entries.clear();
-    m_impl->focusIndex = 0;
-    m_impl->autoScroll = true;
 }
 
 void MessagePanel::scrollToBottom() {
@@ -179,15 +236,22 @@ bool MessagePanel::isAtBottom() const {
 }
 
 int MessagePanel::loadHistory(const std::vector<::a0::mpsc::SessionMessage>& messages) {
+    clear();
     for (const auto& pm : messages) {
         MessageEntry entry;
         if (pm.role == "user") entry.role = MessageRole::User;
         else if (pm.role == "assistant") entry.role = MessageRole::Assistant;
-        else if (pm.role == "tool") entry.role = MessageRole::Tool;
-        else if (pm.role == "system") entry.role = MessageRole::System;
+        else if (pm.role == "tool") {
+            entry.role = MessageRole::Tool;
+            entry.toolName = pm.name;
+            entry.toolOutput = pm.content;
+            entry.collapsed = true;
+            entry.toolState = ToolState::Completed;
+        } else if (pm.role == "system") entry.role = MessageRole::System;
         else entry.role = MessageRole::Error;
-        entry.content = pm.content;
-        entry.toolName = pm.name;
+        if (entry.role != MessageRole::Tool) {
+            entry.content = pm.content;
+        }
         entry.timestamp = pm.createdAt;
         m_impl->entries.push_back(entry);
     }
@@ -198,11 +262,15 @@ size_t MessagePanel::count() const {
     return m_impl->entries.size();
 }
 
-ftxui::Element MessagePanel::xRenderEntry(const MessageEntry& entry) const {
-    ftxui::Element content;
-    auto role = entry.role;
+ftxui::Element MessagePanel::xRenderEntry(int entryIdx) {
+    auto& entry = m_impl->entries[entryIdx];
 
-    if (role == MessageRole::Tool && !entry.toolName.empty()) {
+    if (entry.role == MessageRole::Assistant) {
+        return xRenderAssistant(entryIdx);
+    }
+
+    ftxui::Element content;
+    if (entry.role == MessageRole::Tool && !entry.toolName.empty()) {
         content = xRenderToolBlock(entry);
     } else if (entry.streaming) {
         content = xRenderStreamingPlaceholder(entry);
@@ -210,22 +278,53 @@ ftxui::Element MessagePanel::xRenderEntry(const MessageEntry& entry) const {
         content = ftxui::paragraph(entry.content);
     }
 
-    std::string label;
-    if (role == MessageRole::Tool && !entry.toolName.empty()) {
-        label = "\u250C\u2500 Tool: " + entry.toolName;
-        if (!entry.toolArgs.empty()) {
-            label += " " + entry.toolArgs;
-        }
-    } else {
-        label = roleLabel(role, entry.toolName);
+    if (entry.role == MessageRole::Tool && !entry.toolName.empty()) {
+        ftxui::Elements elems;
+        if (content) elems.push_back(content);
+        return ftxui::vbox(std::move(elems));
     }
-    auto header = ftxui::text(label) | roleDecorator(role);
 
+    std::string label = roleLabel(entry.role, entry.toolName);
     ftxui::Elements elems;
-    elems.push_back(header);
+    elems.push_back(ftxui::text(label) | roleDecorator(entry.role));
     if (content) elems.push_back(content);
     elems.push_back(ftxui::text(""));
     return ftxui::vbox(std::move(elems));
+}
+
+ftxui::Element MessagePanel::xRenderAssistant(int entryIdx) {
+    auto& entry = m_impl->entries[entryIdx];
+
+    ftxui::Elements elems;
+    elems.push_back(ftxui::text(roleLabel(MessageRole::Assistant)) | roleDecorator(MessageRole::Assistant));
+
+    if (!entry.children.empty()) {
+        for (int ci = 0; ci < static_cast<int>(entry.children.size()); ++ci) {
+            auto& child = entry.children[ci];
+            if (child.role == MessageRole::Assistant && child.streaming) {
+                elems.push_back(xRenderStreamingPlaceholder(child));
+            } else if (child.role == MessageRole::Assistant) {
+                elems.push_back(ftxui::paragraph(child.content));
+            } else if (child.role == MessageRole::Tool) {
+                m_impl->toolHits.push_back({entryIdx, ci, ftxui::Box{}});
+                elems.push_back(xRenderToolBlock(child) | ftxui::reflect(m_impl->toolHits.back().box));
+            }
+        }
+    } else if (entry.streaming) {
+        elems.push_back(xRenderStreamingPlaceholder(entry));
+    } else if (!entry.content.empty()) {
+        elems.push_back(ftxui::paragraph(entry.content));
+    }
+
+    elems.push_back(ftxui::text(""));
+    return ftxui::vbox(std::move(elems));
+}
+
+ftxui::Element MessagePanel::xRenderStreamingPlaceholder(const MessageEntry& entry) const {
+    if (entry.content.empty()) {
+        return ftxui::text("\u23F3 thinking") | ftxui::dim;
+    }
+    return ftxui::paragraph(entry.content);
 }
 
 ftxui::Element MessagePanel::xRenderToolBlock(const MessageEntry& entry) const {
@@ -250,34 +349,24 @@ ftxui::Element MessagePanel::xRenderToolBlock(const MessageEntry& entry) const {
             break;
     }
 
-    ftxui::Elements headerElems;
-    headerElems.push_back(ftxui::text("\U0001F527 " + entry.toolName) | ftxui::bold);
-    headerElems.push_back(ftxui::text("  "));
-    headerElems.push_back(ftxui::text(stateStr) | ftxui::color(stateColor));
-    auto header = ftxui::hbox(std::move(headerElems));
+    std::string headerText = "\U0001F527 " + entry.toolName;
+    if (!entry.toolArgs.empty()) {
+        headerText += " " + entry.toolArgs;
+    }
+    headerText += "  " + stateStr;
+    auto header = ftxui::paragraph(headerText) | ftxui::bold | ftxui::color(ftxui::Color::BlueLight);
+
+    if (entry.collapsed || entry.toolOutput.empty()) {
+        return ftxui::vbox({
+            header,
+        });
+    }
 
     ftxui::Elements body;
     body.push_back(header);
-    if (!entry.toolOutput.empty()) {
-        body.push_back(ftxui::paragraph(entry.toolOutput) | ftxui::color(ftxui::Color::GrayDark));
-    }
-
+    body.push_back(ftxui::paragraph(entry.toolOutput) | ftxui::color(ftxui::Color::GrayDark));
+    body.push_back(ftxui::text(""));
     return ftxui::vbox(std::move(body)) | ftxui::color(ftxui::Color::BlueLight);
-}
-
-ftxui::Element MessagePanel::xRenderStreamingPlaceholder(const MessageEntry& entry) const {
-    auto cursor = ftxui::text("\u258C") | ftxui::blink;
-    ftxui::Elements elems;
-    elems.push_back(ftxui::paragraph(entry.content));
-    elems.push_back(cursor);
-    return ftxui::hbox(std::move(elems));
-}
-
-ftxui::Element MessagePanel::xRenderCollapsedToggle(const MessageEntry& entry) const {
-    if (entry.collapsed) {
-        return ftxui::text("[\u25B6 " + entry.toolName + "]");
-    }
-    return ftxui::emptyElement();
 }
 
 } // namespace a0::tui

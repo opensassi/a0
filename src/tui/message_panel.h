@@ -19,9 +19,10 @@ struct MessageEntry {
     ToolState toolState = ToolState::Completed;
     std::string toolOutput;
     int64_t timestamp = 0;
-    bool collapsed = false;
+    bool collapsed = true;
     bool streaming = false;
     int64_t sessionId = 0;
+    std::vector<MessageEntry> children;
 };
 
 class MessagePanel {
@@ -32,21 +33,18 @@ public:
     ftxui::Component component() const;
 
     int append(const MessageEntry& entry);
-    int beginStreaming(MessageRole role);
-    int streamUpdate(int index, const std::string& text);
-    int endStream(int index);
-
-    int appendToolCall(const std::string& name,
-                       ToolState state,
-                       const std::string& output = "");
-
-    int updateToolCall(int index, ToolState state, const std::string& output);
-    int updateToolCall(const std::string& name, ToolState state, const std::string& output);
-    void setToolCallArgs(int index, const std::string& args);
-
     void clear();
-    void scrollToBottom();
 
+    int beginAssistant();
+    int appendOrUpdateAssistantText(int asstIdx, const std::string& text);
+    int endCurrentAssistantText(int asstIdx);
+    int appendAssistantTool(int asstIdx, const std::string& name,
+                            ToolState state, const std::string& args = "");
+    int updateLastAssistantTool(int asstIdx, ToolState state,
+                                const std::string& output);
+    int finalizeAssistant(int asstIdx);
+
+    void scrollToBottom();
     int loadHistory(const std::vector<::a0::mpsc::SessionMessage>& messages);
 
     size_t count() const;
@@ -60,10 +58,10 @@ private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
 
-    ftxui::Element xRenderEntry(const MessageEntry& entry) const;
+    ftxui::Element xRenderEntry(int entryIdx);
+    ftxui::Element xRenderAssistant(int entryIdx);
     ftxui::Element xRenderToolBlock(const MessageEntry& entry) const;
     ftxui::Element xRenderStreamingPlaceholder(const MessageEntry& entry) const;
-    ftxui::Element xRenderCollapsedToggle(const MessageEntry& entry) const;
 };
 
 } // namespace a0::tui
