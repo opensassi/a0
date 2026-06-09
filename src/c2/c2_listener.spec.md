@@ -35,7 +35,7 @@ private:
     bool m_running = false;
     std::unordered_map<int, ipc::BufferedSocket> m_peers;
     std::unordered_map<int, int> m_b1PidToFd;
-    mutable std::mutex m_b1Mutex;
+    std::mutex m_b1Mutex;
 
     int xHandleMessage(const nlohmann::json& msg, int peerFd);
     int xHandleRegister(const nlohmann::json& msg, int peerFd);
@@ -43,7 +43,6 @@ private:
     int xHandleUserPrompt(const nlohmann::json& msg);
     int xHandleStreamData(const nlohmann::json& msg);
     int xHandleStreamEnd(const nlohmann::json& msg);
-    void xCleanupPeer(int fd);      // remove fd → pid mapping + removeB1 from registry
     void xCleanupStaleSocket();
 };
 
@@ -60,6 +59,8 @@ graph TB
         REG[xHandleRegister]
         UPD[xHandleUpdate]
         UP[xHandleUserPrompt]
+        SD[xHandleStreamData]
+        SE[xHandleStreamEnd]
         SEND[sendToB1]
         P2F[m_b1PidToFd]
     end
@@ -74,17 +75,24 @@ graph TB
         EV[EventStore]
     end
 
+    B1 -->|register/update IPC| LISTEN
     B1 -->|user_prompt IPC| UP
-    B1 -->|register IPC| LISTEN
+    B1 -->|stream_data IPC| SD
+    B1 -->|stream_end IPC| SE
+    B1 -->|terminal_ready IPC| MSG
     LISTEN --> MSG
     MSG --> REG
     MSG --> UPD
+    MSG --> SD
+    MSG --> SE
     REG --> P2F
     REG --> REGISTRY
     UPD --> REGISTRY
     UP --> EV
     UP --> SSE
-    SEND -->|prompt_reply IPC| B1
+    SD --> SSE
+    SE --> SSE
+    SEND -->|prompt_reply/TERMINAL_OPEN/STREAM_INPUT IPC| B1
 ```
 
 ## 4. Data Flow
@@ -113,11 +121,18 @@ sequenceDiagram
 
     B1->>L: {"type":"stream_data","streamId":42,"chunkSeq":1,"chunkDirection":"stdout","chunkData":"..."}
     L->>L: xHandleStreamData → build SSE event
-    L->>SSE: broadcast("stream_chunk", {streamId, seq, direction, data})
+    L->>SSE: broadcast("stream_chunk", {streamId, seq, direction, data, timestamp})
+    SSE-->>Browser: event:stream_chunk
 
     B1->>L: {"type":"stream_end","streamId":42,"pid":0}
     L->>L: xHandleStreamEnd → build SSE event
     L->>SSE: broadcast("stream_end", {streamId, exitCode})
+    SSE-->>Browser: event:stream_end
+
+    B1->>L: {"type":"terminal_ready","terminalId":"term_123","streamId":5,"pid":99}
+    L->>L: xHandleMessage → direct SSE broadcast
+    L->>SSE: broadcast("terminal_ready", {terminalId, streamId, pid})
+    SSE-->>Browser: event:terminal_ready
 ```
 
 ## 5. Error Handling
@@ -131,17 +146,23 @@ sequenceDiagram
 | Socket path stale from crash | `xCleanupStaleSocket` unlinks before bind |
 | sendToB1 to disconnected b1 | Returns -1 (fd closed or not found) |
 | stream_data with missing fields | Returns -1, no SSE broadcast |
-| b1 socket hangup or recv error | `xCleanupPeer` called → `removeB1(pid)` to prevent stale entries |
+| b1 socket hangup or POLLHUP/POLLERR | Inline cleanup lambda erases peer fd, removes pid mapping, calls `removeB1(pid)` |
 | recv returns RECV_AGAIN | No action — poll loop retries |
-| recv returns RECV_ERR | m_peers entry erased, fd closed, xCleanupPeer called |
+| recv returns RECV_ERR | m_peers entry erased, fd closed, cleanup lambda called |
 
 ## 6. Testing Requirements
 
 | Method | Test Case | Input | Expected |
 |--------|-----------|-------|----------|
-| `xHandleRegister` | Valid register | `{"type":"register","pid":1,"wd":"/x"}` | Calls upsertB1, stores fd mapping |
+| `xHandleRegister` | Valid register | `{"type":"register","pid":1,"wd":"/x","hostname":"h"}` | Calls upsertB1, stores fd→pid mapping |
+| `xHandleRegister` | Missing pid | `{"type":"register"}` | Returns -1 |
+| `xHandleUpdate` | Valid update | `{"type":"update","pid":1,"agents":[...]}` | Calls updateAgents |
 | `xHandleUserPrompt` | Valid user_prompt | `{"type":"user_prompt","session":"s","toolCallId":"c","prompt":"?"}` | Upserts EventStore, broadcasts SSE |
 | `xHandleUserPrompt` | Missing fields | `{"type":"user_prompt"}` | Returns -1 |
+| `xHandleStreamData` | Valid stream_data | `{"streamId":1,"chunkSeq":0,"chunkDirection":"stdout","chunkData":"o"}` | Broadcasts stream_chunk SSE |
+| `xHandleStreamData` | Missing sse | Call when m_sse is null | Returns -1 |
+| `xHandleStreamEnd` | Valid stream_end | `{"streamId":1,"pid":0}` | Broadcasts stream_end SSE |
+| `xHandleStreamEnd` | Missing sse | Call when m_sse is null | Returns -1 |
 | `sendToB1` | Known b1 pid | b1 pid, PROMPT_REPLY msg | Sends IPC message |
 | `sendToB1` | Unknown pid | pid=999 | Returns -1 |
 | `shutdown` | During poll wait | Call from another thread | run() returns 0 |

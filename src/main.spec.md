@@ -2,64 +2,86 @@
 
 ## 1. Overview
 
-Entry-point module. Parses CLI flags, loads `.env` files, resolves the DeepSeek API key through a priority chain, instantiates all concrete components (skill manager with registered handlers, runners, LLM provider, Docker managers, persona loader), and runs headless (`run` subcommand) or TUI (`tui` subcommand, default). Both paths use `AppCoreThread` which wraps `DrivenCore` on a background thread with MPSC communication. The `cmdRun` path polls MPSC events synchronously; `cmdTui` forwards MPSC events to the FTXUI render loop.
+Entry-point module (`src/main.cpp`). Parses CLI flags via CLI11, loads `.env` files, resolves the DeepSeek API key through a priority chain instantiates all concrete components (SkillManager, SqliteStore, SubprocessToolRunner, DeepSeekProvider, Docker managers, PersonaLoader), and dispatches to either headless (`run` subcommand), TUI (`tui` subcommand, default), terminal (`terminal` subcommand), or session management (`session` subcommand).
 
-All C++ tool handlers (including task-manager handlers) are registered directly onto `SkillManager` via `xRegisterSystemHandlers()`. Persona loading reads the `--persona` flag (default `"software-engineer"`) and passes the persona's skills/tools to `AppCoreThread` for tool schema filtering.
+Both `run` and `tui` use `AppCoreThread` wrapping `DrivenCore` on a background thread with MPSC communication. The `cmdRun` path polls MPSC events synchronously; `cmdTui` forwards MPSC events to the FTXUI render loop via `AgentTui`.
 
-## 2. Handler Registration
+**Dependencies:** All sub-modules (shared, bootstrap, persistence, skills, llm, core, ipc, docker, executor, tui, b1)
+
+## 2. Component Specifications
+
+No classes defined — the file contains static helper functions and a `struct AgentStack`:
 
 ```cpp
-static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr,
-                                     a0::persistence::PersistenceStore& persistence) {
-    mgr.registerHandler("system_bash_bash", ...);
-    mgr.registerHandler("system_fs_read", ...);
-    mgr.registerHandler("system_fs_glob", ...);
-    mgr.registerHandler("system_fs_grep", ...);
-    mgr.registerHandler("system_fs_edit", ...);
-    mgr.registerHandler("system_fs_write", ...);
+struct AgentStack {
+    a0::persistence::SqliteStore persistence;
+    a0::persistence::SqliteResourceProvider resourceProvider;
+    a0::skills::SkillManager skillMgr;
+    SubprocessToolRunner toolRunner;
+    a0::DeepSeekProvider llmProvider;
 
-    // Git wildcard
-    mgr.registerHandler("system_git_*", ...);
+    a0::docker::DockerContainerManager* containerMgr = nullptr;
+    a0::docker::DockerComposeManager* composeMgr = nullptr;
+    a0::docker::DockerToolRunnerImpl* dockerRunner = nullptr;
+    a0::DockerSecurityFilter dockerFilter;
 
-    // Meta handlers
-    mgr.registerHandler("system_meta_show-skills", ...);
-    mgr.registerHandler("system_meta_show-skill-tools", ...);
-
-    // Task manager handlers
-    mgr.registerHandler("system_task-manager_add-task", ...);
-    mgr.registerHandler("system_task-manager_remove-task", ...);
-    mgr.registerHandler("system_task-manager_list-tasks", ...);
-    mgr.registerHandler("system_task-manager_set-task-priority", ...);
-}
+    AgentStack(const std::string& a0Dir, const std::string& skillsDir,
+               const std::string& apiKey, const std::string& mockUrl,
+               bool noDocker, bool noContainerPool,
+               const std::string& idleTimeoutStr, const std::string& maxIdleStr,
+               const std::string& defaultImage, int maxParallel = 4,
+               const std::string& externalRepo = "https://github.com/opensassi/a0");
+    ~AgentStack();
+};
 ```
 
-## 3. CLI Flags (Relevant Subset)
+**Static functions:**
+- `loadEnvFile(path)` — sources .env file, no-op if missing
+- `killByPidFile(path)` — SIGTERM then SIGKILL
+- `killByProcessName(name)` — pgrep + SIGTERM
+- `xSelfDir()` — readlink /proc/self/exe
+- `xChildLog(parentLog, suffix)` — derive child log path from parent
+- `xMakeLogPath(sessionId, pid, suffix)` — construct per-session log path
+- `xRedirectStderr(sessionId, pid)` — redirect stderr to log file
+- `xRegisterSystemHandlers(mgr)` — register all C++ handlers
+- `xRegisterAgent(store)` — register agent fingerprint
+- `cmdKillAll(a0Dir)` — stop daemon processes
+- `cmdSessionExport(a0Dir, sessionId, outputPath, outputJson)` — export session as JSONL
+- `cmdSessionList(a0Dir, offset, limit, outputJson)` — list sessions
+- `cmdRun(a0Dir, skillsDir, ...)` — headless execution
+- `cmdTui(a0Dir, skillsDir, ...)` — interactive TUI
+- `cmdTerminal(a0Dir, terminalId, cwd)` — PTY terminal session
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--persona` | `"software-engineer"` | Persona name for system prompt and tool filtering |
-| `--mock-api <url>` | — | Mock API URL for testing |
-| `--skills-dir <path>` | `"./skills"` | Skills root directory |
-| `--a0-dir <path>` | `"./.a0"` | Runtime state directory |
-| `run --prompt <text>` | — | Execute a prompt goal and exit |
-| `tui` | (default subcommand) | Launch interactive TUI |
-
-## 4. Architecture Diagram
+## 3. Architecture Diagram
 
 ```mermaid
 graph TB
     subgraph Entry
         M[main]
         KA[cmdKillAll]
+        SE[cmdSessionExport / cmdSessionList]
+        TRM[cmdTerminal]
+    end
+
+    subgraph Run_Path
+        RUN[cmdRun]
+        CMD_CH[mpsc Channel<Command>]
+        EVT_CH[mpsc Channel<AppCoreEvent>]
+        ACT[AppCoreThread]
+    end
+
+    subgraph TUI_Path
+        TUI[cmdTui]
+        TUI_APP[AgentTui]
     end
 
     subgraph Shared_Components
+        STACK[AgentStack]
         SM[SkillManager]
-        HANDLERS[system_handlers.cpp]
-        TR[SubprocessToolRunner]
         PS[SqliteStore]
+        RP[SqliteResourceProvider]
+        TR[SubprocessToolRunner]
         LM[DeepSeekProvider]
-        PL[PersonaLoader]
     end
 
     subgraph Docker_Components
@@ -68,88 +90,96 @@ graph TB
         DTR[DockerToolRunnerImpl]
     end
 
-    subgraph Background_Thread
-        ACT[AppCoreThread]
-        DC[DrivenCore]
+    subgraph Persistence
+        DB[(.a0/db/sessions.db)]
     end
 
-    subgraph Channels
-        CMD_CH[mpsc Channel&lt;Command&gt;]
-        EVT_CH[mpsc Channel&lt;AppCoreEvent&gt;]
-    end
-
-    M --> PL
-    M --> SM
-    M --> TR
-    M --> PS
-    M --> LM
-    M -->|run subcommand| CMD_CH
-    M -->|tui subcommand| TUI[AgentTui]
-    M -->|--kill-all?| KA
-
-    PL -->|skills/tools| ACT
-    SM --> HANDLERS
+    M -->|kill-all| KA
+    M -->|session| SE
+    M -->|terminal| TRM
+    M -->|run| RUN
+    M -->|tui or default| TUI
+    RUN --> STACK
+    TUI --> STACK
+    STACK --> SM
+    STACK --> PS
+    STACK --> RP
+    STACK --> TR
+    STACK --> LM
+    STACK -->|if !noDocker| DCM
+    STACK -->|if !noDocker| DCoM
+    STACK -->|if !noDocker| DTR
     SM --> TR
     SM --> DTR
-    SM --> SL[SkillLoader]
-    SM --> VM[VersionManager]
-    SM --> VE[ValidationEngine]
-
-    ACT --> DC
-    ACT --> CMD_CH
-    ACT --> EVT_CH
-    DC --> LM
-    DC --> SM
-    DC --> PS
-
-    CMD_CH -->|send SetSession + SubmitGoal| ACT
-    EVT_CH -->|poll Complete/Error| M
-    TUI -->|cmdSender| CMD_CH
-    EVT_CH -->|evtReceiver| TUI
-
-    PS --> DB[(.a0/db/sessions.db)]
-    DTR --> DCM
-    DTR --> DCoM
+    PS --> DB
+    RUN --> CMD_CH
+    RUN --> EVT_CH
+    CMD_CH --> ACT
+    EVT_CH --> RUN
+    TUI_APP --> CMD_CH
+    EVT_CH --> TUI_APP
+    ACT --> LM
 ```
 
-## 5. Data Flow
+## 4. Data Flow
 
-### Headless (Run)
+```mermaid
+sequenceDiagram
+    participant M as main
+    participant ST as AgentStack
+    participant RUN as cmdRun
+    participant TUI as cmdTui
+    participant CMD as Command Channel
+    participant EVT as Event Channel
+    participant ACT as AppCoreThread
+    participant B1 as b1 daemon
 
-1. Parse CLI flags, resolve API key
-2. `ensureA0Dir()`, instantiate `SqliteStore`, `SkillManager`, runners, `PersonaLoader`
-3. Load persona manifest → `personaSkills`/`personaTools`
-4. Register all system handlers
-5. `skillMgr.loadAll()`, register agent, create session + root task, `SessionContext::init()`
-6. Create MPSC channels, start `AppCoreThread`
-7. Send `SetSession` + `SubmitGoal` via MPSC
-8. Poll `evtReceiver` for `Complete`/`Error` events
-9. Send `Shutdown`, stop thread, print result JSON
+    M->>M: parse CLI flags
+    M->>ST: AgentStack constructor
+    ST->>ST: create SkillManager, SqliteStore, runners, providers
+    ST->>ST: xRegisterSystemHandlers
+    ST->>ST: setToolRunner, setResourceProvider, setDockerRunner
 
-### TUI
+    alt run subcommand
+        M->>RUN: cmdRun
+        RUN->>RUN: loadAll, registerAgent, createSession
+        RUN->>CMD: create channel pair
+        RUN->>ACT: start(recv, send)
+        RUN->>CMD: send SetSession + SubmitGoal
+        loop poll
+            RUN->>EVT: drain
+            EVT-->>RUN: Complete or Error
+        end
+        RUN->>CMD: send Shutdown
+        RUN->>ACT: stop
+        RUN-->>M: result JSON
+    else tui subcommand
+        M->>TUI: cmdTui
+        TUI->>TUI: loadAll, registerAgent, createSession
+        TUI->>B1: fork b1, connect, register
+        TUI->>CMD: create channel pair
+        TUI->>ACT: start(recv, send)
+        TUI->>CMD: send SetSession
+        TUI->>TUI: create AgentTui(cmdSender, evtReceiver)
+        TUI->>ACT: setWakeupFn
+        TUI->>TUI_APP: run()
+        TUI_APP->>EVT: drain in FTXUI loop
+        TUI_APP->>CMD: send SubmitGoal etc.
+        TUI_APP-->>TUI: return code
+        TUI->>CMD: send Shutdown
+        TUI->>ACT: stop
+    end
+```
 
-Phases 1-5 same as headless, then:
-6. Create `AgentTui(cmdSender, evtReceiver, b1StatusFn)` — NO core references
-7. Call `AgentTui::run()` — FTXUI event loop drains MPSC events
-8. On quit: send `Shutdown` via MPSC, stop thread
-
-## 6. Error Handling
-
-| Error Condition | Behaviour |
-|---|---|
-| `loadEnvFile` file not found | Silent return |
-| CLI11 parse failure | Prints error, exit 1 |
-| `skillMgr.loadAll` fails | Prints error, exit 1 |
-| API key not found | Provider constructs with empty key |
-| Invalid persona name | buildBasePrompt returns error string as system prompt (graceful) |
-| TUI mode without b1 | b1 launch skipped if `--no-b1` flag set |
-
-## 7. Testing Requirements
+## 5. Testing Requirements
 
 | Test | Verification |
 |------|-------------|
-| All core handlers registered with `_` separator | Handler registry populated |
-| All task-manager handlers registered | Four task handler keys present |
-| `--persona` flag parsed | Defaults to "software-engineer" |
-| `cmdRun` with prompt | `AppCoreThread` started, `SubmitGoal` sent via MPSC |
-| `cmdTui` MPSC wiring | `AgentTui` constructed with sender/receiver, no core refs |
+| CLI11 parse --help | Prints help, exits 0 |
+| CLI11 parse unknown flag | Prints error, exits non-zero |
+| run with prompt | AppCoreThread started, SubmitGoal sent, Complete received |
+| tui default | AgentTui constructed with cmdSender + evtReceiver |
+| session export | Exports JSONL to stdout or file |
+| session list | Lists recent sessions |
+| kill-all | Sends SIGTERM to b1/c2 processes |
+| terminal subcommand | Creates PTY, connects to b1, sends TERMINAL_READY |

@@ -461,3 +461,246 @@ class TestTuiWordWrapping:
                 assert found_tool, (
                     f"\U0001F527 read header + Idle state not seen. Last output: {last_text[:300]}"
                 )
+
+
+class TestTuiClipboard:
+    """Copy-on-select clipboard tests."""
+
+    MOCK_WRAPPERS_DIR = str(Path(__file__).resolve().parent / "mock_wrappers")
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        os.environ["PATH"] = f"{self.MOCK_WRAPPERS_DIR}:{os.environ.get('PATH', '')}"
+        for f in ["/tmp/a0-e2e-clipboard.log", "/tmp/a0-e2e-clipboard-contents.txt",
+                  "/tmp/a0-e2e-clipboard-selection.txt"]:
+            try:
+                os.remove(f)
+            except FileNotFoundError:
+                pass
+
+    def _clipboard_contents(self):
+        path = "/tmp/a0-e2e-clipboard-contents.txt"
+        if not os.path.exists(path):
+            return ""
+        with open(path) as f:
+            return f.read()
+
+    def test_mock_wrappers_work(self):
+        import subprocess
+        subprocess.run(["xclip", "-o", "-selection", "primary"], capture_output=True, timeout=5)
+        assert os.path.exists("/tmp/a0-e2e-clipboard.log"), "Mock xclip was not called"
+
+    def test_copy_selects_status_bar(self):
+        with MockServer() as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+                driver.send_mouse_down(2, 1, button=0)
+                time.sleep(0.05)
+                driver.send_mouse_move(40, 1)
+                time.sleep(0.05)
+                driver.send_mouse_up(40, 1)
+                time.sleep(0.5)
+                contents = self._clipboard_contents()
+                assert "Idle" in contents, f"Clipboard should contain 'Idle'. Got: '{contents[:100]}'"
+                assert "msgs" in contents, f"Clipboard should contain 'msgs'. Got: '{contents[:100]}'"
+
+    def test_copy_after_submit_goal(self):
+        with MockServer() as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+                driver.send_keys("find log files")
+                driver.send_enter()
+                time.sleep(1.5)
+                raw = driver.capture(timeout=2)
+                plain = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw)
+                lines = [l.strip() for l in plain.split('\r\n') if l.strip()]
+                target = -1
+                for i, line in enumerate(lines):
+                    if "find log files" in line and "Processing" not in line:
+                        target = i
+                        break
+                if target < 0:
+                    pytest.skip("User text not found in rendered output")
+                adj = target + 1
+                driver.send_mouse_down(0, adj, button=0)
+                time.sleep(0.05)
+                driver.send_mouse_move(50, adj)
+                time.sleep(0.05)
+                driver.send_mouse_up(50, adj)
+                time.sleep(0.5)
+                contents = self._clipboard_contents()
+                assert "find" in contents or "log files" in contents, (
+                    f"Clipboard should contain selected text. Got: '{contents[:100]}'"
+                )
+
+    def test_osc52_sequence_in_output(self):
+        with MockServer() as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+                driver.send_mouse_down(2, 1, button=0)
+                time.sleep(0.05)
+                driver.send_mouse_move(40, 1)
+                time.sleep(0.05)
+                driver.send_mouse_up(40, 1)
+                time.sleep(0.5)
+                raw = driver.capture_raw(timeout=2)
+                assert b"\x1b]52;c;" in raw, (
+                    f"OSC 52 sequence not found. Raw hex: {raw[:200].hex()}"
+                )
+
+    def test_copy_after_drag_no_crash(self):
+        with MockServer() as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+                driver.drag_select(5, 0, 30, 0)
+                time.sleep(0.5)
+                text = driver.capture(timeout=2)
+                assert "Idle" in text or "b1" in text or "msgs" in text, (
+                    f"TUI crashed after drag. Got: {text[:200]}"
+                )
+
+
+
+
+
+class TestCliCrash:
+    """Headless CLI crash and stress tests using a0 binary subprocess."""
+
+    def test_binary_exists(self):
+        from conftest import A0_BIN
+        assert os.path.exists(A0_BIN), f"Binary not found at {A0_BIN}"
+        assert os.access(A0_BIN, os.X_OK), "Binary not executable"
+
+    def test_help_flag_no_crash(self):
+        from conftest import A0_BIN
+        import subprocess
+        result = subprocess.run([A0_BIN, "--help"], capture_output=True, timeout=10)
+        assert result.returncode == 0, f"Exit {result.returncode}: {result.stderr.decode()}"
+        assert "Usage" in result.stdout.decode() or "Usage" in result.stderr.decode()
+
+    def test_run_minimal_no_crash(self):
+        from conftest import A0_BIN, SKILLS_DIR
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = subprocess.run(
+                [A0_BIN, "--a0-dir", tmpdir, "--skills-dir", SKILLS_DIR,
+                 "--no-docker", "--no-b1",
+                 "--mock-api", "http://127.0.0.1:18999", "run", "hello"],
+                capture_output=True, timeout=15
+            )
+            assert result.returncode != -11, f"Segfault! stderr: {result.stderr.decode()}"
+
+    def test_run_with_mock_no_crash(self):
+        from conftest import AgentSubprocess
+        with MockServer() as server:
+            agent = AgentSubprocess(mock_server=server)
+            result = agent.run("find log files")
+            assert result.returncode == 0, (
+                f"Exit {result.returncode}. stdout: {result.stdout.decode()[:200]}"
+            )
+
+    def test_run_session_flags(self):
+        from conftest import A0_BIN, SKILLS_DIR
+        import subprocess, tempfile
+        with MockServer() as server:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = subprocess.run(
+                    [A0_BIN, "--a0-dir", tmpdir, "--skills-dir", SKILLS_DIR,
+                     "--no-docker", "--no-b1",
+                     "--mock-api", f"http://127.0.0.1:{server.port}",
+                     "--resume", "test-uuid", "run", "hello"],
+                    capture_output=True, timeout=15
+                )
+                assert result.returncode != -11, "Segfault!"
+
+    def test_consecutive_goals_no_crash(self):
+        from conftest import A0_BIN, SKILLS_DIR
+        import subprocess, tempfile
+        with MockServer() as server:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                for i in range(5):
+                    result = subprocess.run(
+                        [A0_BIN, "--a0-dir", tmpdir, "--skills-dir", SKILLS_DIR,
+                         "--no-docker", "--no-b1",
+                         "--mock-api", f"http://127.0.0.1:{server.port}",
+                         "run", f"goal number {i}"],
+                        capture_output=True, timeout=30
+                    )
+                    assert result.returncode == 0, (
+                        f"Goal {i} failed: exit {result.returncode}."
+                    )
+
+    def test_stress_rapid_goals(self):
+        from conftest import A0_BIN
+        import subprocess, tempfile
+        with MockServer() as server:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                for i in range(10):
+                    subprocess.run(
+                        [A0_BIN, "--a0-dir", tmpdir, "--no-docker", "--no-b1",
+                         "--mock-api", f"http://127.0.0.1:{server.port}",
+                         "run", f"quick goal {i}"],
+                        capture_output=True, timeout=15
+                    )
+                result = subprocess.run(
+                    [A0_BIN, "--a0-dir", tmpdir, "--no-docker", "--no-b1",
+                     "--mock-api", f"http://127.0.0.1:{server.port}",
+                     "run", "final goal"],
+                    capture_output=True, timeout=15
+                )
+                assert result.returncode == 0, (
+                    f"Final goal failed after 10 rapid submissions. "
+                    f"stderr: {result.stderr.decode()[:200]}"
+                )
+
+
+class TestCliScenario:
+    """Scenario-driven headless agent tests."""
+
+    SCENARIOS_DIR = str(Path(__file__).resolve().parent / "scenarios")
+
+    def _run_scenario(self, scenario_name, goal="find log files"):
+        from conftest import AgentSubprocess
+        scenario_path = os.path.join(self.SCENARIOS_DIR, scenario_name)
+        with MockServer(scenario=scenario_path) as server:
+            agent = AgentSubprocess(mock_server=server)
+            result = agent.run(goal)
+            return result
+
+    def test_simple_tool_call(self):
+        result = self._run_scenario("simple_tool_call.json", "list files in /tmp")
+        assert result.returncode == 0, (
+            f"Exit {result.returncode}. stdout: {result.stdout.decode()[:300]}"
+        )
+        stdout = result.stdout.decode().strip()
+        import json
+        try:
+            parsed = json.loads(stdout)
+            assert parsed is not None
+        except json.JSONDecodeError:
+            assert False, f"Expected valid JSON, got: {stdout[:200]}"
+
+    def test_multi_turn_workflow(self):
+        result = self._run_scenario("multi_turn_workflow.json", "find log files and check for errors")
+        assert result.returncode == 0, (
+            f"Exit {result.returncode}. stdout: {result.stdout.decode()[:300]}"
+        )
+        assert len(result.stdout.decode().strip()) > 0
+
+    def test_tool_error_handling(self):
+        result = self._run_scenario("tool_error.json", "read the file at /nonexistent/file.txt")
+        assert result.returncode == 0 or result.returncode == 1, (
+            f"Exit {result.returncode} — agent may return error gracefully"
+        )
+
+    def test_all_scenarios_load(self):
+        import json as j
+        for fname in sorted(os.listdir(self.SCENARIOS_DIR)):
+            if not fname.endswith(".json"):
+                continue
+            path = os.path.join(self.SCENARIOS_DIR, fname)
+            with open(path) as f:
+                data = j.load(f)
+            assert "name" in data, f"{fname}: missing 'name'"
+            assert "turns" in data, f"{fname}: missing 'turns'"
+            assert len(data["turns"]) > 0, f"{fname}: empty turns"

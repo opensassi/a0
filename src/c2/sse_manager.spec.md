@@ -16,6 +16,7 @@ namespace a0::c2 {
 class SseManager {
 public:
     SseManager() = default;
+    ~    SseManager() = default;
     ~SseManager() = default;
 
     /// Register a new client. \p sendFn is called to write SSE data to the response.

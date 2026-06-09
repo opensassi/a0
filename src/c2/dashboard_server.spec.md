@@ -37,7 +37,9 @@ private:
     bool m_running = false;
     bool m_shutdownRequested = false;
     struct us_listen_socket_t* m_listenToken = nullptr;
-    std::unordered_map<std::string, std::string> m_directTerminals; // terminalId → cwd
+
+    // Track terminals launched directly (no b1) for status polling
+    std::unordered_map<std::string, std::string> m_directTerminals;
 
     template<typename App> void xSetupRoutes(App* app);
     template<typename Res> void xServeStatic(Res* res, const std::string& urlPath);
@@ -73,6 +75,11 @@ graph TB
         MSGS_POST[POST /api/agent/:uuid/messages]
         DISMISS[DELETE /api/agent/:uuid/prompt/:toolCallId]
         PING[POST /api/ping]
+        TERM_OPEN[POST /api/terminal/open]
+        TERM_STATUS[GET /api/terminal/status/:terminalId]
+        STREAM_INPUT[POST /api/stream/:id/input]
+        STREAM_CHUNKS[GET /api/stream/:id/chunks]
+        SESSION_STREAMS[GET /api/session/:uuid/streams]
         STATIC_FILES[GET /*]
     end
 
@@ -95,6 +102,11 @@ graph TB
     BROWSER --> MSGS_POST
     BROWSER --> DISMISS
     BROWSER --> PING
+    BROWSER --> TERM_OPEN
+    BROWSER --> TERM_STATUS
+    BROWSER --> STREAM_INPUT
+    BROWSER --> STREAM_CHUNKS
+    BROWSER --> SESSION_STREAMS
     BROWSER --> STATIC_FILES
 
     STATUS --> REG
@@ -110,6 +122,12 @@ graph TB
     DISMISS --> EVENTS
     STATIC_FILES --> FS
     PING --> SSE_MGR
+    TERM_OPEN --> REG
+    TERM_OPEN --> LISTENER
+    TERM_STATUS --> FS
+    STREAM_INPUT --> LISTENER
+    STREAM_CHUNKS --> FS
+    SESSION_STREAMS --> REG
 ```
 
 ## 4. Data Flow
@@ -169,25 +187,63 @@ sequenceDiagram
     DS-->>Browser: 200 {"status":"ok"}
 ```
 
+### 4.4 Terminal Launch
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant DS as DashboardServer
+    participant REG as B1Registry
+    participant L as C2Listener
+    participant FS as Filesystem
+
+    Browser->>DS: POST /api/terminal/open {cwd:"/p",contextType:"host"}
+    DS->>REG: listB1s()
+    REG-->>DS: [{pid:5678, workdir:"/p"}, ...]
+    alt b1 found
+        DS->>L: sendToB1(5678, TERMINAL_OPEN)
+        L-->>DS: 0
+    else no b1
+        DS->>FS: readlink(/proc/self/exe) → a0 path
+        DS->>DS: fork/exec a0 terminal --terminal-id ...
+        DS->>DS: store m_directTerminals[id]=cwd
+    end
+    DS-->>Browser: 200 {terminalId:"term_123"}
+```
+
+### 4.5 Stream Chunks API
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant DS as DashboardServer
+    participant DB as SQLite
+
+    Browser->>DS: GET /api/stream/:id/chunks
+    DS->>DB: SELECT * FROM stream_chunk WHERE stream_id=? ORDER BY seq LIMIT 1000
+    DB-->>DS: [{seq, direction, data, timestamp}]
+    DS-->>Browser: 200 JSON array
+```
+
 ## 5. Route Table
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
 | GET | `/api/status` | `xBuildStatusJson()` | All b1s + agents |
 | GET | `/api/stats` | `xBuildStatsJson()` | Aggregate counts |
-| GET | `/api/events` | SSE stream | Live event push |
-| GET | `/api/events/pending` | `xBuildPendingJson()` | Unresolved user_prompts |
+| GET | `/api/events` | SSE stream | Live event push; calls `m_sse->addClient()` with uWS write callback |
+| GET | `/api/events/pending` | `xBuildPendingJson()` | Unresolved user_prompts from EventStore |
 | GET | `/api/b1/:pid` | Registry lookup | Single b1 details |
 | GET | `/api/b1/:pid/agents` | Registry lookup | Agents under b1 |
 | GET | `/api/agent/:uuid` | Registry scan | Agent session info |
 | GET | `/api/agent/:uuid/messages` | SQLite read | Load messages for an agent session (supports `?limit=N&before=M` cursor pagination) |
-| POST | `/api/agent/:uuid/messages` | Append message; resolves prompt if tool role | User input or tool response |
-| DELETE | `/api/agent/:uuid/prompt/:toolCallId` | Dismiss prompt | Cancel without answer |
-| POST | `/api/ping` | Sends pong via SSE; registers `onAborted` handler | Client keepalive |
+| POST | `/api/agent/:uuid/messages` | Append message; resolves prompt if tool role | User input or tool response; sends prompt_reply via C2Listener |
+| DELETE | `/api/agent/:uuid/prompt/:toolCallId` | Dismiss prompt | Cancel without answer; broadcasts `prompt_dismissed` SSE |
+| POST | `/api/ping` | Sends pong via SSE | Client keepalive |
 | POST | `/api/terminal/open` | Terminal launch | Opens PTY terminal via b1 or direct a0 fork |
 | GET | `/api/terminal/status/:terminalId` | Terminal status | Poll SQLite for stream readiness |
-| POST | `/api/stream/:id/input` | Terminal stdin | Forward input via b1 IPC |
-| GET | `/api/stream/:id/chunks` | Read chunks | Stream output from SQLite ordered by seq |
+| POST | `/api/stream/:id/input` | Terminal stdin | Forward STREAM_INPUT via b1 IPC |
+| GET | `/api/stream/:id/chunks` | Read chunks | Stream output from SQLite ordered by seq (limit 1000) |
 | GET | `/api/session/:uuid/streams` | List streams | All streams for a session |
 | GET | `/*` | `xServeStatic()` | Static files, SPA fallthrough |
 
@@ -209,6 +265,12 @@ MIME mapping: `.html` → `text/html`, `.js` → `text/javascript`, `.css` → `
 | uWS internal error | uWS handles internally; server continues |
 | SSE client disconnected | `onAborted` removes client from `SseManager` |
 | `sendToB1` to disconnected b1 | Returns -1, logged silently |
+| Invalid JSON in POST body | Returns 400 `{"error":"invalid json"}` |
+| Missing `role` in POST messages | Returns 400 `{"error":"missing role"}` |
+| terminal/open cwd not found | Returns 400 `{"error":"directory not found"}` |
+| Agent not found | Returns 404 `{"error":"agent not found"}` |
+| B1 not found | Returns 404 `{"error":"b1 not found"}` |
+| Database open failure | `/api/agent/:uuid/messages` returns `[]` |
 
 ## 8. Testing Requirements
 
@@ -221,8 +283,14 @@ MIME mapping: `.html` → `text/html`, `.js` → `text/javascript`, `.css` → `
 | `xBuildPendingJson` | No pending | — | `[]` |
 | `xServeStatic` | Existing file | `/js/app.js` | 200, correct MIME type |
 | `xServeStatic` | Non-existent path | `/nope` | 200, serves index.html (SPA) |
+| `xServeStatic` | web_root missing | No web_root dir | 404 "Not Found" |
 | `xMimeType` | .js file | — | `text/javascript` |
 | `xMimeType` | .unknown file | — | `application/octet-stream` |
+| `xReadFile` | Existing file | — | File contents as string |
+| `xReadFile` | Non-existent file | — | Empty string |
+| `run` | SSL enabled | sslKey + sslCert set | Creates uWS::SSLApp, listens on port |
+| `run` | No SSL | Default | Creates uWS::App, listens on port |
+| `shutdown` | While running | Called from signal handler | `m_running=false`, `us_listen_socket_close` called |
 
 ## 9. Terminal Launch Flow
 

@@ -6,13 +6,13 @@
 
 ## 1. Overview
 
-The LLM sub-module owns all LLM provider abstractions and implementations. It is extracted from the monolithic `a0_lib` and contains the async curl_multi-based provider machinery plus the SSE/JSON response decoder.
+The LLM sub-module owns all LLM provider abstractions and implementations. Provides the async `curl_multi`-based provider machinery plus the SSE/JSON response decoder.
 
 **Source files:**
-- `llm_provider.h` — abstract async LLM interface
-- `driven_provider.h/.cpp` — curl_multi base implementation
-- `deepseek_provider.h/.cpp` — DeepSeek-specific subclass
-- `response_decoder.h/.cpp` — SSE/JSON response decoder
+- `llm_provider.h` — abstract async LLM interface (`LlmProvider`)
+- `driven_provider.h/.cpp` — `curl_multi` base implementation (`DrivenProvider`)
+- `deepseek_provider.h/.cpp` — DeepSeek-specific subclass (`DeepSeekProvider`)
+- `response_decoder.h/.cpp` — SSE/JSON response decoder (`ResponseDecoder`)
 
 **Dependencies:** `shared_lib`, `libcurl`, `nlohmann_json`
 
@@ -22,9 +22,9 @@ The LLM sub-module owns all LLM provider abstractions and implementations. It is
 
 ## 2. Component Specifications
 
-```cpp
-namespace a0 {
+### 2.1 LlmProvider (abstract)
 
+```cpp
 class LlmProvider {
 public:
     virtual ~LlmProvider() = default;
@@ -40,27 +40,149 @@ public:
     virtual int timeoutMs() const = 0;
     virtual void setMockUrl(const std::string& url) = 0;
 };
-
-class DrivenProvider : public LlmProvider {
-    // curl_multi base, protected virtual hooks
-};
-
-class DeepSeekProvider : public DrivenProvider {
-    // DeepSeek-specific config
-};
-
-class ResponseDecoder {
-    // SSE/JSON decoder: feed(bytes) → events()
-};
-
-} // namespace a0
 ```
 
-Public API is unchanged from the existing specification. All includes now resolve through shared_lib.
+### 2.2 DrivenProvider
+
+```cpp
+class DrivenProvider : public LlmProvider {
+public:
+    DrivenProvider(const std::string& apiKey, const std::string& model = "deepseek-chat");
+    // -- LlmProvider impl --
+    void startRequest(const std::string&, const std::vector<Message>&, const std::vector<ToolSchema>&) override;
+    void startRequestStreaming(const std::string&, const std::vector<Message>&, const std::vector<ToolSchema>&) override;
+    std::vector<mpsc::AppCoreEvent> tick() override;
+    void cancel() override;
+    bool active() const override;
+    int timeoutMs() const override;
+    void setMockUrl(const std::string& url) override;
+    const std::string& mockUrl() const;
+
+protected:
+    virtual void xBuildPayload(json&, const std::string&, const std::vector<Message>&,
+                               const std::vector<ToolSchema>&, bool) const = 0;
+    virtual void xAddAuth(curl_slist*&) = 0;
+    std::string m_apiKey, m_model, m_baseUrl;
+};
+```
+
+### 2.3 DeepSeekProvider
+
+```cpp
+class DeepSeekProvider : public DrivenProvider {
+public:
+    explicit DeepSeekProvider(const std::string& apiKey = "",
+                              const std::string& model = "deepseek-chat");
+protected:
+    void xBuildPayload(json&, const std::string&, const std::vector<Message>&,
+                       const std::vector<ToolSchema>&, bool) const override;
+    void xAddAuth(curl_slist*&) override;
+};
+```
+
+### 2.4 ResponseDecoder
+
+```cpp
+class ResponseDecoder {
+public:
+    enum class Mode { Unknown, SSE, JSON };
+    explicit ResponseDecoder(ResourceProvider* provider = nullptr, int64_t tokenFlushSize = 256);
+    void feed(const char* data, size_t len);
+    void feed(const std::string& data);
+    std::vector<mpsc::AppCoreEvent> events();
+    bool complete() const;
+    void reset();
+    int64_t streamId() const;
+    int roundSeq() const;
+    static std::vector<mpsc::AppCoreEvent> decodeJson(const std::string& body);
+};
+```
+
+See individual `.spec.md` files for full private member declarations: `src/llm_provider.spec.md`, `src/driven_provider.spec.md`, `src/deepseek_provider.spec.md`, `src/response_decoder.spec.md`.
 
 ---
 
-## 3. Build System
+## 3. System Architecture
+
+```mermaid
+graph TB
+    subgraph Abstract_Interface
+        LLM[LlmProvider]
+    end
+
+    subgraph curl_multi_Base
+        DP[DrivenProvider]
+        CURL[libcurl]
+        DEC[ResponseDecoder]
+    end
+
+    subgraph Concrete_Providers
+        DS[DeepSeekProvider]
+    end
+
+    subgraph Consumers
+        CORE[core_lib — DrivenCore]
+        TEST[test_deepseek_provider]
+    end
+
+    LLM --> DP
+    DP --> CURL
+    DP --> DEC
+    DP --> DS
+    CORE -->|uses| LLM
+    TEST --> DS
+```
+
+---
+
+## 4. Detailed Data Flow
+
+```mermaid
+sequenceDiagram
+    participant C as DrivenCore
+    participant DP as DrivenProvider
+    participant CURL as curl_multi
+    participant DEC as ResponseDecoder
+
+    C->>DP: startRequestStreaming(sys, msgs, tools)
+    DP->>DP: xBuildPayload + xAddAuth
+    DP->>CURL: curl_multi_add_handle
+
+    loop tick cycle
+        C->>DP: tick()
+        DP->>CURL: curl_multi_wait + perform
+        CURL-->>DP: CURLMsg
+        DP->>DEC: feed(bytes)
+        DEC-->>DP: events
+        DP-->>C: AppCoreEvent vector
+    end
+```
+
+---
+
+## 5. Visualization
+
+D3 animation not required for sub-module spec — covered by root `technical-specification.md`.
+
+---
+
+## 6. Testing Requirements
+
+| Test File | Tests |
+|-----------|-------|
+| `test_deepseek_provider.cpp` | DrivenProvider: non-streaming, streaming, cancel, errors |
+| `test_driven_core_persistence.cpp` | Integration: DrivenCore + DrivenProvider lifecycle |
+| Compile-time | ResponseDecoder: SSE parsing, JSON decoding, mode detection |
+
+---
+
+## 7. CLI Entry Point
+
+No direct CLI entry point. The provider is instantiated in `main.cpp`:
+
+```cpp
+auto provider = std::make_unique<a0::DeepSeekProvider>(apiKey, model);
+```
 
 ```cmake
 add_library(llm_lib STATIC
@@ -69,15 +191,5 @@ add_library(llm_lib STATIC
     response_decoder.cpp
 )
 target_include_directories(llm_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(llm_lib PUBLIC
-    shared_lib
-    CURL::libcurl
-    nlohmann_json::nlohmann_json
-)
+target_link_libraries(llm_lib PUBLIC shared_lib CURL::libcurl nlohmann_json::nlohmann_json)
 ```
-
----
-
-## 4. Testing
-
-Tests are covered by existing test files with updated include paths and library targets. See `test_driven_core_persistence.cpp` and `test_deepseek_provider.cpp` (uncompiled).

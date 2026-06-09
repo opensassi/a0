@@ -1,19 +1,20 @@
 # DockerComposeManager Spec
 
-## 1. Overview
-Manages Docker Compose environments for skills. Bridges skill lifecycle events to docker-compose up/down operations and tracks running stacks with idle timeouts. Owns `ComposeStackInfo` entries mapped by skill directory. Delegates all CLI calls to `DockerCLIWrapper`.
+## §1. Overview
+Manages Docker Compose environments for skills. Bridges skill lifecycle events to docker-compose up/down operations and tracks running stacks with idle timeouts. Owns `ComposeStackInfo` entries mapped by prompt name. Delegates all CLI calls to `DockerCLIWrapper`.
 
-**Base class:** `ComposeManager` (from `agent_interfaces.h`)
-**Dependencies:** `DockerCLIWrapper` (static utility), `Skill` model
-**Lifecycle:** Created per-session with idle timeout. Stacks accumulate until explicitly stopped or implicitly pruned by start.
+**Base class:** `ComposeManager` (from `shared/agent_interfaces.h:186`)
+**Source files:** `compose_manager.h`, `compose_manager.cpp`
+**Dependencies:** `DockerCLIWrapper` (static utility), `shared/agent_interfaces.h` (Prompt, ComposeManager)
+**Lifecycle:** Created per-session with idle timeout. Stacks accumulate until explicitly stopped or implicitly pruned by caller.
 
-## 2. Component Specifications
+## §2. Component Specifications
 
 ```cpp
 struct ComposeStackInfo {
     std::string composeFile;   // path to the compose file for this stack
     std::string networkName;   // Docker network name for this stack
-    time_t lastUsed;           // Timestamp of last activity
+    time_t lastUsed;           // timestamp of last activity
 };
 
 class DockerComposeManager : public ComposeManager {
@@ -27,8 +28,7 @@ public:
      * @brief  Start a compose environment for a prompt
      * @param  prompt         The prompt requesting the environment
      * @param  skillDirectory Filesystem path to the prompt's compose file
-     * @return The Docker network name for the started stack,
-     *         or empty string on failure
+     * @return The Docker network name for the started stack, or empty string on failure
      */
     std::string startEnvironment(const Prompt& prompt,
                                   const std::string& skillDirectory) override;
@@ -50,7 +50,7 @@ public:
     /**
      * @brief  Record which prompt is currently active
      * @param  prompt The active prompt
-     * @retval void  Stores prompt name internally
+     * @retval void  Stores prompt.name internally
      */
     void setCurrentPrompt(const Prompt& prompt) override;
 
@@ -62,16 +62,14 @@ public:
 
     /**
      * @brief  Clear the currently active prompt name
-     * @retval void  Resets internal tracker
+     * @retval void  Resets m_currentPromptName to empty
      */
     void clearCurrentPrompt() override;
 
     // --- Persistent compose (multi-call lifecycle) ---
 
     /**
-     * @brief  Start a persistent compose environment that stays alive
-     *         across multiple tool calls. The stack will NOT be stopped
-     *         after individual execute() calls.
+     * @brief  Start a persistent compose environment that stays alive across multiple tool calls
      * @param  name           Logical name for the persistent stack
      * @param  composeFile    Path to docker-compose.yml
      * @param  skillDirectory Working directory
@@ -95,26 +93,27 @@ public:
     bool isPersistent(const std::string& name) const override;
 
 private:
-    int m_idleTimeout;
-    std::unordered_map<std::string, ComposeStackInfo> m_stacks;
-    std::unordered_set<std::string> m_persistentStacks;
-    std::string m_currentPromptName;
+    int m_idleTimeout;                                              // idle threshold in seconds
+    std::unordered_map<std::string, ComposeStackInfo> m_stacks;    // prompt name → stack info
+    std::unordered_set<std::string> m_persistentStacks;            // names of persistent stacks
+    std::string m_currentPromptName;                               // currently active prompt name
 };
 ```
 
-## 3. Architecture Diagram
+## §3. Architecture Diagram
 
 ```mermaid
 graph TB
-    subgraph Clients
+    subgraph Callers
         Session[Session Manager]
         ToolRunner[DockerToolRunnerImpl]
     end
 
-    subgraph ComposeManager
+    subgraph DockerComposeManager
         DCM[DockerComposeManager]
-        StackMap[m_stacks: unordered_map]
-        CurrentSkill[m_currentSkillName]
+        Stacks[m_stacks: unordered_map]
+        Persistent[m_persistentStacks: unordered_set]
+        Current[m_currentPromptName: string]
     end
 
     subgraph CLI
@@ -122,14 +121,16 @@ graph TB
     end
 
     Session -->|startEnvironment / stopEnvironment| DCM
+    Session -->|setCurrentPrompt / clearCurrentPrompt| DCM
     ToolRunner -->|getCurrentNetwork| DCM
     DCM -->|composeUp / composeDown| DCW
     DCM -->|getNetworkName| DCW
-    DCM -->|read/write| StackMap
-    DCM -->|read/write| CurrentSkill
+    DCM -->|read/write| Stacks
+    DCM -->|read/write| Persistent
+    DCM -->|read/write| Current
 ```
 
-## 4. Data Flow
+## §4. Data Flow
 
 ```mermaid
 sequenceDiagram
@@ -139,88 +140,94 @@ sequenceDiagram
     participant CLI as DockerCLIWrapper
 
     S->>DCM: startEnvironment(prompt, dir)
-    DCM->>DCM: composeFile empty?
+    DCM->>DCM: prompt.composeFile empty?
     alt empty
         DCM-->>S: return ""
     end
-    DCM->>Map: find(dir)
+    DCM->>Map: find(prompt.name)
     alt exists
         DCM->>Map: update lastUsed
         DCM-->>S: return networkName
     end
     DCM->>CLI: composeUp(composeFile, dir)
+    CLI-->>DCM: throws on failure
+    alt composeUp throws
+        DCM-->>S: return ""
+    end
     DCM->>CLI: getNetworkName(composeFile, dir)
-    DCM->>Map: store(dir → ComposeStackInfo)
+    CLI-->>DCM: networkName
+    DCM->>Map: store(name → ComposeStackInfo)
     DCM-->>S: return networkName
 
     S->>DCM: stopEnvironment(prompt)
-    DCM->>Map: find(dir)
-    DCM->>CLI: composeDown(composeFile, dir)
-    DCM->>Map: erase(dir)
+    DCM->>Map: find(prompt.name)
+    alt not found
+        DCM-->>S: return (no-op)
+    end
+    DCM->>CLI: composeDown(composeFile, "")
+    CLI-->>DCM: errors swallowed
+    DCM->>Map: erase(prompt.name)
 ```
 
-## 4a. Persistent Compose Data Flow
+### Persistent Compose Flow
 
 ```mermaid
 sequenceDiagram
     participant SR as SkillRunner
     participant DCM as DockerComposeManager
-    participant Docker
+    participant CLI as DockerCLIWrapper
 
-    SR->>DCM: startPersistent("playwright", composeFile, dir)
-    DCM->>Docker: docker-compose up -d
-    Docker-->>DCM: networkName
+    SR->>DCM: startPersistent(name, composeFile, dir)
+    DCM->>DCM: composeFile empty?
+    alt empty
+        DCM-->>SR: return ""
+    end
+    DCM->>DCM: find(name) in m_stacks?
+    alt exists
+        DCM->>DCM: m_persistentStacks.insert(name)
+        DCM->>DCM: update lastUsed
+        DCM-->>SR: return networkName
+    end
+    DCM->>CLI: composeUp(composeFile, dir)
+    DCM->>CLI: getNetworkName(composeFile, dir)
     DCM->>DCM: store in m_stacks + m_persistentStacks
     DCM-->>SR: networkName
 
-    Note over SR: Multiple tool calls use this network
-
-    SR->>DCM: isPersistent("playwright")
-    DCM-->>SR: true
-
-    Note over SR: Session ends
-
-    SR->>DCM: stopPersistent("playwright")
-    DCM->>Docker: docker-compose down
-    DCM->>DCM: erase from m_stacks + m_persistentStacks
+    SR->>DCM: stopPersistent(name)
+    DCM->>DCM: find(name) in m_stacks?
+    alt not found
+        DCM-->>SR: return (no-op)
+    end
+    DCM->>CLI: composeDown(composeFile, "")
+    DCM->>DCM: erase from m_persistentStacks + m_stacks
 ```
 
-## 5. Error Handling
-- **Empty compose file:** `startEnvironment` returns `""` immediately — no CLI call.
-- **Compose up failure:** `DockerCLIWrapper::composeUp` throws; the exception propagates up to the caller. No entry is added to `m_stacks`.
-- **Compose down failure:** Errors are swallowed (no-fail cleanup).
-- **Missing stack on stop:** `find` returns end iterator; `stopEnvironment` is a no-op.
-- **`getCurrentNetwork` with no current skill:** Returns empty string.
-- **Persistent stack not found:** `stopPersistent` is a no-op.
-- **Duplicate persistent start:** Reuses existing stack, refreshes timestamp.
-
-## 6. Edge Cases
-- **Re-entrant start:** Calling `startEnvironment` for the same directory twice refreshes the timestamp and returns the existing network name, without calling composeUp again.
-- **Concurrent access:** All methods are expected to be called from a single thread; no internal locking.
-- **Idle timeout field:** `m_idleTimeout` is stored but not actively checked by this class — the caller (session/pruner) is responsible for calling `stopEnvironment` based on `markUsed` timestamps.
-- **Rapid start/stop:** Successive start/stop cycles for the same directory each trigger full compose lifecycle.
-- **Persistent vs ephemeral:** Persistent stacks are tracked in `m_persistentStacks` and must be explicitly stopped via `stopPersistent`. Ephemeral stacks are stopped automatically via `stopEnvironment` after skill execution.
-- **ComposeStackInfo::composeFile:** The `composeFile` path is now stored in the stack info so `stopPersistent` can reference it without needing the original `Prompt`.
-
-## 7. Testing Requirements
+## §5. Testing Requirements
 
 | Method | Test case | Expected outcome |
 |--------|-----------|-----------------|
-| `startEnvironment` | Empty compose file | Returns `""`, no CLI call |
+| `startEnvironment` | composeFile empty | Returns `""`, no CLI call |
 | `startEnvironment` | Existing stack | Returns cached networkName, updates timestamp |
 | `startEnvironment` | New stack, composeUp succeeds | Returns networkName, entry in m_stacks |
-| `startEnvironment` | composeUp throws | Exception propagates, no map entry |
+| `startEnvironment` | composeUp throws | Returns `""` (error caught), no map entry |
 | `stopEnvironment` | Existing stack | composeDown called, entry erased |
 | `stopEnvironment` | Non-existent stack | No-op |
 | `markUsed` | Existing stack | lastUsed updated |
 | `markUsed` | Non-existent stack | No-op |
-| `setCurrentPrompt` + `getCurrentNetwork` | Prompt set | Returns matching network |
-| `clearCurrentPrompt` | After set | `getCurrentNetwork` returns `""` |
-| `startPersistent` | New stack | composeUp called, entry in m_stacks + m_persistentStacks |
-| `startPersistent` | Already running | Existing stack used, timestamp updated |
-| `startPersistent` | composeFile empty | Returns `""`, no CLI call |
-| `stopPersistent` | Active persistent stack | composeDown called, entries removed |
+| `setCurrentPrompt` | Any prompt | m_currentPromptName set |
+| `getCurrentNetwork` | Current prompt has stack | Returns networkName |
+| `getCurrentNetwork` | No current prompt | Returns `""` |
+| `clearCurrentPrompt` | After set | m_currentPromptName cleared |
+| `startPersistent` | New stack | composeUp called, entry in both maps |
+| `startPersistent` | Already running | Existing stack, timestamp updated |
+| `startPersistent` | composeFile empty | Returns `""` |
+| `stopPersistent` | Active persistent stack | composeDown, entries removed from both maps |
 | `stopPersistent` | Non-existent stack | No-op |
-| `isPersistent` | Stack is persistent | true |
-| `isPersistent` | Stack is ephemeral | false |
-| `isPersistent` | Stack does not exist | false |
+| `isPersistent` | Stack is in m_persistentStacks | true |
+| `isPersistent` | Ephemeral or missing | false |
+
+## §6. (not used)
+
+## §7. CLI Entry Point
+
+`DockerComposeManager` is instantiated in `main.cpp` with the `--container-idle-timeout` value (default 300s). A pointer to it is passed to `DockerToolRunnerImpl` as the `ComposeManager*` argument. `SkillRunner` calls `startEnvironment`/`stopEnvironment` before/after skill execution, and `DockerToolRunnerImpl` calls `getCurrentNetwork()` to attach containers to the compose network.

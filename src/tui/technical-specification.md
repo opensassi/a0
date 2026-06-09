@@ -1,6 +1,6 @@
 # Technical Specification: Terminal UI (TUI) Sub-Module
 
-## For a0 Agent — Version 3.0
+## For a0 Agent — Version 3.1
 
 ---
 
@@ -20,7 +20,7 @@ The TUI is a **thin rendering client** only. It does NOT own, hold pointers to, 
 - NO `SessionManager` class
 - NO tool execution, no LLM interaction, no session management
 
-All core agent functionality lives in `AppCoreThread` on a background thread. The TUI communicates with it exclusively through MPSC channels (defined in `src/mpsc.h`).
+All core agent functionality lives in `AppCoreThread` on a background thread. The TUI communicates with it exclusively through MPSC channels (defined in `src/shared/mpsc.h`).
 
 **THIS BOUNDARY IS ENFORCED BY ARCHITECTURE. NO EXCEPTIONS.**
 
@@ -48,8 +48,8 @@ Any proposed change that introduces a direct reference from the TUI to any core 
 
 - **FTXUI v6.1.9** — terminal UI framework (via FetchContent)
 - **MD4C v0.5.2** — Markdown parser (via FetchContent or vendored)
-- **`src/mpsc.h`** — MPSC channel types (`Command`, `AppCoreEvent`)
-- **`src/app_core_thread.h/.cpp`** — background thread that owns the core (referenced for event types, NOT owned by TUI)
+- **`src/shared/mpsc.h`** — MPSC channel types (`Command`, `AppCoreEvent`)
+- **`src/shared/trace.h`** — logging macros
 - `b1` supervisor — optional; when b1 is running, status bar shows connection state (via injected `b1Status` function only)
 
 **Non-dependencies (explicitly prohibited):**
@@ -69,9 +69,9 @@ Any proposed change that introduces a direct reference from the TUI to any core 
 These rules are checked by code review and MUST be verified on every change to TUI files:
 
 1. **`src/tui/` files may NOT include** any header from `src/` outside of `src/tui/`, except:
-   - `src/mpsc.h` — for `Command` and `AppCoreEvent` types
-   - `src/hex_session_id.h` — for UUID generation (read-only utility)
-   - `src/trace.h` — for logging
+   - `src/shared/mpsc.h` — for `Command` and `AppCoreEvent` types
+   - `src/shared/trace.h` — for logging
+   - `src/shared/resource_provider.h` — for `ResourceType` enum
    - FTXUI and MD4C headers
    - Standard library headers
 2. **`src/tui/` files may NOT hold** raw pointers, references, or smart pointers to:
@@ -127,25 +127,25 @@ struct MessageEntry {
     MessageRole role;
     std::string content;            // plain text or markdown source
     std::string toolName;           // non-empty for Tool messages
+    std::string toolArgs;           // arguments string for tool call
     ToolState toolState             = ToolState::Completed;
     std::string toolOutput;         // captured stdout/stderr
+    std::string outputPreview;      // truncated preview from ToolEnd
+    int64_t resourceId              = 0;   // for LoadResource expand
+    int64_t resourceTotalBytes      = 0;   // total output size
+    bool resourceExpanded           = false;
+    bool resourceLoading            = false;
     int64_t timestamp               = 0;
-    bool collapsed                  = false;
+    bool collapsed                  = true;
+    bool streaming                  = false;
     int64_t sessionId               = 0;
-};
-
-/// Summary info for session list display (received via MPSC SessionList event).
-struct SessionInfo {
-    std::string uuid;
-    int64_t dbId;
-    std::string startedAt;
-    int messageCount;
+    std::vector<MessageEntry> children;  // tool children under assistant
 };
 
 } // namespace a0::tui
 ```
 
-### 2.3 MPSC Command/Event Types (referenced, defined in `src/mpsc.h`)
+### 2.3 MPSC Command/Event Types (referenced, defined in `src/shared/mpsc.h`)
 
 ```cpp
 namespace a0::mpsc {
@@ -156,31 +156,37 @@ struct SubmitGoal { std::string goal; };
 struct Cancel {};
 struct Shutdown {};
 struct SetSession { int64_t sessionDbId; std::string sessionUuid; };
-struct ListSessions { int limit; };
+struct ListSessions { int limit = 20; };
 struct ResumeSession { std::string uuid; };
+struct LoadResource { ResourceType type; int64_t id; int64_t offset; int64_t limit; };
 
 using Command = std::variant<SubmitGoal, Cancel, Shutdown, SetSession,
-                             ListSessions, ResumeSession>;
+                             ListSessions, ResumeSession, LoadResource>;
 
 // --- Events: AppCoreThread → TUI ---
 
-struct LlmToken { std::string text; };
-struct ToolStart { std::string toolName; std::string arguments; };
-struct ToolEnd { std::string toolName; int exitCode = 0; std::string output; };
-struct Complete { std::string text; };
-struct Error { std::string message; };
+struct LlmStart { int64_t streamId; int roundSeq; };
+struct LlmChunk { int64_t streamId; int seq; std::string text; bool isFinal = false; };
+struct LlmComplete { int64_t streamId; std::string finishReason; };
+struct ToolStart { int64_t invocationId; std::string toolCallId; std::string toolName; std::string arguments; };
+struct ToolChunk { int64_t invocationId; int seq; std::string text; std::string streamType; };
+struct ToolEnd { int64_t invocationId; int exitCode = 0; int64_t totalBytes = 0; std::string outputPreview; };
+struct Complete { int64_t sessionId; std::string summary; };
+struct Error { std::string source; int64_t contextId = 0; std::string message; };
+struct SessionMessage { std::string role; std::string content; std::string toolCallId; std::string name; std::string resultJson; int64_t createdAt = 0; };
 struct SessionReady { int64_t dbId; std::string uuid; };
-struct SessionList { std::vector<SessionInfo> sessions; };
-struct SessionHistory { int64_t dbId; std::string uuid; bool found;
-                        std::vector<Message> messages; };
+struct SessionList { struct Entry { std::string uuid; int64_t dbId = 0; std::string startedAt; int messageCount = 0; }; std::vector<Entry> entries; };
+struct SessionHistory { int64_t dbId = 0; std::string uuid; bool found = false; std::vector<SessionMessage> messages; };
+struct LoadResourceResult { int64_t id; std::string data; };
 
-using AppCoreEvent = std::variant<LlmToken, ToolStart, ToolEnd, Complete, Error,
-                                  SessionReady, SessionList, SessionHistory>;
+using AppCoreEvent = std::variant<LlmStart, LlmChunk, LlmComplete,
+                                  ToolStart, ToolChunk, ToolEnd,
+                                  Complete, Error,
+                                  SessionReady, SessionList, SessionHistory,
+                                  LoadResourceResult>;
 
 } // namespace a0::mpsc
 ```
-
-Note: `Message` in `SessionHistory` is the `a0::persistence::Message` struct, which carries role, content, tool_call_id/name/result. The TUI receives it read-only and converts to `MessageEntry` for render.
 
 ### 2.4 AgentTui (Facade)
 
@@ -192,10 +198,6 @@ namespace a0::tui {
 /// Does NOT own or reference any core component.
 class AgentTui {
 public:
-    /// \param cmdSender  MPSC sender — TUI sends Command variants through this.
-    /// \param evtReceiver MPSC receiver — TUI drains AppCoreEvent variants from this.
-    /// \param b1Status   Function to query b1 connection status (optional).
-    /// \param testMode   If true, use FixedSize screen for testing.
     AgentTui(mpsc::Sender<mpsc::Command> cmdSender,
              mpsc::Receiver<mpsc::AppCoreEvent> evtReceiver,
              std::function<bool()> b1Status = nullptr,
@@ -203,28 +205,18 @@ public:
 
     virtual ~AgentTui();
 
-    /// Enter the FTXUI event loop. Drains MPSC events each frame.
-    /// Blocks until user quits (Ctrl+Q / :q).
-    /// \retval 0  Normal exit.
-    /// \retval -1 FTXUI error.
     int run();
-
-    /// Request graceful shutdown. Sends Shutdown via MPSC.
     void shutdown();
 
-    /// The FTXUI main component (for test harness integration).
     ftxui::Component component() const { return m_mainComponent; }
 
-    /// Set the FTXUI screen (for test harness).
     void setScreen(ftxui::ScreenInteractive* screen);
     void clearScreen();
     ftxui::ScreenInteractive* screenPtr() const { return m_screen; }
 
-    /// Submit input programmatically (for test harness).
-    /// Sends SubmitGoal via MPSC.
     void submitInput(const std::string& input);
+    void drainEvents();
 
-    /// The MPSC sender (for main.cpp to send SetSession/ResumeSession before run()).
     mpsc::Sender<mpsc::Command>& cmdSender() { return m_cmdSender; }
 
 private:
@@ -238,28 +230,41 @@ private:
     std::unique_ptr<DialogManager> m_dialogMgr;
     std::unique_ptr<MarkdownRenderer> m_markdown;
 
-    // Session state (derived from MPSC events only, never written to persistence)
     std::string m_sessionUuid;
     int64_t m_sessionDbId = 0;
     AgentState m_agentState = AgentState::Idle;
 
-    // FTXUI components (lifetime managed by the library)
     ftxui::ScreenInteractive* m_screen = nullptr;
     ftxui::Component m_mainComponent;
 
-    // Mouse drag tracking for copy-on-select
     bool m_mouseDown = false;
     bool m_mouseMoved = false;
 
-    // Bracketed paste handling
     bool m_pasteActive = false;
     std::string m_pasteBuffer;
     int m_pasteCounter = 0;
     std::unordered_map<int, std::string> m_pastedContents;
 
-    // Accumulated streaming text for the current assistant message
+    bool m_testMode = false;
     std::string m_streamingText;
-    int m_streamingEntryIndex = -1;
+    int m_assistantEntryIndex = -1;
+    int64_t m_currentStreamId = 0;
+    int m_currentRoundSeq = 0;
+    bool m_hasActiveStream = false;
+
+    struct ResourceCacheEntry {
+        std::string data;
+        int64_t timestamp;
+        size_t size;
+    };
+    std::unordered_map<int64_t, ResourceCacheEntry> m_resourceCache;
+    int64_t m_resourceCacheMaxBytes = 64 * 1024 * 1024;
+    int64_t m_resourceCacheBytes = 0;
+
+    struct PendingResourceReq {
+        std::function<void(std::string)> callback;
+    };
+    std::unordered_map<int64_t, std::vector<PendingResourceReq>> m_pendingResourceReqs;
 
     std::string xExpandPastePlaceholders(const std::string& input);
     void xProcessPasteBuffer();
@@ -267,30 +272,34 @@ private:
     void xBuildLayout();
     ftxui::Component xBuildMainContainer();
 
-    /// Drain all available MPSC events from the core thread.
-    /// Called each frame from run().
-    void drainEvents();
-
-    /// Dispatch a single AppCoreEvent to the appropriate handler.
     void xHandleCoreEvent(const ::a0::mpsc::AppCoreEvent& ev);
 
-    /// FTXUI event handlers for user input.
     int xHandleSubmit(const std::string& input);
     int xHandleInterrupt();
     int xHandleCommand(const std::string& cmd);
 
-    /// MPSC event handlers (receive-only, never call core).
-    void xOnToken(const std::string& token);
-    void xOnToolStart(const std::string& name, const std::string& arguments);
-    void xOnToolEnd(const std::string& name, const std::string& output, bool success);
-    void xOnComplete(const std::string& fullOutput);
-    void xOnError(const std::string& error);
+    void xOnLlmStart(int64_t streamId, int roundSeq);
+    void xOnLlmChunk(int64_t streamId, int seq, const std::string& text, bool isFinal);
+    void xOnLlmComplete(int64_t streamId, const std::string& finishReason);
+    void xOnToolStart(int64_t invocationId, const std::string& toolCallId,
+                      const std::string& toolName, const std::string& arguments);
+    void xOnToolChunk(int64_t invocationId, int seq, const std::string& text,
+                      const std::string& streamType);
+    void xOnToolEnd(int64_t invocationId, int exitCode, int64_t totalBytes,
+                    const std::string& outputPreview);
+    void xOnComplete(int64_t sessionId, const std::string& summary);
+    void xOnError(const std::string& source, int64_t contextId, const std::string& message);
     void xOnSessionReady(int64_t dbId, const std::string& uuid);
-    void xOnSessionList(const std::vector<SessionInfo>& sessions);
+    void xOnSessionList(const std::vector<mpsc::SessionList::Entry>& sessions);
     void xOnSessionHistory(int64_t dbId, const std::string& uuid,
-                           const std::vector<::a0::persistence::Message>& messages);
+                           const std::vector<mpsc::SessionMessage>& messages);
+    void xOnLoadResourceResult(int64_t id, const std::string& data);
 
-    /// In-TUI command handlers.
+    void xEvictResourceCache();
+    void xRequestResource(int64_t id, int64_t offset, int64_t limit,
+                          std::function<void(std::string)> onData);
+
+    int xCmdSessions();
     int xCmdHelp();
     int xCmdClear();
     int xCmdQuit();
@@ -300,8 +309,6 @@ private:
 ```
 
 ### 2.5 MessagePanel
-
-Unchanged from v2.0. Scrollable message display panel. Builds and maintains an FTXUI component tree of message elements. All mutations must be posted to the FTXUI event loop via `Screen::Post()`.
 
 ```cpp
 namespace a0::tui {
@@ -314,28 +321,42 @@ public:
     ftxui::Component component() const;
 
     int append(const MessageEntry& entry);
-    int beginStreaming(MessageRole role);
-    int streamUpdate(int index, const std::string& text);
-    int endStream(int index);
-    int appendToolCall(const std::string& name, ToolState state,
-                       const std::string& output = "");
-    int updateToolCall(int index, ToolState state, const std::string& output);
     void clear();
+
+    int beginAssistant();
+    int appendOrUpdateAssistantText(int asstIdx, const std::string& text);
+    int endCurrentAssistantText(int asstIdx);
+    int appendAssistantTool(int asstIdx, const std::string& name,
+                            ToolState state, const std::string& args = "");
+    int updateLastAssistantTool(int asstIdx, ToolState state,
+                                const std::string& output);
+    int updateLastAssistantToolOutput(int asstIdx, const std::string& text);
+    int finalizeAssistant(int asstIdx);
+
     void scrollToBottom();
-    int loadHistory(const std::vector<::a0::persistence::Message>& messages);
+    int loadHistory(const std::vector<::a0::mpsc::SessionMessage>& messages);
+
     size_t count() const;
+    void scrollUp(int n = 1);
+    void scrollDown(int n = 1);
+    void scrollToTop();
+    int scrollTop() const;
+    bool isAtBottom() const;
 
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
+
+    ftxui::Element xRenderEntry(int entryIdx);
+    ftxui::Element xRenderAssistant(int entryIdx);
+    ftxui::Element xRenderToolBlock(const MessageEntry& entry) const;
+    ftxui::Element xRenderStreamingPlaceholder(const MessageEntry& entry) const;
 };
 
 } // namespace a0::tui
 ```
 
 ### 2.6 InputPanel
-
-Unchanged from v2.0. Fixed bottom input bar with prompt history.
 
 ```cpp
 namespace a0::tui {
@@ -346,26 +367,33 @@ public:
     virtual ~InputPanel();
 
     ftxui::Component component() const;
+
     void setOnSubmit(std::function<void(const std::string&)> cb);
     void setOnInterrupt(std::function<void()> cb);
+    void setOnChange(std::function<void(const std::string&)> cb);
+    void insertText(const std::string& text);
+    bool isEnabled() const { return m_enabled; }
     void setEnabled(bool enabled);
     void setPlaceholder(const std::string& text);
     void clear();
     void focus();
+
     int addHistory(const std::string& prompt);
     int loadHistory(const std::string& path);
+    int saveHistory(const std::string& path);
 
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
+    bool m_enabled = true;
+
+    static constexpr size_t MAX_HISTORY = 50;
 };
 
 } // namespace a0::tui
 ```
 
 ### 2.7 StatusBar
-
-Unchanged from v2.0. Fixed top bar showing session and agent state information.
 
 ```cpp
 namespace a0::tui {
@@ -376,6 +404,7 @@ public:
     virtual ~StatusBar();
 
     ftxui::Component component() const;
+
     void setSessionId(const std::string& uuid);
     void setAgentState(AgentState state);
     void setB1Connected(bool connected);
@@ -392,8 +421,6 @@ private:
 
 ### 2.8 DialogManager
 
-Unchanged from v2.0. Stack-based modal dialog system using FTXUI::Modal.
-
 ```cpp
 namespace a0::tui {
 
@@ -403,13 +430,25 @@ public:
     virtual ~DialogManager();
 
     ftxui::Component component() const;
-    int show(ftxui::Component dialog, std::function<void()> onDismiss = nullptr);
+
+    void setMainComponent(ftxui::Component main);
+
+    int show(ftxui::Component dialog, const std::string& title,
+             std::function<void()> onDismiss = nullptr);
+
     void dismiss();
     void dismissAll();
+
     bool isActive() const;
+
     int showHelp();
-    int showConfirm(const std::string& title, const std::string& message,
+    int showConfirm(const std::string& title,
+                    const std::string& message,
                     std::function<void(bool)> onConfirm);
+
+    int showList(const std::string& title,
+                 const std::vector<std::pair<std::string, std::string>>& items,
+                 std::function<void(const std::string&)> onSelect);
 
 private:
     class Impl;
@@ -420,8 +459,6 @@ private:
 ```
 
 ### 2.9 MarkdownRenderer
-
-Unchanged from v2.0. Converts Markdown text into an FTXUI Element tree via MD4C.
 
 ```cpp
 namespace a0::tui {
@@ -444,7 +481,7 @@ private:
 
 ### 2.10 Clipboard
 
-Unchanged from v2.0. Copy text to the system clipboard via OSC 52 + xclip/wl-copy.
+Unchanged. See `src/tui/clipboard.spec.md` for full spec.
 
 ```cpp
 namespace a0::tui {
@@ -493,20 +530,23 @@ void copyToClipboard(const std::string& text);
 │             │  Command variants →             │               │
 │             │    SubmitGoal, Cancel,           │               │
 │             │    SetSession, ListSessions,     │               │
-│             │    ResumeSession                 │               │
+│             │    ResumeSession, LoadResource   │               │
 │             │                                 │               │
 │             │  ← AppCoreEvent variants        │               │
-│             │    LlmToken, ToolStart,         │               │
-│             │    ToolEnd, Complete, Error,     │               │
-│             │    SessionReady, SessionList,    │               │
-│             │    SessionHistory                │               │
+│             │    LlmStart, LlmChunk,          │               │
+│             │    LlmComplete, ToolStart,      │               │
+│             │    ToolChunk, ToolEnd,          │               │
+│             │    Complete, Error,             │               │
+│             │    SessionReady, SessionList,   │               │
+│             │    SessionHistory,              │               │
+│             │    LoadResourceResult            │               │
 │             │                                 │               │
 └─────────────┼─────────────────────────────────┼───────────────┘
               │                                 │
               ▼                                 ▼
        User keyboard                    DeepSeek API
        b1 Supervisor                   SQLite DB (.a0/db/)
-                                       Subprocess tools
+                                        Subprocess tools
 ```
 
 ### 3.2 C4 Diagram
@@ -574,7 +614,7 @@ graph TB
     SB -.->|b1Status fn only| B1
 ```
 
-**Caption**: The TUI and the agent core run on separate threads with zero shared state. All communication passes through MPSC channels: the TUI sends `Command` variants (SubmitGoal, Cancel, SetSession, ListSessions, ResumeSession), the core sends `AppCoreEvent` variants (LlmToken, ToolStart/End, Complete, Error, SessionReady/List/History). The TUI never directly references SkillManager, PersistenceStore, DrivenCore, or any other core component. Session list/resume goes through MPSC — the TUI sends ListSessions/ResumeSession commands, the core queries SQLite and sends back SessionList/SessionHistory events.
+**Caption**: The TUI and the agent core run on separate threads with zero shared state. All communication passes through MPSC channels: the TUI sends `Command` variants (SubmitGoal, Cancel, SetSession, ListSessions, ResumeSession, LoadResource), the core sends `AppCoreEvent` variants (LlmStart, LlmChunk, LlmComplete, ToolStart, ToolChunk, ToolEnd, Complete, Error, SessionReady, SessionList, SessionHistory, LoadResourceResult). The TUI never directly references SkillManager, PersistenceStore, DrivenCore, or any other core component.
 
 ---
 
@@ -591,7 +631,7 @@ sequenceDiagram
     participant EVT as MPSC Receiver
     participant ACT as AppCoreThread
     participant DC as DrivenCore
-    participant DP as DrivenProvider
+    participant DP as DeepSeekProvider
     participant SK as SkillManager
     participant MP as MessagePanel
     participant SB as StatusBar
@@ -611,7 +651,7 @@ sequenceDiagram
 
     loop every ~16ms (FTXUI frame)
         AT->>EVT: drain()
-        EVT-->>AT: [LlmToken, ToolStart, ToolEnd, Complete, Error]
+        EVT-->>AT: [LlmChunk, ToolStart, ToolEnd, Complete, Error]
 
         rect rgb(230, 255, 230)
             Note over DP,MP: Background thread drives curl_multi
@@ -620,22 +660,21 @@ sequenceDiagram
             DP->>DP: curl_multi_perform()
             DP-->>DC: events
             DC-->>ACT: events
-            ACT->>EVTS: send(LlmToken("Found"))
-            ACT->>EVTS: send(ToolStart, ToolEnd, Complete, ...)
+            ACT->>EVTS: send(LlmChunk, ToolStart, ToolEnd, ...)
         end
 
         AT->>AT: xHandleCoreEvent(event)
 
-        alt LlmToken
-            AT->>MP: streamUpdate("Found 3 files")
+        alt LlmChunk
+            AT->>MP: appendOrUpdateAssistantText("Found 3 files")
         else ToolStart
-            AT->>MP: appendToolCall("glob", Pending)
+            AT->>MP: appendAssistantTool("glob", Running, args)
             AT->>SB: setAgentState(Executing)
         else ToolEnd
-            AT->>MP: appendToolCall("glob", Completed, output)
+            AT->>MP: updateLastAssistantTool(idx, Completed, output)
             AT->>SB: setAgentState(Thinking)
         else Complete
-            AT->>MP: endStream(index)
+            AT->>MP: finalizeAssistant(idx)
             AT->>SB: setAgentState(Idle)
             AT->>IP: setEnabled(true)
             AT->>IP: focus()
@@ -668,13 +707,13 @@ sequenceDiagram
     CMD-->>ACT: drain → ListSessions
     ACT->>PS: loadSessions(20)
     PS-->>ACT: [SessionInfo...]
-    ACT->>EVTS: send(SessionList{sessions})
+    ACT->>EVTS: send(SessionList{entries})
 
     Note over ACT,EVT: ═══ Thread boundary ═══
 
     EVT-->>AT: drain → SessionList
     AT->>AT: xOnSessionList(sessions)
-    AT->>DM: show session list dialog
+    AT->>DM: showList("Sessions", items, onSelect)
     DM-->>User: (renders selectable list)
 
     User->>DM: select session "abc-123"
@@ -685,15 +724,15 @@ sequenceDiagram
 
     CMD-->>ACT: drain → ResumeSession
     ACT->>PS: findSessionByUuid("abc-123")
-    ACT->>PS: loadMessages(42)
-    PS-->>ACT: session(42, messages[...])
-    ACT->>DC: setSession(42, "abc-123")
-    ACT->>EVTS: send(SessionHistory{dbId:42, uuid, found:true, messages})
+    ACT->>PS: loadMessages(...)
+    PS-->>ACT: session messages
+    ACT->>DC: setSession(...)
+    ACT->>EVTS: send(SessionHistory{dbId, uuid, found:true, messages})
 
     Note over ACT,EVT: ═══ Thread boundary ═══
 
     EVT-->>AT: drain → SessionHistory
-    AT->>AT: xOnSessionHistory(42, "abc-123", messages)
+    AT->>AT: xOnSessionHistory(dbId, uuid, messages)
     AT->>MP: clear()
     AT->>MP: loadHistory(messages)
     AT->>SB: setSessionId("abc-123")
@@ -723,7 +762,7 @@ sequenceDiagram
     ACT->>ACT: core.cancel()
 
     AT->>SB: setAgentState(Idle)
-    AT->>AT: append system message "Interrupted"
+    AT->>AT: showStatus("Interrupted", 3)
     AT->>IP: setEnabled(true)
     AT->>IP: focus()
 ```
@@ -734,7 +773,6 @@ sequenceDiagram
 sequenceDiagram
     participant MAIN as main()
     participant AS as AgentStack
-    participant USR as User
     participant CMD as MPSC Sender
     participant EVT as MPSC Receiver
     participant ACT as AppCoreThread
@@ -771,24 +809,22 @@ sequenceDiagram
     end
 
     MAIN->>TUI: run()
-    TUI-->>USR: FTXUI renders
+    TUI-->>TUI: FTXUI renders
 ```
 
 ### 4.5 AgentTui::run() — Event Loop
 
 ```mermaid
 sequenceDiagram
-    participant loop as while(!quit)
     participant TUI as AgentTui
     participant EVT as MPSC Receiver
     participant f as FTXUI Screen
-    participant ft as FTXUI Frame
 
     Note over TUI: No xTickCore(). No DrivenCore::tick().
     Note over TUI: All core events arrive via MPSC.
 
     loop every ~16ms
-        TUI->>f: RunOnce() → FTXUI renders one frame
+        TUI->>f: Loop::RunOnce() → FTXUI renders one frame
         f->>TUI: (user input processed)
 
         TUI->>EVT: drain()
@@ -824,11 +860,10 @@ a0 tui [--resume <uuid>] [--no-permissions]
 
 | Command | Description |
 |---------|-------------|
-| `/sessions` | Send ListSessions via MPSC → display response dialog |
-| `/help` | Show keybinding reference |
-| `/clear` | Clear message panel (display only) |
-| `/quit` or `Ctrl+Q` | Send Shutdown via MPSC, exit TUI |
-| `:q` | Same as `/quit` |
+| `/sessions` or `/s` | Send ListSessions via MPSC → display response dialog |
+| `/help` or `/h` | Show keybinding reference |
+| `/clear` or `/cls` | Clear message panel (display only) |
+| `/quit` or `/q` or `:q` | Send Shutdown via MPSC, exit TUI |
 
 ### 5.3 Keybindings
 
@@ -838,10 +873,14 @@ a0 tui [--resume <uuid>] [--no-permissions]
 | `Shift+Enter` | Newline in input |
 | `Up/Down` | Navigate input history |
 | `Ctrl+C` | Send Cancel via MPSC |
-| `Ctrl+Q` | Send Shutdown via MPSC, quit TUI |
+| `Ctrl+Q` | (reserved — `/quit` used instead) |
 | `Ctrl+L` | Redraw screen |
-| `Tab` | (reserved) |
+| `PageUp/PageDown` | Scroll message panel |
+| `Home/End` | Scroll to top/bottom |
+| `Mouse wheel` | Scroll message panel |
+| `Mouse drag` | Select text → copy to clipboard |
 | `Escape` | Close dialog / cancel |
+| `Click on tool block` | Toggle collapse/expand |
 
 ### 5.4 Environment Variables
 
@@ -857,9 +896,9 @@ a0 tui [--resume <uuid>] [--no-permissions]
 
 | Class | Test Case | Verification |
 |-------|-----------|-------------|
-| `AgentTui` | Construct with MPCS channels | No crash, component() returns non-null |
+| `AgentTui` | Construct with MPSC channels | No crash, component() returns non-null |
 | `AgentTui` | `submitInput` sends SubmitGoal | `cmdSender` queue contains SubmitGoal |
-| `AgentTui` | `drainEvents` with LlmToken | Token text appended to message panel |
+| `AgentTui` | `drainEvents` with LlmChunk | Chunk text appended to message panel |
 | `AgentTui` | `drainEvents` with ToolStart | Tool block created in message panel |
 | `AgentTui` | `drainEvents` with ToolEnd | Tool block updated with output |
 | `AgentTui` | `drainEvents` with Complete | Streaming ended, state idle |
@@ -872,18 +911,22 @@ a0 tui [--resume <uuid>] [--no-permissions]
 | `AgentTui` | `/sessions` sends ListSessions | cmdSender receives ListSessions |
 | `MessagePanel` | `append` User message | Renders cyan-colored text |
 | `MessagePanel` | `append` Assistant message | Renders green-colored text |
-| `MessagePanel` | `beginStreaming` + `streamUpdate` | Placeholder created, updated text rendered |
-| `MessagePanel` | `endStream` | Streaming indicator removed, final text rendered |
-| `MessagePanel` | `appendToolCall` Pending → Completed | Spinner stops, output displayed |
+| `MessagePanel` | `beginAssistant` + `appendOrUpdateAssistantText` | Entry created, updated text rendered |
+| `MessagePanel` | `finalizeAssistant` | Streaming indicator removed, final text rendered |
+| `MessagePanel` | `appendAssistantTool` Running → Completed | Spinner stops, output displayed |
 | `MessagePanel` | `loadHistory` with 10 messages | All 10 rendered in order |
 | `MessagePanel` | `clear` | Count = 0 |
-| `InputPanel` | `onSubmit` callback fires | Callback invoked with input text |
+| `MessagePanel` | `scrollUp`/`scrollDown` | Focus index changes correctly |
+| `InputPanel` | `setOnSubmit` callback fires | Callback invoked with input text |
 | `InputPanel` | `addHistory` + Up arrow | Previous input restored |
 | `InputPanel` | `setEnabled(false)` | Input not accepting text |
+| `InputPanel` | `insertText` + programmatic | contentBuf updated |
 | `StatusBar` | `setAgentState` all states | Correct label displayed for each |
 | `StatusBar` | `setB1Connected` | Shows connected/disconnected indicator |
+| `StatusBar` | `showStatus` with timeout | Flash message appears then reverts |
 | `DialogManager` | `show` + `dismiss` | Dialog appears then disappears |
 | `DialogManager` | `showConfirm` true path | onConfirm(true) called |
+| `DialogManager` | `showList` select | onSelect called with selected value |
 | `MarkdownRenderer` | `render` with heading | Bold large text element |
 | `MarkdownRenderer` | `render` with code block | Dim background element |
 | `MarkdownRenderer` | `render` with bold/italic | Correct decorators applied |
@@ -894,7 +937,7 @@ a0 tui [--resume <uuid>] [--no-permissions]
 | `Clipboard` | Base64 output correctness | Decoded string matches input |
 | `Clipboard` | Wayland fallback | `wl-copy` invoked when `WAYLAND_DISPLAY` set |
 | `Clipboard` | X11 fallback | `xclip` invoked when no Wayland |
-| **MPSC** | `SendGoal` through channel | Eventfd readable, drain returns command |
+| **MPSC** | `SubmitGoal` through channel | Eventfd readable, drain returns command |
 | **MPSC** | `SessionList` through channel | Eventfd readable, drain returns event |
 | **MPSC** | Multiple senders | No data race, all messages received |
 
@@ -943,7 +986,7 @@ void cmdTui(...) {
     int64_t sessionDbId = stack.persistence.createSession(sid, 0, 0, agentId);
     stack.skillMgr.setRecordingSession(sessionDbId);
 
-    // SessionContext init (4 git tool calls, worktree)
+    // SessionContext init
     SessionContext sessionCtx(initialCwd, a0Dir, sid, sessionDbId, &stack.persistence);
     sessionCtx.init(&stack.skillMgr);
 
@@ -965,7 +1008,7 @@ void cmdTui(...) {
     // --- Phase 3: Create TUI (zero core references) ---
     AgentTui tui(std::move(cmdSender), std::move(evtReceiver), b1Status);
 
-    // Resume if requested (sends ResumeSession via MPSC)
+    // Resume if requested
     if (!tuiResumeUuid.empty())
         tui.cmdSender().send(mpsc::ResumeSession{tuiResumeUuid});
 
@@ -1002,7 +1045,7 @@ static int cmdRun(...) {
     while (true) {
         auto events = evtRcvr.drain();
         for (auto& ev : events) {
-            if (auto* c = std::get_if<mpsc::Complete>(&ev)) result = c->text;
+            if (auto* c = std::get_if<mpsc::Complete>(&ev)) result = c->summary;
             else if (auto* e = std::get_if<mpsc::Error>(&ev)) result = "ERROR: " + e->message;
         }
         if (!result.empty()) break;
@@ -1072,6 +1115,7 @@ add_library(tui_lib STATIC
     dialog_manager.cpp
     markdown_renderer.cpp
     styles.cpp
+    clipboard.cpp
 )
 target_include_directories(tui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tui_lib PUBLIC
@@ -1081,7 +1125,7 @@ target_link_libraries(tui_lib PUBLIC
 )
 ```
 
-Note: `tui_lib` does NOT link `a0_lib` or `persistence_lib` — it has no dependency on any core library. The MPSC header (`src/mpsc.h`) is header-only and included directly.
+Note: `tui_lib` does NOT link `a0_lib` or `persistence_lib` — it has no dependency on any core library. The MPSC header (`src/shared/mpsc.h`) is header-only and included directly.
 
 Root `CMakeLists.txt` adds `add_subdirectory(src/tui)` and links `tui_lib` and `app_core_thread.cpp` to the `a0` executable.
 
@@ -1091,6 +1135,14 @@ Root `CMakeLists.txt` adds `add_subdirectory(src/tui)` and links `tui_lib` and `
 src/tui/
 ├── CMakeLists.txt              # FTXUI + MD4C deps, tui_lib build (NO core deps)
 ├── technical-specification.md  # this document
+├── agent_tui.spec.md           # AgentTui component spec
+├── dialog_manager.spec.md      # DialogManager component spec
+├── input_panel.spec.md         # InputPanel component spec
+├── markdown_renderer.spec.md   # MarkdownRenderer component spec
+├── message_panel.spec.md       # MessagePanel component spec
+├── status_bar.spec.md          # StatusBar component spec
+├── styles.spec.md              # Styles enum/constant spec
+├── clipboard.spec.md           # Clipboard utility spec
 ├── styles.h                    # Color/decorator constants
 ├── styles.cpp
 ├── agent_tui.h                 # Facade (MPSC sender + receiver only)
@@ -1115,7 +1167,7 @@ The concurrency model spec is updated:
 - **C1** (FTXUI Event Loop): Renamed from "Active" to "TUI Render Client" — no core access, only MPSC drain
 - **C2** (AppCoreThread): Changed from "Designed, not wired" to **"Active"** — core agent on background thread
 - **C4** (Skill Executor Thread): Removed — `skill_runner.cpp` no longer compiled
-- New event types added to the MPSC protocol section
+- New event types added to the MPSC protocol section (LlmStart, LlmChunk, LlmComplete, ToolChunk, LoadResource, LoadResourceResult)
 
 ---
 
@@ -1125,7 +1177,7 @@ Every pull request touching `src/tui/` MUST pass this checklist:
 
 | Check | Rule |
 |-------|------|
-| `agent_tui.h` includes | No `#include` of any `src/` header outside `src/tui/`, `src/mpsc.h`, `src/hex_session_id.h`, `src/trace.h` |
+| `agent_tui.h` includes | No `#include` of any `src/` header outside `src/tui/`, `src/shared/mpsc.h`, `src/shared/trace.h`, `src/shared/resource_provider.h` |
 | `agent_tui.cpp` includes | Same rule |
 | All `src/tui/*` includes | Same rule |
 | `agent_tui.h` members | No pointer or reference to DrivenCore, LlmProvider, SkillManager, PersistenceStore, SessionManager |
@@ -1134,5 +1186,3 @@ Every pull request touching `src/tui/` MUST pass this checklist:
 | All MPSC event handling | Read-only. Events are received and rendered, never modified and sent back. |
 | `session_manager.h/.cpp` | Do not exist. |
 | `src/tui/CMakeLists.txt` | Does NOT link `a0_lib` or `persistence_lib`. |
-
-

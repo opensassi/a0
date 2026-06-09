@@ -1,20 +1,41 @@
 # DockerToolRunnerImpl Spec
 
-## 1. Overview
+## §1. Overview
+Implements `DockerToolRunner` by executing tool commands inside Docker containers. Supports two modes: pooled (via `DockerContainerManager`) and ephemeral (`docker run --rm`). For streaming, supports both pooled docker exec streaming and ephemeral docker run streaming with optional compose network attachment.
 
-Implements `DockerToolRunner` by executing tool commands inside Docker containers. Supports two modes: pooled (via `DockerContainerManager`) and ephemeral (`docker run --rm`). All subprocess management (fork, exec, pipe, alarm) is delegated to `CommandRunner`.
+**Base class:** `DockerToolRunner : ToolRunner` (from `shared/agent_interfaces.h:206`)
+**Source files:** `docker_tool_runner.h`, `docker_tool_runner.cpp`
+**Dependencies:** `ContainerManager` (raw pointer, non-owning), `ComposeManager` (raw pointer, non-owning), `CommandRunner`, `DockerCLIWrapper`
+**Lifecycle:** Created with manager pointers, lives for the duration of the agent session. Pointers may be null.
 
-**Base class:** `DockerToolRunner` (from `agent_interfaces.h`)
-**Dependencies:** `ContainerManager`, `ComposeManager` (raw pointers; non-owning), `CommandRunner`
+**File-static helpers:**
+```cpp
+// Runs a one-shot ephemeral container: docker run --rm -i
+// On timeout returns "ERROR: timeout", otherwise returns stdout.
+static std::string execDockerRun(const std::string& image,
+                                  const std::string& command,
+                                  const std::string& stdinData,
+                                  int timeoutSecs);
 
-## 2. Component Specifications
+// Streaming variant of ephemeral docker run with optional --network flag.
+// Returns a StreamHandle after sending stdinData.
+static a0::StreamHandle execDockerRunStreaming(
+    const std::string& image,
+    const std::string& command,
+    const std::string& stdinData,
+    int timeoutSecs,
+    const std::string& networkFlag,
+    a0::StreamCallback onChunk);
+```
+
+## §2. Component Specifications
 
 ```cpp
 class DockerToolRunnerImpl : public DockerToolRunner {
 public:
     /**
-     * @param containerManager Pooled container manager (non-owning)
-     * @param composeManager   Compose stack manager (non-owning)
+     * @param containerManager Pooled container manager (may be null)
+     * @param composeManager   Compose stack manager (may be null)
      * @param poolEnabled      Enable container pooling (default: true)
      */
     DockerToolRunnerImpl(ContainerManager* containerManager,
@@ -23,16 +44,14 @@ public:
 
     /**
      * @brief  Execute a tool with the given params
-     * @param  tool   Tool descriptor (image, priority, deps, args, etc.)
+     * @param  tool   Tool descriptor (image, priority, deps, command, etc.)
      * @param  params JSON parameters for the invocation
-     * @return JSON result object with "output" field
-     * @throws std::runtime_error on execution failure
+     * @return JSON result object (string output, or full json on error)
      */
     json run(const Tool& tool, const json& params) override;
 
     /**
-     * @brief  Streaming variant of run. Returns a StreamHandle.
-     * Supports both pooled (docker exec) and ephemeral (docker run --rm) modes.
+     * @brief  Streaming variant of run
      * @param  tool    Tool descriptor
      * @param  params  JSON parameters
      * @param  onChunk Called from background thread with (data, direction)
@@ -45,10 +64,13 @@ public:
 private:
     /**
      * @brief  Construct the shell command string from tool + params
-     * @param  tool    Tool descriptor
-     * @param  params  Invocation parameters
+     * @param  tool     Tool descriptor
+     * @param  params   Invocation parameters
      * @param  outStdin [out] Extracted stdin payload
      * @return Shell command string
+     *
+     * In "args" mode: builds `--key=value` flags and positional `_` args.
+     * In "stdin" mode: returns tool.command, extracts "input" field as stdin.
      */
     std::string buildCommand(const Tool& tool,
                               const json& params,
@@ -56,47 +78,25 @@ private:
 
     /**
      * @brief  Run a one-shot ephemeral container
-     * @param  tool       Tool descriptor
-     * @param  command    Shell command
-     * @param  stdinData  Optional stdin
+     * @param  tool      Tool descriptor
+     * @param  command   Shell command
+     * @param  stdinData Optional stdin
      * @return Command output
+     *
+     * Builds docker run --rm command with optional --network=<name>
+     * from m_composeManager->getCurrentNetwork().
      */
     std::string runEphemeral(const Tool& tool,
                               const std::string& command,
                               const std::string& stdinData) const;
 
-    /**
-     * @brief  Run a one-shot ephemeral container with streaming
-     * @param  image       Docker image
-     * @param  command     Shell command
-     * @param  stdinData   Optional stdin
-     * @param  timeoutSecs Timeout in seconds
-     * @param  networkFlag "--network=<name>" or empty
-     * @param  onChunk     Streaming callback
-     * @return StreamHandle
-     */
-    static a0::StreamHandle execDockerRunStreaming(
-        const std::string& image,
-        const std::string& command,
-        const std::string& stdinData,
-        int timeoutSecs,
-        const std::string& networkFlag,
-        a0::StreamCallback onChunk);
-
-    ContainerManager* m_containerManager;
-    ComposeManager* m_composeManager;
-};
-```
-
-### Private members
-
-```cpp
     ContainerManager* m_containerManager;
     ComposeManager* m_composeManager;
     bool m_poolEnabled;
+};
 ```
 
-## 3. Architecture Diagram
+## §3. Architecture Diagram
 
 ```mermaid
 graph TB
@@ -108,8 +108,6 @@ graph TB
         DTR[DockerToolRunnerImpl]
         BC[buildCommand]
         RE[runEphemeral]
-        RES[runEphemeralStreaming]
-        RS[runStreaming]
     end
 
     subgraph Managers
@@ -117,31 +115,29 @@ graph TB
         CompM[DockerComposeManager]
     end
 
+    subgraph File-static Helpers
+        EDR[execDockerRun]
+        EDRS[execDockerRunStreaming]
+    end
+
     subgraph Utility
         CR[CommandRunner]
     end
 
-    subgraph CLI
-        DCW[DockerCLIWrapper]
-    end
-
-    SM -->|run| DTR
-    SM -->|runStreaming| DTR
+    SM -->|run / runStreaming| DTR
     DTR -->|buildCommand| BC
-    DTR -->|pooled| CM
-    DTR -->|ephemeral| RE
-    DTR -->|streaming pooled| RS
-    DTR -->|streaming ephemeral| RES
-    RE -->|execDockerRun| CR
-    RES -->|execDockerRunStreaming| CR
-    RS -->|CommandRunner::runStreaming| CR
-    RE -->|getCurrentNetwork| CompM
-    RES -->|networkFlag| CompM
+    DTR -->|pooled path| CM
+    DTR -->|ephemeral path| RE
+    DTR -->|getCurrentNetwork| CompM
+    RE -->|execDockerRun| EDR
+    DTR -->|streaming pooled| CR
+    DTR -->|streaming ephemeral| EDRS
+    EDR --> CR
+    EDRS --> CR
     CR --> Docker[docker CLI]
-    CM --> DCW
 ```
 
-## 4. Data Flow
+## §4. Data Flow
 
 ```mermaid
 sequenceDiagram
@@ -149,7 +145,7 @@ sequenceDiagram
     participant DTR as DockerToolRunnerImpl
     participant CM as ContainerManager
     participant CompM as ComposeManager
-    participant EDR as execDockerRun
+    participant EDR as execDockerRun (static)
     participant CR as CommandRunner
 
     S->>DTR: run(tool, params)
@@ -161,62 +157,65 @@ sequenceDiagram
         DTR->>CM: execInContainer(id, cmd, stdin)
         CM-->>DTR: output
     else ephemeral
+        DTR->>DTR: runEphemeral(tool, cmd, stdin)
+        DTR->>CompM: getCurrentNetwork() (if non-null)
         DTR->>EDR: execDockerRun(image, cmd, stdin, timeout)
         EDR->>CR: run("docker run --rm -i ...", stdin, timeout)
-        CR->>CR: fork + pipe + alarm
         CR-->>EDR: CommandResult
-        EDR-->>DTR: output
+        alt timedOut
+            EDR-->>DTR: "ERROR: timeout"
+        else
+            EDR-->>DTR: stdout
+        end
+        DTR-->>DTR: (output)
     end
-    DTR-->>S: return { "output": result }
+    DTR-->>S: return output (as json)
 
     S->>DTR: runStreaming(tool, params, onChunk)
     DTR->>DTR: buildCommand
-    DTR->>CompM: getCurrentNetwork
+    DTR->>CompM: getCurrentNetwork() (if non-null)
     alt pooled
         DTR->>CM: acquireContainer(tool)
         DTR->>CR: runStreaming("docker exec -i ...", onChunk, timeout)
         CR-->>DTR: StreamHandle
+        DTR->>DTR: handle.sendInput(stdinData)
     else ephemeral
         DTR->>DTR: execDockerRunStreaming(image, cmd, stdin, timeout, networkFlag, onChunk)
-        DTR->>CR: runStreaming("docker run --rm ...", onChunk, timeout)
+        DTR->>CR: runStreaming("docker run --rm -i ...", onChunk, timeout)
         CR-->>DTR: StreamHandle
     end
     DTR-->>S: StreamHandle
 ```
 
-## 5. Error Handling
-- **Null manager pointers:** `m_containerManager` or `m_composeManager` may be null. `run` must check before dereferencing.
-- **buildCommand parsing:** Malformed params JSON throws `std::runtime_error`.
-- **execInContainer failure:** Exception from `ContainerManager` propagates to caller.
-- **execDockerRun failure:** Timeout returns `"ERROR: timeout"`. Non-zero exit code returns stdout.
-- **Compose network missing:** `getCurrentNetwork` returns empty → no `--network` flag added.
-
-## 6. Edge Cases
-- **Empty command string:** Shell inside container receives empty string; returns empty output.
-- **Binary stdout:** Output captured as raw string; binary data may truncate at null byte.
-- **Very large stdin:** Piped via fork/pipe; kernel pipe buffer mediates.
-- **Ephemeral with no compose manager:** `m_composeManager` is null → `getCurrentNetwork` not called → no network attached.
-- **Stdin mode vs args mode:** `buildCommand` inspects `params` — args mode builds `--key=value` style, stdin mode passes input field as stdin payload.
-- **Concurrent ephemeral runs:** Each call forks, so no shared state issues.
-
-## 7. Testing Requirements
+## §5. Testing Requirements
 
 | Method | Test case | Expected outcome |
-|---|---|---|
-| `run` | Pooled tool, success | Acquires container, execs, returns output JSON |
-| `run` | Ephemeral tool, success | Runs `docker run --rm`, returns output JSON |
+|--------|-----------|-----------------|
+| `run` | Pooled tool, success | Acquires container, execs, returns JSON output |
+| `run` | Ephemeral tool, success | Runs `docker run --rm`, returns JSON output |
 | `run` | Ephemeral with compose network | Includes `--network=<name>` flag |
-| `run` | Null container manager | Graceful error or exception |
+| `run` | Null container manager | Falls through to ephemeral |
+| `run` | Null compose manager | No network flag added |
 | `buildCommand` | Args mode (`--key=value`) | Correct shell command string |
 | `buildCommand` | Positional args (`_`) | Append to command in order |
-| `buildCommand` | Stdin mode | Extracts stdin, returns empty command if no other args |
+| `buildCommand` | Stdin mode, object with "input" | Extracts stdin, returns tool.command |
+| `buildCommand` | Stdin mode, string params | Uses params as stdin |
+| `buildCommand` | Stdin mode, null params | Empty stdin, returns tool.command |
+| `buildCommand` | Boolean param | `--key=true` or `--key=false` |
+| `buildCommand` | Number param | `--key=3.14` |
 | `runEphemeral` | Normal execution | Returns stdout |
-| `runEphemeral` | Timeout | `std::runtime_error` thrown |
-| `runStreaming` | Pooled, normal | StreamHandle acquired, chunks received via callback |
-| `runStreaming` | Ephemeral, normal | StreamHandle acquired, `docker run --rm` path taken |
-| `runStreaming` | With compose network | `--network=<name>` flag included in docker command |
-| `runStreaming` | Timeout | Handle completes after timeout with partial data |
-| `execDockerRunStreaming` | Valid params | StreamHandle returned, command runner invoked |
+| `runEphemeral` | Timeout | `"ERROR: timeout"` returned |
+| `runStreaming` | Pooled, normal | StreamHandle acquired, chunks received |
+| `runStreaming` | Ephemeral, normal | StreamHandle acquired, `docker run --rm` path |
+| `runStreaming` | With compose network | `--network=<name>` flag included |
+| `runStreaming` | Stdin data present | handle.sendInput called |
 | `execDockerRun` | Valid params | CommandRunner exec succeeds, output returned |
-| `execDockerRun` | Non-zero exit | Error string returned, no exception |
-| `execDockerRun` | Timeout via alarm | `"ERROR: timeout"` returned |
+| `execDockerRun` | Non-zero exit | Stdout returned, no exception |
+| `execDockerRun` | Timeout | `"ERROR: timeout"` returned |
+| `execDockerRunStreaming` | Valid params | StreamHandle returned, stdin sent |
+
+## §6. (not used)
+
+## §7. CLI Entry Point
+
+`DockerToolRunnerImpl` is instantiated in `main.cpp` with the `ContainerManager*`, `ComposeManager*`, and `--no-docker` / pool-enabled flag. It is registered with the agent as the Docker-backed tool runner. When `tool.dockerImage` is non-empty, the agent dispatches to `DockerToolRunnerImpl::run()` instead of the host tool runner. CLI flags `--no-docker` disables pooling entirely by setting `poolEnabled = false`.

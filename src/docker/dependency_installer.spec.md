@@ -1,13 +1,13 @@
 # DependencyInstaller Spec
 
-## 1. Overview
+## §1. Overview
 Static utility class that installs apt packages inside a running container. Thin wrapper around `DockerCLIWrapper::execInContainer` with a 120-second timeout and `DEBIAN_FRONTEND=noninteractive` to suppress prompts.
 
-**Namespace:** `a0::docker`
-**Dependencies:** `DockerCLIWrapper`
+**Source files:** `dependency_installer.h`, `dependency_installer.cpp`
+**Dependencies:** `DockerCLIWrapper` (static utility)
 **Lifecycle:** Stateless — single static method, no construction needed.
 
-## 2. Component Specifications
+## §2. Component Specifications
 
 ```cpp
 class DependencyInstaller {
@@ -25,7 +25,7 @@ public:
 };
 ```
 
-## 3. Architecture Diagram
+## §3. Architecture Diagram
 
 ```mermaid
 graph TB
@@ -41,11 +41,16 @@ graph TB
         DCW[DockerCLIWrapper]
     end
 
+    subgraph Container
+        C[Docker Container]
+    end
+
     DCM -->|install(id, pkgs)| DI
     DI -->|execInContainer(id, apt-cmd, "", 120)| DCW
+    DCW -->|docker exec -i| C
 ```
 
-## 4. Data Flow
+## §4. Data Flow
 
 ```mermaid
 sequenceDiagram
@@ -61,7 +66,7 @@ sequenceDiagram
     end
     DI->>DI: Build apt command string
     DI->>CLI: execInContainer(id, cmd, "", 120)
-    CLI->>Container: docker exec -i id sh -c 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && ...'
+    CLI->>Container: docker exec -i id sh -c 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pkg1 pkg2'
     Container-->>CLI: stdout/stderr
     CLI-->>DI: output
     DI->>DI: success?
@@ -72,27 +77,20 @@ sequenceDiagram
     end
 ```
 
-## 5. Error Handling
-- **Empty packages:** Returns immediately — no Docker exec call.
-- **apt-get update failure:** Exception from `DockerCLIWrapper::execInContainer` caught. `DependencyInstaller` wraps it in `std::runtime_error` with the CLI output.
-- **apt-get install failure:** Same handling as update failure.
-- **120s timeout:** `DockerCLIWrapper` enforces via `alarm()`; exception propagates through.
-- **Container missing/stopped:** `execInContainer` throws; wrapped and re-thrown.
-
-## 6. Edge Cases
-- **Package with spaces in name:** Not supported — the string is concatenated naively into the shell command. Packages are assumed to be well-formed single tokens.
-- **Already-installed packages:** apt-get is idempotent; no error.
-- **Large package list:** Command length is bounded by Linux `ARG_MAX`. Very large lists may cause shell failures.
-- **apt lock contention:** If another process holds the apt lock inside the container, the call will fail with `std::runtime_error`.
-
-## 7. Testing Requirements
+## §5. Testing Requirements
 
 | Method | Test case | Expected outcome |
-|---|---|---|
+|--------|-----------|-----------------|
 | `install` | Empty package list | No CLI call, returns void |
 | `install` | Single package, success | CLI called with apt-get, returns void |
 | `install` | Multiple packages, success | CLI called once for all packages |
-| `install` | apt-get fails | `std::runtime_error` thrown |
+| `install` | apt-get fails | `std::runtime_error` thrown with details |
 | `install` | 120s timeout | Exception thrown |
 | `install` | Container unreachable | Exception thrown |
 | `install` | Already installed packages | No error, returns void |
+
+## §6. (not used)
+
+## §7. CLI Entry Point
+
+`DependencyInstaller` is not directly wired to any CLI entry point. It is used internally by `DockerContainerManager::ensureDependencies()` when a new or reused container is acquired and its `installedDeps` list is missing packages declared by the tool.

@@ -25,3 +25,7 @@ notes.md
 external/
 **/.artifacts/
 .playwright-mcp/
+.pytest_cache/
+Testing/
+thirdparty/
+test/agent_e2e/

@@ -39,7 +39,7 @@ app                          CatchEvent (paste/mouse/scroll tracking)
 **Events consumed (via `xHandleCoreEvent`):**
 | Event | Handler | Effect |
 |-------|---------|--------|
-| `LlmToken` | `xOnToken` | `msg-panel` → appendOrUpdateAssistantText (accumulates into current text child) |
+| `LlmChunk` | `xOnToken` | `msg-panel` → appendOrUpdateAssistantText (accumulates into current text child) |
 | `ToolStart` | `xOnToolStart` | `msg-panel` → appendAssistantTool; `status-bar` → setAgentState(Executing); `input-bar` → disable |
 | `ToolEnd` | `xOnToolEnd` | `msg-panel` → updateLastAssistantTool; `status-bar` → setAgentState(Thinking) |
 | `RoundComplete` | `xOnRoundComplete` | `msg-panel` → endCurrentAssistantText (seals text child, next round starts fresh) |
@@ -163,7 +163,7 @@ isAtBottom()                → autoScroll decision
 | Incoming event → | msg-panel call |
 |-----------------|----------------|
 | User submits | `append(User, text)` then `beginAssistant()` |
-| LlmToken | `appendOrUpdateAssistantText(asstIdx, m_streamingText)` |
+| LlmChunk | `appendOrUpdateAssistantText(asstIdx, m_streamingText)` |
 | ToolStart | `appendAssistantTool(asstIdx, name, Running, args)` |
 | ToolEnd | `updateLastAssistantTool(asstIdx, Completed/Failed, output)` |
 | RoundComplete | `endCurrentAssistantText(asstIdx)` |
@@ -294,7 +294,7 @@ renderInline(md)                  → inline only (no block-level)
 | User types + Enter | `SubmitGoal` | setAgentState(Thinking) | append(User, text) + beginAssistant() | clear, disable | — |
 | Ctrl+C | `Cancel` | setAgentState(Idle) | finalizeAssistant + append(System, "Interrupted") | enable, focus | — |
 | `/sessions` | `ListSessions` | — | — | — | showList("Sessions") |
-| `LlmToken` | — | — | appendOrUpdateAssistantText | — | — |
+| `LlmChunk` | — | — | appendOrUpdateAssistantText | — | — |
 | `ToolStart` | — | setAgentState(Executing) | appendAssistantTool(Running) | disable | — |
 | `ToolEnd` | — | setAgentState(Thinking) | updateLastAssistantTool(Completed) | — | — |
 | `RoundComplete` | — | — | endCurrentAssistantText | — | — |
@@ -332,7 +332,7 @@ USER INPUT (TUI → core):
 
 EVENT DISPATCH (core → TUI):
   DrivenCore::tick() → AppCoreThread → evtSender → drainEvents
-    ├── LlmToken    → xOnToken → appendOrUpdateAssistantText(asstIdx, accumText)
+    ├── LlmChunk    → xOnToken → appendOrUpdateAssistantText(asstIdx, accumText)
     ├── ToolStart   → xOnToolStart → appendAssistantTool(asstIdx, name, Running, args)
     ├── ToolEnd     → xOnToolEnd → updateLastAssistantTool(asstIdx, Completed/Failed, output)
     ├── RoundComplete → xOnRoundComplete → endCurrentAssistantText(asstIdx)
@@ -476,7 +476,7 @@ This required rewriting all msg-panel API methods (`beginAssistant`, `appendOrUp
 
 ### 5.12 Non-streaming `Complete` needs fallback content
 
-When the mock server responds in non-streaming mode (no `stream` flag), no `LlmToken` events arrive — just a single `Complete` with the full text. With the old code, the synthetic `[thinking]\n` token provided accumulated text. After removing the `[thinking]` token, `m_streamingText` was empty when `Complete` arrived.
+When the mock server responds in non-streaming mode (no `stream` flag), no `LlmChunk` events arrive — just a single `Complete` with the full text. With the old code, the synthetic `[thinking]\n` token provided accumulated text. After removing the `[thinking]` token, `m_streamingText` was empty when `Complete` arrived.
 
 **Symptoms:** `xOnComplete` creates a child with empty content (since `appendOrUpdateAssistantText` uses `m_streamingText`). The assistant appears to have no response text.
 
@@ -495,7 +495,7 @@ These are enforced by code review on every change to `src/tui/` files.
 
 | # | Rule |
 |---|------|
-| 1 | NO includes of `src/` headers outside `src/tui/`, except `mpsc.h`, `hex_session_id.h`, `trace.h` |
+| 1 | NO includes of `src/` headers outside `src/tui/`, except `shared/mpsc.h`, `shared/trace.h` |
 | 2 | NO pointers/references to: `DrivenCore`, `DrivenProvider`, `LlmProvider`, `DeepSeekProvider`, `SkillManager`, `PersistenceStore`, `SqliteStore`, `CommandRunner`, `DependencyGraph`, `ToolState`, `ContainerManager`, `ComposeManager`, `DockerToolRunner`, `StreamRegistry`, `SessionContext`, `AgentCore` |
 | 3 | NO direct persistence calls (no SQL, no `loadMessages`, no `createSession`) |
 | 4 | NO `std::thread` creation |
