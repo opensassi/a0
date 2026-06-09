@@ -7,7 +7,7 @@
 #include "ftxui/component/component.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "styles.h"
-#include "../mpsc.h"
+#include "shared/mpsc.h"
 
 namespace a0::tui {
 

@@ -5,7 +5,7 @@
 #include "dialog_manager.h"
 #include "markdown_renderer.h"
 #include "clipboard.h"
-#include "trace.h"
+#include "shared/trace.h"
 
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_base.hpp"

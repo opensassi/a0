@@ -1,5 +1,5 @@
-#include "driven_core.h"
-#include "llm_provider.h"
+#include "core/driven_core.h"
+#include "llm/llm_provider.h"
 #include "mock/mock_persistence_store.h"
 #include <gtest/gtest.h>
 #include <vector>

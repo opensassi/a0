@@ -3,7 +3,7 @@
 #include "sse_manager.h"
 #include "c2_event_store.h"
 #include "c2_listener.h"
-#include "ipc_protocol.h"
+#include "ipc/ipc_protocol.h"
 #include "nlohmann/json.hpp"
 #include <App.h>
 #include <fstream>
@@ -13,8 +13,8 @@
 #include <sqlite3.h>
 #include <unistd.h>
 #include <cstdlib>
-#include "trace.h"
-#include "daemonize.h"
+#include "shared/trace.h"
+#include "shared/daemonize.h"
 
 std::string g_c2LogFile;
 

@@ -3,7 +3,7 @@
 #include "dashboard_server.h"
 #include "sse_manager.h"
 #include "c2_event_store.h"
-#include "unix_socket.h"
+#include "ipc/unix_socket.h"
 #include <unistd.h>
 #include <iostream>
 #include <fstream>

@@ -1,6 +1,6 @@
 #include "docker/compose_manager.h"
 #include "docker/docker_cli_wrapper.h"
-#include "trace.h"
+#include "shared/trace.h"
 
 namespace a0 {
 namespace docker {

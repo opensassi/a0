@@ -1,4 +1,4 @@
-#include "ipc_protocol.h"
+#include "ipc/ipc_protocol.h"
 #include <gtest/gtest.h>
 #include <sys/socket.h>
 #include <cstring>

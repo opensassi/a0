@@ -21,45 +21,13 @@ FetchContent_Declare(md4c
 )
 FetchContent_MakeAvailable(ftxui md4c)
 
-set(LIB_SOURCES
-    src/a0_dir.cpp
-    src/session_context.cpp
-    src/base_prompt.cpp
-    src/tool_runner.cpp
-    src/response_decoder.cpp
-    src/driven_provider.cpp
-    src/deepseek_provider.cpp
-    src/driven_core.cpp
-    src/app_core_thread.cpp
-    src/context_manager.cpp
-    src/dependency_resolver.cpp
-    src/docker_security_filter.cpp
-    src/stream_registry.cpp
-    src/system_handlers.cpp
-    src/skills/skill_manager.cpp
-    src/skills/skill_loader.cpp
-    src/skills/version_manager.cpp
-    src/skills/validation_engine.cpp
-    src/dependency_graph.cpp
-    src/tool_state.cpp
-    src/personas.cpp
-)
-
-# CommandRunner
-add_library(cmd_runner_lib STATIC src/command_runner.cpp)
-target_include_directories(cmd_runner_lib PUBLIC src)
-
-# IPC library
-add_library(ipc_lib STATIC
-    src/unix_socket.cpp
-    src/ipc_protocol.cpp
-)
-target_include_directories(ipc_lib PUBLIC src)
-target_link_libraries(ipc_lib PUBLIC nlohmann_json::nlohmann_json)
-
-add_library(a0_lib STATIC ${LIB_SOURCES})
-target_include_directories(a0_lib PUBLIC src)
-
+# === Sub-module libraries ===
+add_subdirectory(src/shared)
+add_subdirectory(src/ipc)
+add_subdirectory(src/llm)
+add_subdirectory(src/executor)
+add_subdirectory(src/bootstrap)
+add_subdirectory(src/core)
 add_subdirectory(src/docker)
 add_subdirectory(src/skills)
 add_subdirectory(src/persistence)
@@ -67,15 +35,12 @@ add_subdirectory(src/b1)
 add_subdirectory(src/c2)
 add_subdirectory(src/tui)
 
-target_link_libraries(a0_lib PUBLIC CURL::libcurl nlohmann_json::nlohmann_json docker_lib skills_lib persistence_lib cmd_runner_lib ipc_lib)
-
 add_executable(a0 src/main.cpp)
 target_include_directories(a0 PRIVATE thirdparty)
-target_link_libraries(a0 PRIVATE a0_lib persistence_lib cmd_runner_lib tui_lib)
+target_link_libraries(a0 PRIVATE core_lib)
 
 option(ENABLE_TRACE "Enable trace logging" OFF)
 if(ENABLE_TRACE)
-    target_compile_definitions(a0_lib PRIVATE TRACE)
     target_compile_definitions(b1_lib PRIVATE TRACE)
     target_compile_definitions(c2_lib PRIVATE TRACE)
     target_compile_definitions(tui_lib PRIVATE TRACE)
@@ -83,8 +48,8 @@ endif()
 
 option(ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
 if(ENABLE_COVERAGE)
-    target_compile_options(a0_lib PUBLIC --coverage)
-    target_link_options(a0_lib PUBLIC --coverage)
+    target_compile_options(a0 PUBLIC --coverage)
+    target_link_options(a0 PUBLIC --coverage)
 endif()
 
 enable_testing()
@@ -92,7 +57,7 @@ enable_testing()
 function(add_agent_test TEST_NAME TEST_SOURCE)
     add_executable(${TEST_NAME} ${TEST_SOURCE})
     target_link_libraries(${TEST_NAME} PRIVATE
-        a0_lib
+        core_lib
         GTest::gtest
         GTest::gtest_main
     )
@@ -104,8 +69,6 @@ add_agent_test(test_skill_loader test/unit/test_skill_loader.cpp)
 add_agent_test(test_validation_engine test/unit/test_validation_engine.cpp)
 add_agent_test(test_version_manager test/unit/test_version_manager.cpp)
 add_agent_test(test_tool_runner test/unit/test_tool_runner.cpp)
-add_agent_test(test_dependency_resolver test/unit/test_dependency_resolver.cpp)
-add_agent_test(test_session_context test/unit/test_session_context.cpp)
 add_agent_test(test_skill_manager test/unit/test_skill_manager.cpp)
 add_agent_test(test_skill_schema test/unit/test_skill_schema.cpp)
 target_compile_definitions(test_skill_schema PRIVATE
@@ -117,14 +80,9 @@ target_link_libraries(test_dependency_graph PRIVATE pthread)
 add_agent_test(test_pipeline_execution test/unit/test_pipeline_execution.cpp)
 target_link_libraries(test_pipeline_execution PRIVATE pthread)
 
-# Disabled: depends on deprecated SkillRunner/InferenceProvider
-# add_agent_test(test_skill_pipeline test/unit/test_skill_pipeline.cpp)
-# target_link_libraries(test_skill_pipeline PRIVATE pthread)
-
 add_agent_test(test_tool_state test/unit/test_tool_state.cpp)
 target_link_libraries(test_tool_state PRIVATE pthread)
 
-add_agent_test(test_context_manager test/unit/test_context_manager.cpp)
 add_agent_test(test_system_tools test/unit/test_system_tools.cpp)
 
 add_agent_test(test_driven_core_persistence test/unit/test_driven_core_persistence.cpp)
@@ -136,6 +94,27 @@ add_agent_test(test_personas test/unit/test_personas.cpp)
 add_agent_test(test_task_system test/unit/test_task_system.cpp)
 target_link_libraries(test_task_system PRIVATE persistence_lib)
 
+add_agent_test(test_session_context test/unit/test_session_context.cpp)
+
+# --- Docker tests ---
+add_agent_test(test_docker_interfaces test/unit/test_docker_interfaces.cpp)
+
+add_agent_test(test_container_manager test/unit/test_container_manager.cpp)
+target_compile_definitions(test_container_manager PRIVATE
+    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
+
+add_agent_test(test_dependency_installer test/unit/test_dependency_installer.cpp)
+target_compile_definitions(test_dependency_installer PRIVATE
+    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
+
+add_agent_test(test_compose_manager test/unit/test_compose_manager.cpp)
+target_compile_definitions(test_compose_manager PRIVATE
+    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
+
+add_agent_test(test_docker_tool_runner test/unit/test_docker_tool_runner.cpp)
+target_compile_definitions(test_docker_tool_runner PRIVATE
+    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
+
 # --- TUI tests ---
 function(add_tui_test TEST_NAME TEST_SOURCE)
     add_executable(${TEST_NAME} ${TEST_SOURCE})
@@ -143,9 +122,7 @@ function(add_tui_test TEST_NAME TEST_SOURCE)
     target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(${TEST_NAME} PRIVATE
         tui_lib
-        a0_lib
-        persistence_lib
-        cmd_runner_lib
+        core_lib
         ftxui::component
         md4c
         GTest::gtest
@@ -175,24 +152,6 @@ target_link_libraries(tui_test_mock PUBLIC
 add_tui_test(test_tui_integration test/unit/test_tui_integration.cpp)
 target_link_libraries(test_tui_integration PRIVATE tui_test_mock)
 target_include_directories(test_tui_integration PRIVATE test/tui)
-
-add_agent_test(test_docker_interfaces test/unit/test_docker_interfaces.cpp)
-
-add_agent_test(test_container_manager test/unit/test_container_manager.cpp)
-target_compile_definitions(test_container_manager PRIVATE
-    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
-
-add_agent_test(test_dependency_installer test/unit/test_dependency_installer.cpp)
-target_compile_definitions(test_dependency_installer PRIVATE
-    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
-
-add_agent_test(test_compose_manager test/unit/test_compose_manager.cpp)
-target_compile_definitions(test_compose_manager PRIVATE
-    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
-
-add_agent_test(test_docker_tool_runner test/unit/test_docker_tool_runner.cpp)
-target_compile_definitions(test_docker_tool_runner PRIVATE
-    TEST_UNIT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/unit")
 
 # --- IPC tests ---
 function(add_ipc_test TEST_NAME TEST_SOURCE)

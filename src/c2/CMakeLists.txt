@@ -53,6 +53,7 @@ target_include_directories(c2_lib PUBLIC
     ${uwebsockets_SOURCE_DIR}/src
 )
 target_link_libraries(c2_lib PUBLIC
+    shared_lib
     ipc_lib
     nlohmann_json::nlohmann_json
     uSockets

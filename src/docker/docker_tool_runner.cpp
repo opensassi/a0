@@ -2,8 +2,8 @@
 #include "docker/container_manager.h"
 #include "docker/compose_manager.h"
 #include "docker/docker_cli_wrapper.h"
-#include "../command_runner.h"
-#include "trace.h"
+#include "executor/command_runner.h"
+#include "shared/trace.h"
 #include <sstream>
 
 namespace a0 {

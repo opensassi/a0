@@ -1,6 +1,6 @@
 #include "docker/docker_cli_wrapper.h"
-#include "../command_runner.h"
-#include "trace.h"
+#include "executor/command_runner.h"
+#include "shared/trace.h"
 #include <stdexcept>
 
 namespace a0 {

@@ -10,8 +10,8 @@ add_library(tui_lib STATIC
 )
 target_include_directories(tui_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(tui_lib PRIVATE ${md4c_SOURCE_DIR}/src)
-target_include_directories(tui_lib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(tui_lib PUBLIC
+    shared_lib
     ftxui::component
     md4c
     nlohmann_json::nlohmann_json

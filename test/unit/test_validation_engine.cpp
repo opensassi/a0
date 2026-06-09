@@ -1,7 +1,7 @@
 #include "skills/validation_engine.h"
 #include "skills/skills.h"
 #include "persistence/sqlite_store.h"
-#include "hex_session_id.h"
+#include "shared/hex_session_id.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>

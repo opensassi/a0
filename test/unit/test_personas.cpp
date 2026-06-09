@@ -1,5 +1,5 @@
-#include "personas.h"
-#include "base_prompt.h"
+#include "bootstrap/personas.h"
+#include "bootstrap/base_prompt.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>

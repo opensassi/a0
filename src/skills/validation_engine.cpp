@@ -1,6 +1,6 @@
 #include "validation_engine.h"
-#include "../command_runner.h"
-#include "../persistence/persistence_store.h"
+#include "executor/command_runner.h"
+#include "persistence/persistence_store.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>

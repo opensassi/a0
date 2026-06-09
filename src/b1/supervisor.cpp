@@ -1,8 +1,8 @@
-#include "supervisor.h"
-#include "command_runner.h"
-#include "ipc_protocol.h"
-#include "trace.h"
-#include "daemonize.h"
+#include "b1/supervisor.h"
+#include "executor/command_runner.h"
+#include "ipc/ipc_protocol.h"
+#include "shared/trace.h"
+#include "shared/daemonize.h"
 
 std::string g_b1LogFile;
 #include <unistd.h>

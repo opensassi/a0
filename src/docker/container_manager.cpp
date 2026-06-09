@@ -1,7 +1,7 @@
 #include "docker/container_manager.h"
 #include "docker/dependency_installer.h"
 #include "docker/docker_cli_wrapper.h"
-#include "trace.h"
+#include "shared/trace.h"
 #include <algorithm>
 #include <cstring>
 #include <sstream>

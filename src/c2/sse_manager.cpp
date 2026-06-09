@@ -1,5 +1,5 @@
 #include "sse_manager.h"
-#include "trace.h"
+#include "shared/trace.h"
 #include <sstream>
 
 namespace a0::c2 {

@@ -10,7 +10,7 @@
 #include "ftxui/component/screen_interactive.hpp"
 #include <ctime>
 #include "styles.h"
-#include "../mpsc.h"
+#include "shared/mpsc.h"
 
 namespace a0::tui {
 

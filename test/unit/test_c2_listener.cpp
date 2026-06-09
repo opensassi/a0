@@ -2,7 +2,7 @@
 #include "b1_registry.h"
 #include "sse_manager.h"
 #include "c2_event_store.h"
-#include "ipc_protocol.h"
+#include "ipc/ipc_protocol.h"
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 

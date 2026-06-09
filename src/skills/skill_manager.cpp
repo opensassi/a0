@@ -2,7 +2,7 @@
 #include "skill_loader.h"
 #include "version_manager.h"
 #include "validation_engine.h"
-#include "tool_runner.h"
+#include "executor/tool_runner.h"
 #include "persistence/persistence_store.h"
 #include <algorithm>
 #include <sstream>

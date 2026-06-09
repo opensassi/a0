@@ -1,8 +1,8 @@
 #include "c2_listener.h"
 #include "sse_manager.h"
 #include "c2_event_store.h"
-#include "ipc_protocol.h"
-#include "trace.h"
+#include "ipc/ipc_protocol.h"
+#include "shared/trace.h"
 #include <unistd.h>
 #include <sys/poll.h>
 #include <cerrno>

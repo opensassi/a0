@@ -4,9 +4,9 @@
 #include <unordered_map>
 #include <mutex>
 #include "nlohmann/json.hpp"
-#include "unix_socket.h"
+#include "ipc/unix_socket.h"
 #include "b1_registry.h"
-#include "ipc_protocol.h"
+#include "ipc/ipc_protocol.h"
 
 namespace a0::c2 {
 

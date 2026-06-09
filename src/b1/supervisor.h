@@ -5,8 +5,8 @@
 #include <chrono>
 #include <cstdint>
 #include "nlohmann/json.hpp"
-#include "unix_socket.h"
-#include "ipc_protocol.h"
+#include "ipc/unix_socket.h"
+#include "ipc/ipc_protocol.h"
 
 namespace a0::b1 {
 

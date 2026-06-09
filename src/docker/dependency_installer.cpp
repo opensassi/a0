@@ -1,6 +1,6 @@
 #include "docker/dependency_installer.h"
 #include "docker/docker_cli_wrapper.h"
-#include "trace.h"
+#include "shared/trace.h"
 #include <sstream>
 #include <stdexcept>
 

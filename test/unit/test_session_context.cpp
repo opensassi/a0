@@ -1,6 +1,6 @@
-#include "session_context.h"
-#include "hex_session_id.h"
-#include "base_prompt.h"
+#include "bootstrap/session_context.h"
+#include "shared/hex_session_id.h"
+#include "bootstrap/base_prompt.h"
 #include "skills/skills.h"
 #include <gtest/gtest.h>
 #include <string>

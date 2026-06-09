@@ -7,9 +7,9 @@
 #include <functional>
 #include <ctime>
 #include "nlohmann/json.hpp"
-#include "../agent_interfaces.h"
-#include "../handler_results.h"
-#include "../tool_state.h"
+#include "shared/agent_interfaces.h"
+#include "shared/handler_results.h"
+#include "executor/tool_state.h"
 
 class ToolState;
 

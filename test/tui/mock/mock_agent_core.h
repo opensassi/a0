@@ -7,8 +7,8 @@
 #include <atomic>
 #include <thread>
 #include <chrono>
-#include "agent_interfaces.h"
-#include "command_runner.h"
+#include "shared/agent_interfaces.h"
+#include "executor/command_runner.h"
 
 class MockAgentCore : public AgentCore {
 public:

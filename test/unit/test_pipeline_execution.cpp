@@ -1,4 +1,4 @@
-#include "dependency_graph.h"
+#include "executor/dependency_graph.h"
 #include "skills/skills.h"
 #include "skills/skill_loader.h"
 #include <gtest/gtest.h>

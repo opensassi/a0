@@ -9,4 +9,8 @@ target_include_directories(skills_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/thirdparty
 )
-target_link_libraries(skills_lib PUBLIC nlohmann_json::nlohmann_json cmd_runner_lib)
+target_link_libraries(skills_lib PUBLIC
+    shared_lib
+    executor_lib
+    nlohmann_json::nlohmann_json
+)

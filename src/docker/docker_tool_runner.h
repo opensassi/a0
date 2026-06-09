@@ -1,6 +1,6 @@
 #pragma once
 
-#include "agent_interfaces.h"
+#include "shared/agent_interfaces.h"
 #include <string>
 
 namespace a0 {

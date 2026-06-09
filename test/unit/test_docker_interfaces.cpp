@@ -1,4 +1,4 @@
-#include "agent_interfaces.h"
+#include "shared/agent_interfaces.h"
 #include "docker/container_manager.h"
 #include "docker/compose_manager.h"
 #include "docker/docker_tool_runner.h"

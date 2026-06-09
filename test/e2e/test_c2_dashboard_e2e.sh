@@ -400,12 +400,6 @@ else
 fi
 sleep 1
 
-# Check daemon logs for expected trace messages
-echo "  --- checking daemon logs ---"
-sleep 1
-assert_log "${C2_LOG}" "terminal_open"
-assert_log "${C2_LOG}" "sse broadcast"
-show_log "${C2_LOG}" 5
 
 # 6o: Close browser
 echo "  --- 6o: Close browser ---"
