@@ -218,7 +218,7 @@ std::vector<mpsc::AppCoreEvent> DrivenProvider::tick() {
     if (mc != CURLM_OK) {
         TRACE_LOG("DrivenProvider: curl_multi_perform error: " << curl_multi_strerror(mc));
         cancel();
-        return {mpsc::Error{std::string("curl error: ") + curl_multi_strerror(mc)}};
+        return {mpsc::Error{"curl", 0, std::string("curl error: ") + curl_multi_strerror(mc)}};
     }
 
     std::vector<mpsc::AppCoreEvent> events;
@@ -270,14 +270,14 @@ void DrivenProvider::xProcessCompletion(CURL* easy, CURLcode result,
               << " responseBody.size=" << m_handle.responseBody.size());
 
     if (result != CURLE_OK) {
-        out.push_back(mpsc::Error{
+        out.push_back(mpsc::Error{"http", 0,
             std::string("HTTP request failed: ") + curl_easy_strerror(result)});
         cancel();
         return;
     }
 
     if (httpCode < 200 || httpCode >= 300) {
-        out.push_back(mpsc::Error{
+        out.push_back(mpsc::Error{"http", 0,
             "HTTP error " + std::to_string(httpCode) + ": " + m_handle.responseBody});
         cancel();
         return;
@@ -301,9 +301,9 @@ void DrivenProvider::xProcessCompletion(CURL* easy, CURLcode result,
             try {
                 json j = json::parse(m_handle.responseBody);
                 std::string content = j["choices"][0]["message"]["content"].get<std::string>();
-                out.push_back(mpsc::Complete{content});
+                out.push_back(mpsc::Complete{0, content});
             } catch (...) {
-                out.push_back(mpsc::Error{"Failed to parse LLM response"});
+                out.push_back(mpsc::Error{"decoder", 0, "Failed to parse LLM response"});
             }
         }
 

@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <sys/eventfd.h>
 
+#include "shared/resource_provider.h"
+
 namespace a0::mpsc {
 
 // ============================================================================
@@ -33,39 +35,66 @@ struct ListSessions {
 struct ResumeSession {
     std::string uuid;
 };
+struct LoadResource {
+    ResourceType type;
+    int64_t id;
+    int64_t offset;
+    int64_t limit;
+};
 
 using Command = std::variant<SubmitGoal, Cancel, Shutdown, SetSession,
-                             ListSessions, ResumeSession>;
+                             ListSessions, ResumeSession, LoadResource>;
 
 // ============================================================================
 // Event types — emitted by AppCore to UI/CLI
 // ============================================================================
 
-struct LlmToken {
+struct LlmStart {
+    int64_t streamId;
+    int roundSeq;
+};
+
+struct LlmChunk {
+    int64_t streamId;
+    int seq;
     std::string text;
+    bool isFinal = false;
+};
+
+struct LlmComplete {
+    int64_t streamId;
+    std::string finishReason;
 };
 
 struct ToolStart {
-    std::string id;
+    int64_t invocationId;
+    std::string toolCallId;
     std::string toolName;
     std::string arguments;
 };
 
-struct ToolEnd {
-    std::string toolName;
-    int exitCode = 0;
-    std::string output;
+struct ToolChunk {
+    int64_t invocationId;
+    int seq;
+    std::string text;
+    std::string streamType;
 };
 
-struct RoundComplete {
-    std::string text;
+struct ToolEnd {
+    int64_t invocationId;
+    int exitCode = 0;
+    int64_t totalBytes = 0;
+    std::string outputPreview;
 };
 
 struct Complete {
-    std::string text;
+    int64_t sessionId;
+    std::string summary;
 };
 
 struct Error {
+    std::string source;
+    int64_t contextId = 0;
     std::string message;
 };
 
@@ -102,8 +131,29 @@ struct SessionHistory {
     std::vector<SessionMessage> messages;
 };
 
-using AppCoreEvent = std::variant<LlmToken, ToolStart, ToolEnd, RoundComplete, Complete, Error,
-                                  SessionReady, SessionList, SessionHistory>;
+struct LoadResourceResult {
+    int64_t id;
+    std::string data;
+};
+
+using AppCoreEvent = std::variant<LlmStart, LlmChunk, LlmComplete,
+                                  ToolStart, ToolChunk, ToolEnd,
+                                  Complete, Error,
+                                  SessionReady, SessionList, SessionHistory,
+                                  LoadResourceResult>;
+
+// ============================================================================
+// B1Control variants — sent from c2 to b1 via Cap'n Proto IPC
+// ============================================================================
+
+struct FollowAgent {
+    std::string sessionUuid;
+};
+struct UnfollowAgent {
+    std::string sessionUuid;
+};
+
+using B1Control = std::variant<FollowAgent, UnfollowAgent>;
 
 // ============================================================================
 // MPSC Channel — multi-producer single-consumer with eventfd wakeup

@@ -74,6 +74,27 @@ private:
     std::string m_streamingText;
     int m_assistantEntryIndex = -1;
 
+    // New streaming state
+    int64_t m_currentStreamId = 0;
+    int m_currentRoundSeq = 0;
+    bool m_hasActiveStream = false;
+
+    // Resource cache for expanded tool outputs
+    struct ResourceCacheEntry {
+        std::string data;
+        int64_t timestamp;
+        size_t size;
+    };
+    std::unordered_map<int64_t, ResourceCacheEntry> m_resourceCache;
+    int64_t m_resourceCacheMaxBytes = 64 * 1024 * 1024;
+    int64_t m_resourceCacheBytes = 0;
+
+    // Pending resource requests waiting for LoadResourceResult
+    struct PendingResourceReq {
+        std::function<void(std::string)> callback;
+    };
+    std::unordered_map<int64_t, std::vector<PendingResourceReq>> m_pendingResourceReqs;
+
     std::string xExpandPastePlaceholders(const std::string& input);
     void xProcessPasteBuffer();
 
@@ -86,16 +107,28 @@ private:
     int xHandleInterrupt();
     int xHandleCommand(const std::string& cmd);
 
-    void xOnToken(const std::string& token);
-    void xOnToolStart(const std::string& name, const std::string& arguments);
-    void xOnToolEnd(const std::string& name, const std::string& output, bool success);
-    void xOnRoundComplete(const std::string& text);
-    void xOnComplete(const std::string& fullOutput);
-    void xOnError(const std::string& error);
+    // New event handlers
+    void xOnLlmStart(int64_t streamId, int roundSeq);
+    void xOnLlmChunk(int64_t streamId, int seq, const std::string& text, bool isFinal);
+    void xOnLlmComplete(int64_t streamId, const std::string& finishReason);
+    void xOnToolStart(int64_t invocationId, const std::string& toolCallId,
+                      const std::string& toolName, const std::string& arguments);
+    void xOnToolChunk(int64_t invocationId, int seq, const std::string& text,
+                      const std::string& streamType);
+    void xOnToolEnd(int64_t invocationId, int exitCode, int64_t totalBytes,
+                    const std::string& outputPreview);
+    void xOnComplete(int64_t sessionId, const std::string& summary);
+    void xOnError(const std::string& source, int64_t contextId, const std::string& message);
     void xOnSessionReady(int64_t dbId, const std::string& uuid);
     void xOnSessionList(const std::vector<mpsc::SessionList::Entry>& sessions);
     void xOnSessionHistory(int64_t dbId, const std::string& uuid,
                            const std::vector<mpsc::SessionMessage>& messages);
+    void xOnLoadResourceResult(int64_t id, const std::string& data);
+
+    // Resource cache helpers
+    void xEvictResourceCache();
+    void xRequestResource(int64_t id, int64_t offset, int64_t limit,
+                          std::function<void(std::string)> onData);
 
     int xCmdSessions();
     int xCmdHelp();

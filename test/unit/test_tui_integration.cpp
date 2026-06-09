@@ -112,8 +112,8 @@ TEST_F(TuiIntegrationTest, SubmitInputSendsSubmitGoal) {
 }
 
 TEST_F(TuiIntegrationTest, CancelSentOnInterrupt) {
-    // First simulate a non-idle state by sending a token
-    channels.evtSender.send(a0::mpsc::LlmToken{"thinking..."});
+    // First simulate a non-idle state by sending a chunk
+    channels.evtSender.send(a0::mpsc::LlmChunk{1, 1, "thinking...", false});
 
     // drain events to enter non-idle state
     tui->drainEvents();

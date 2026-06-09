@@ -97,29 +97,42 @@ void AgentTui::drainEvents() {
 }
 
 void AgentTui::xHandleCoreEvent(const mpsc::AppCoreEvent& ev) {
-    if (std::holds_alternative<mpsc::LlmToken>(ev)) {
-        xOnToken(std::get<mpsc::LlmToken>(ev).text);
+    if (std::holds_alternative<mpsc::LlmStart>(ev)) {
+        const auto& e = std::get<mpsc::LlmStart>(ev);
+        xOnLlmStart(e.streamId, e.roundSeq);
+    } else if (std::holds_alternative<mpsc::LlmChunk>(ev)) {
+        const auto& e = std::get<mpsc::LlmChunk>(ev);
+        xOnLlmChunk(e.streamId, e.seq, e.text, e.isFinal);
+    } else if (std::holds_alternative<mpsc::LlmComplete>(ev)) {
+        const auto& e = std::get<mpsc::LlmComplete>(ev);
+        xOnLlmComplete(e.streamId, e.finishReason);
     } else if (std::holds_alternative<mpsc::ToolStart>(ev)) {
-        const auto& ts = std::get<mpsc::ToolStart>(ev);
-        xOnToolStart(ts.toolName, ts.arguments);
+        const auto& e = std::get<mpsc::ToolStart>(ev);
+        xOnToolStart(e.invocationId, e.toolCallId, e.toolName, e.arguments);
+    } else if (std::holds_alternative<mpsc::ToolChunk>(ev)) {
+        const auto& e = std::get<mpsc::ToolChunk>(ev);
+        xOnToolChunk(e.invocationId, e.seq, e.text, e.streamType);
     } else if (std::holds_alternative<mpsc::ToolEnd>(ev)) {
-        const auto& te = std::get<mpsc::ToolEnd>(ev);
-        xOnToolEnd(te.toolName, te.output, te.exitCode == 0);
-    } else if (std::holds_alternative<mpsc::RoundComplete>(ev)) {
-        xOnRoundComplete(std::get<mpsc::RoundComplete>(ev).text);
+        const auto& e = std::get<mpsc::ToolEnd>(ev);
+        xOnToolEnd(e.invocationId, e.exitCode, e.totalBytes, e.outputPreview);
     } else if (std::holds_alternative<mpsc::Complete>(ev)) {
-        xOnComplete(std::get<mpsc::Complete>(ev).text);
+        const auto& e = std::get<mpsc::Complete>(ev);
+        xOnComplete(e.sessionId, e.summary);
     } else if (std::holds_alternative<mpsc::Error>(ev)) {
-        xOnError(std::get<mpsc::Error>(ev).message);
+        const auto& e = std::get<mpsc::Error>(ev);
+        xOnError(e.source, e.contextId, e.message);
     } else if (std::holds_alternative<mpsc::SessionReady>(ev)) {
-        const auto& sr = std::get<mpsc::SessionReady>(ev);
-        xOnSessionReady(sr.dbId, sr.uuid);
+        const auto& e = std::get<mpsc::SessionReady>(ev);
+        xOnSessionReady(e.dbId, e.uuid);
     } else if (std::holds_alternative<mpsc::SessionList>(ev)) {
-        const auto& sl = std::get<mpsc::SessionList>(ev);
-        xOnSessionList(sl.entries);
+        const auto& e = std::get<mpsc::SessionList>(ev);
+        xOnSessionList(e.entries);
     } else if (std::holds_alternative<mpsc::SessionHistory>(ev)) {
-        const auto& sh = std::get<mpsc::SessionHistory>(ev);
-        xOnSessionHistory(sh.dbId, sh.uuid, sh.messages);
+        const auto& e = std::get<mpsc::SessionHistory>(ev);
+        xOnSessionHistory(e.dbId, e.uuid, e.messages);
+    } else if (std::holds_alternative<mpsc::LoadResourceResult>(ev)) {
+        const auto& e = std::get<mpsc::LoadResourceResult>(ev);
+        xOnLoadResourceResult(e.id, e.data);
     }
 }
 
@@ -128,30 +141,64 @@ void AgentTui::submitInput(const std::string& input) {
 }
 
 // ============================================================================
-// Event handlers
+// New event handlers
 // ============================================================================
 
-void AgentTui::xOnToken(const std::string& token) {
-    m_streamingText += token;
+void AgentTui::xOnLlmStart(int64_t streamId, int roundSeq) {
+    m_hasActiveStream = true;
+    m_currentStreamId = streamId;
+    m_currentRoundSeq = roundSeq;
+    m_streamingText.clear();
+
+    if (m_assistantEntryIndex < 0) {
+        MessageEntry entry;
+        entry.role = MessageRole::Assistant;
+        entry.content = "";
+        m_assistantEntryIndex = m_messagePanel->append(entry);
+    }
+    m_agentState = AgentState::Thinking;
+    m_statusBar->setAgentState(m_agentState);
+}
+
+void AgentTui::xOnLlmChunk(int64_t streamId, int seq, const std::string& text, bool isFinal) {
+    m_streamingText += text;
     if (m_assistantEntryIndex >= 0) {
         m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, m_streamingText);
     }
 }
 
-void AgentTui::xOnToolStart(const std::string& name, const std::string& arguments) {
+void AgentTui::xOnLlmComplete(int64_t streamId, const std::string& finishReason) {
+    if (m_assistantEntryIndex >= 0) {
+        m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, m_streamingText);
+    }
+    m_statusBar->setMessageCount(m_messagePanel->count());
+    m_hasActiveStream = false;
+}
+
+void AgentTui::xOnToolStart(int64_t invocationId, const std::string& toolCallId,
+                            const std::string& toolName, const std::string& arguments) {
     m_agentState = AgentState::Executing;
     m_statusBar->setAgentState(m_agentState);
     if (m_assistantEntryIndex >= 0) {
-        m_messagePanel->appendAssistantTool(m_assistantEntryIndex, name, ToolState::Running, arguments);
+        m_messagePanel->appendAssistantTool(m_assistantEntryIndex, toolName, ToolState::Running, arguments);
     }
     m_inputPanel->setEnabled(false);
     m_statusBar->setMessageCount(m_messagePanel->count());
 }
 
-void AgentTui::xOnToolEnd(const std::string& name, const std::string& output, bool success) {
-    ToolState state = success ? ToolState::Completed : ToolState::Failed;
+void AgentTui::xOnToolChunk(int64_t invocationId, int seq, const std::string& text,
+                            const std::string& streamType) {
+    // Append to the last running tool entry's output instead of creating a new child
     if (m_assistantEntryIndex >= 0) {
-        m_messagePanel->updateLastAssistantTool(m_assistantEntryIndex, state, output);
+        m_messagePanel->updateLastAssistantToolOutput(m_assistantEntryIndex, text);
+    }
+}
+
+void AgentTui::xOnToolEnd(int64_t invocationId, int exitCode, int64_t totalBytes,
+                          const std::string& outputPreview) {
+    ToolState state = exitCode == 0 ? ToolState::Completed : ToolState::Failed;
+    if (m_assistantEntryIndex >= 0) {
+        m_messagePanel->updateLastAssistantTool(m_assistantEntryIndex, state, outputPreview);
     }
     if (m_agentState != AgentState::Thinking) {
         m_agentState = AgentState::Thinking;
@@ -159,20 +206,9 @@ void AgentTui::xOnToolEnd(const std::string& name, const std::string& output, bo
     }
 }
 
-void AgentTui::xOnRoundComplete(const std::string& text) {
+void AgentTui::xOnComplete(int64_t sessionId, const std::string& summary) {
     if (m_assistantEntryIndex >= 0) {
-        m_messagePanel->endCurrentAssistantText(m_assistantEntryIndex);
-        m_streamingText.clear();
-    }
-    m_statusBar->setMessageCount(m_messagePanel->count());
-    if (m_screen) {
-        m_screen->RequestAnimationFrame();
-    }
-}
-
-void AgentTui::xOnComplete(const std::string& fullOutput) {
-    if (m_assistantEntryIndex >= 0) {
-        const std::string& text = m_streamingText.empty() ? fullOutput : m_streamingText;
+        const std::string& text = m_streamingText.empty() ? summary : m_streamingText;
         m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, text);
         m_messagePanel->finalizeAssistant(m_assistantEntryIndex);
         m_assistantEntryIndex = -1;
@@ -184,11 +220,12 @@ void AgentTui::xOnComplete(const std::string& fullOutput) {
     m_inputPanel->setEnabled(true);
     m_inputPanel->component()->TakeFocus();
     m_statusBar->setMessageCount(m_messagePanel->count());
+    m_hasActiveStream = false;
 }
 
-void AgentTui::xOnError(const std::string& error) {
+void AgentTui::xOnError(const std::string& source, int64_t contextId, const std::string& message) {
     if (m_assistantEntryIndex >= 0) {
-        const std::string& text = m_streamingText.empty() ? error : m_streamingText;
+        const std::string& text = m_streamingText.empty() ? message : m_streamingText;
         m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, text);
         m_messagePanel->finalizeAssistant(m_assistantEntryIndex);
         m_assistantEntryIndex = -1;
@@ -197,10 +234,11 @@ void AgentTui::xOnError(const std::string& error) {
 
     MessageEntry errEntry;
     errEntry.role = MessageRole::Error;
-    errEntry.content = error;
+    errEntry.content = message;
+    errEntry.toolName = source;
     m_messagePanel->append(errEntry);
 
-    m_agentState = AgentState::Idle;
+    m_agentState = AgentState::Error;
     m_statusBar->setAgentState(m_agentState);
     m_inputPanel->setEnabled(true);
     m_inputPanel->component()->TakeFocus();
@@ -231,41 +269,74 @@ void AgentTui::xOnSessionList(const std::vector<mpsc::SessionList::Entry>& sessi
 
 void AgentTui::xOnSessionHistory(int64_t dbId, const std::string& uuid,
                                   const std::vector<mpsc::SessionMessage>& messages) {
-    if (!uuid.empty()) {
-        m_sessionDbId = dbId;
-        m_sessionUuid = uuid;
-        m_statusBar->setSessionId(uuid);
-        m_messagePanel->clear();
+    m_sessionDbId = dbId;
+    m_sessionUuid = uuid;
+    m_statusBar->setSessionId(uuid);
+    m_messagePanel->clear();
+    for (const auto& msg : messages) {
+        MessageEntry entry;
+        if (msg.role == "user") entry.role = MessageRole::User;
+        else if (msg.role == "assistant") entry.role = MessageRole::Assistant;
+        else if (msg.role == "tool") entry.role = MessageRole::Tool;
+        else entry.role = MessageRole::System;
+        entry.content = msg.content;
+        entry.toolName = msg.name;
+        entry.timestamp = msg.createdAt;
+        m_messagePanel->append(entry);
+    }
+    m_statusBar->setMessageCount(m_messagePanel->count());
+}
 
-        for (const auto& m : messages) {
-            MessageEntry entry;
-            if (m.role == "user") {
-                entry.role = MessageRole::User;
-                entry.content = m.content;
-            } else if (m.role == "assistant") {
-                entry.role = MessageRole::Assistant;
-                entry.content = m.content;
-            } else if (m.role == "tool") {
-                entry.role = MessageRole::Tool;
-                entry.toolName = m.name;
-                entry.toolOutput = m.content;
-                entry.collapsed = true;
-                entry.toolState = ToolState::Completed;
-            } else if (m.role == "system") {
-                entry.role = MessageRole::System;
-                entry.content = m.content;
-            } else {
-                entry.role = MessageRole::Error;
-                entry.content = m.content;
-            }
-            m_messagePanel->append(entry);
+void AgentTui::xOnLoadResourceResult(int64_t id, const std::string& data) {
+    // Cache the result
+    ResourceCacheEntry rce;
+    rce.data = data;
+    rce.timestamp = std::time(nullptr);
+    rce.size = data.size();
+    m_resourceCacheBytes += data.size();
+    m_resourceCache[id] = std::move(rce);
+    xEvictResourceCache();
+
+    // Fulfill pending requests
+    auto it = m_pendingResourceReqs.find(id);
+    if (it != m_pendingResourceReqs.end()) {
+        for (auto& req : it->second) {
+            if (req.callback) req.callback(data);
         }
-        m_statusBar->setMessageCount(messages.size());
+        m_pendingResourceReqs.erase(it);
     }
 }
 
+void AgentTui::xEvictResourceCache() {
+    while (m_resourceCacheBytes > m_resourceCacheMaxBytes && !m_resourceCache.empty()) {
+        // Find oldest entry
+        auto oldest = m_resourceCache.begin();
+        for (auto it = m_resourceCache.begin(); it != m_resourceCache.end(); ++it) {
+            if (it->second.timestamp < oldest->second.timestamp)
+                oldest = it;
+        }
+        m_resourceCacheBytes -= oldest->second.size;
+        m_resourceCache.erase(oldest);
+    }
+}
+
+void AgentTui::xRequestResource(int64_t id, int64_t offset, int64_t limit,
+                                 std::function<void(std::string)> onData) {
+    // Check cache first
+    auto it = m_resourceCache.find(id);
+    if (it != m_resourceCache.end()) {
+        std::string data = it->second.data.substr(offset, limit < 0 ? std::string::npos : limit);
+        if (onData) onData(data);
+        return;
+    }
+    // Queue request and send LoadResource command
+    m_pendingResourceReqs[id].push_back({std::move(onData)});
+    m_cmdSender.send(mpsc::LoadResource{
+        ResourceType::ToolOutput, id, offset, limit});
+}
+
 // ============================================================================
-// Goal submission
+// UI Commands
 // ============================================================================
 
 int AgentTui::xHandleSubmit(const std::string& input) {
@@ -275,78 +346,54 @@ int AgentTui::xHandleSubmit(const std::string& input) {
         return xHandleCommand(input);
     }
 
-    std::string expanded = xExpandPastePlaceholders(input);
+    // Send the goal
+    m_cmdSender.send(mpsc::SubmitGoal{input});
 
-    MessageEntry userEntry;
-    userEntry.role = MessageRole::User;
-    userEntry.content = expanded;
-    m_messagePanel->append(userEntry);
+    // Add to local history
+    m_inputPanel->addHistory(input);
 
-    if (expanded != input) {
-        MessageEntry sysEntry;
-        sysEntry.role = MessageRole::System;
-        sysEntry.content = "(Paste expanded: " + std::to_string(expanded.size()) + " chars)";
-        m_messagePanel->append(sysEntry);
-    }
+    // Append user message
+    MessageEntry entry;
+    entry.role = MessageRole::User;
+    entry.content = input;
+    entry.timestamp = std::time(nullptr);
+    m_messagePanel->append(entry);
 
-    // Create the single assistant entry for this goal
-    m_assistantEntryIndex = m_messagePanel->beginAssistant();
-    m_streamingText.clear();
-
-    m_agentState = AgentState::Thinking;
-    m_statusBar->setAgentState(m_agentState);
+    m_inputPanel->clear();
     m_statusBar->setMessageCount(m_messagePanel->count());
-    m_inputPanel->setEnabled(false);
-
-    m_cmdSender.send(mpsc::SubmitGoal{expanded});
-
-    if (m_screen) {
-        m_screen->Post([]{});  // Wake FTXUI event loop
-    }
-
     return 0;
 }
 
 int AgentTui::xHandleInterrupt() {
-    if (m_agentState != AgentState::Idle) {
-        m_cmdSender.send(mpsc::Cancel{});
-
-        if (m_assistantEntryIndex >= 0) {
-            m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, m_streamingText);
-            m_messagePanel->finalizeAssistant(m_assistantEntryIndex);
-            m_assistantEntryIndex = -1;
-            m_streamingText.clear();
-        }
-
-        MessageEntry entry;
-        entry.role = MessageRole::System;
-        entry.content = "Interrupted";
-        m_messagePanel->append(entry);
-
-        m_agentState = AgentState::Idle;
-        m_statusBar->setAgentState(m_agentState);
-        m_statusBar->setMessageCount(m_messagePanel->count());
-        m_inputPanel->setEnabled(true);
-        m_inputPanel->component()->TakeFocus();
-
-        if (m_screen) {
-            m_screen->RequestAnimationFrame();
-        }
+    m_cmdSender.send(mpsc::Cancel{});
+    if (m_assistantEntryIndex >= 0) {
+        m_messagePanel->finalizeAssistant(m_assistantEntryIndex);
+        m_assistantEntryIndex = -1;
     }
+    m_streamingText.clear();
+    m_agentState = AgentState::Idle;
+    m_statusBar->setAgentState(m_agentState);
+    m_inputPanel->setEnabled(true);
+    m_statusBar->showStatus("Interrupted", 3);
     return 0;
 }
 
 int AgentTui::xHandleCommand(const std::string& cmd) {
-    if (cmd == "/sessions") return xCmdSessions();
-    if (cmd == "/help")      return xCmdHelp();
-    if (cmd == "/clear")     return xCmdClear();
-    if (cmd == "/quit" || cmd == "/exit") return xCmdQuit();
+    if (cmd == "/sessions" || cmd == "/s") {
+        return xCmdSessions();
+    } else if (cmd == "/help" || cmd == "/h") {
+        return xCmdHelp();
+    } else if (cmd == "/clear" || cmd == "/cls") {
+        return xCmdClear();
+    } else if (cmd == "/quit" || cmd == "/q" || cmd == ":q") {
+        return xCmdQuit();
+    }
+    MessageEntry entry;
+    entry.role = MessageRole::System;
+    entry.content = "Unknown command: " + cmd + "  (try /help)";
+    m_messagePanel->append(entry);
     return 0;
 }
-
-// ============================================================================
-// Commands
-// ============================================================================
 
 int AgentTui::xCmdSessions() {
     m_cmdSender.send(mpsc::ListSessions{20});
@@ -355,7 +402,25 @@ int AgentTui::xCmdSessions() {
 }
 
 int AgentTui::xCmdHelp() {
-    m_dialogMgr->showHelp();
+    auto helpText = ftxui::vbox({
+        ftxui::text("a0 TUI Keybindings"),
+        ftxui::separator(),
+        ftxui::text("Enter        Submit input"),
+        ftxui::text("Shift+Enter  Newline"),
+        ftxui::text("Up/Down      History navigation"),
+        ftxui::text("Ctrl+C       Cancel current"),
+        ftxui::text("Ctrl+Q       Quit"),
+        ftxui::text(""),
+        ftxui::text("Commands:"),
+        ftxui::text("  /help        This help"),
+        ftxui::text("  /clear       Clear messages"),
+        ftxui::text("  /sessions    List sessions"),
+        ftxui::text("  /quit        Exit"),
+    });
+    auto dialog = ftxui::Container::Vertical({
+        ftxui::Renderer([helpText] { return helpText | ftxui::border; })
+    });
+    m_dialogMgr->show(dialog, "Help");
     return 0;
 }
 
@@ -441,7 +506,6 @@ void AgentTui::xBuildLayout() {
             return true;
         }
 
-        // Ctrl+C — interrupt even when input is disabled
         if (event == ftxui::Event::CtrlC) {
             xHandleInterrupt();
             return true;
@@ -491,42 +555,16 @@ ftxui::Component AgentTui::xBuildMainContainer() {
     });
 }
 
-// ============================================================================
-// Bracketed paste
-// ============================================================================
-
-std::string AgentTui::xExpandPastePlaceholders(const std::string& input) {
-    if (m_pastedContents.empty() || input.find("[ PASTED #") == std::string::npos) {
-        return input;
-    }
-    std::string result = input;
-    for (auto& [id, content] : m_pastedContents) {
-        std::string marker = "[ PASTED #" + std::to_string(id) + " ]";
-        size_t pos = 0;
-        while ((pos = result.find(marker, pos)) != std::string::npos) {
-            result.replace(pos, marker.size(), content);
-            pos += content.size();
-        }
-    }
-    return result;
-}
-
 void AgentTui::xProcessPasteBuffer() {
     if (m_pasteBuffer.empty()) return;
-
-    while (!m_pasteBuffer.empty() &&
-           (m_pasteBuffer.back() == '\n' || m_pasteBuffer.back() == '\r')) {
-        m_pasteBuffer.pop_back();
-    }
-
-    if (m_pasteBuffer.size() <= 20) {
-        m_inputPanel->insertText(m_pasteBuffer);
-    } else {
-        int id = ++m_pasteCounter;
-        m_pastedContents[id] = m_pasteBuffer;
-        m_inputPanel->insertText("[ PASTED #" + std::to_string(id) + " ] ");
-    }
+    int id = ++m_pasteCounter;
+    size_t maxSize = 64 * 1024; // 64KB max paste
+    std::string content = m_pasteBuffer.substr(0, maxSize);
+    if (content.size() < m_pasteBuffer.size())
+        content += "\n... (pasted data truncated at 64KB)";
+    m_pastedContents[id] = content;
     m_pasteBuffer.clear();
+    m_inputPanel->insertText("[ PASTED #" + std::to_string(id) + " ]");
 }
 
 } // namespace a0::tui

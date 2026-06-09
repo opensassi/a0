@@ -8,6 +8,8 @@ find_package(CURL REQUIRED)
 find_package(nlohmann_json 3.11.0 REQUIRED)
 find_package(GTest REQUIRED)
 find_package(SQLite3 REQUIRED)
+list(APPEND CMAKE_PREFIX_PATH /home/pc)
+find_package(CapnProto QUIET)
 
 # === TUI Dependencies ===
 include(FetchContent)
@@ -95,6 +97,9 @@ add_agent_test(test_task_system test/unit/test_task_system.cpp)
 target_link_libraries(test_task_system PRIVATE persistence_lib)
 
 add_agent_test(test_session_context test/unit/test_session_context.cpp)
+
+add_agent_test(test_resource_provider test/unit/test_resource_provider.cpp)
+target_link_libraries(test_resource_provider PRIVATE persistence_lib pthread)
 
 # --- Docker tests ---
 add_agent_test(test_docker_interfaces test/unit/test_docker_interfaces.cpp)

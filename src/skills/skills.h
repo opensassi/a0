@@ -13,7 +13,7 @@
 
 class ToolState;
 
-namespace a0 { class DockerSecurityFilter; }
+namespace a0 { class DockerSecurityFilter; class ResourceProvider; }
 namespace a0::persistence { class PersistenceStore; }
 
 // Forward decls for types in global scope
@@ -237,6 +237,12 @@ public:
     void setDockerRunner(::DockerToolRunner* runner);
     void setDockerSecurityFilter(::a0::DockerSecurityFilter* filter);
 
+    /// Set or update the ResourceProvider for tool execution recording.
+    void setResourceProvider(ResourceProvider* provider) { m_resourceProvider = provider; }
+
+    /// Get the current ResourceProvider (may be null).
+    ResourceProvider* resourceProvider() const { return m_resourceProvider; }
+
     ToolState& toolState() { return m_toolState; }
 
 private:
@@ -250,6 +256,7 @@ private:
     ::DockerToolRunner* m_dockerRunner = nullptr;
     ::a0::DockerSecurityFilter* m_dockerSecurityFilter = nullptr;
     ::a0::persistence::PersistenceStore* m_persistence = nullptr;
+    ::a0::ResourceProvider* m_resourceProvider = nullptr;
     int64_t m_sessionDbId = 0;
     ToolState m_toolState;
 

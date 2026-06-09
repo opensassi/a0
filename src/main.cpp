@@ -2,6 +2,7 @@
 #include "bootstrap/a0_dir.h"
 #include "persistence/sqlite_store.h"
 #include "persistence/build_identity.h"
+#include "persistence/sqlite_resource_provider.h"
 #include "executor/system_handlers.h"
 #include "skills/skills.h"
 #include "llm/deepseek_provider.h"
@@ -406,6 +407,7 @@ static void xRegisterSystemHandlers(a0::skills::SkillManager& mgr) {
 
 struct AgentStack {
     a0::persistence::SqliteStore persistence;
+    a0::persistence::SqliteResourceProvider resourceProvider;
     a0::skills::SkillManager skillMgr;
     SubprocessToolRunner toolRunner;
     a0::DeepSeekProvider llmProvider;
@@ -422,6 +424,7 @@ struct AgentStack {
                const std::string& defaultImage, int maxParallel = 4,
                const std::string& externalRepo = "https://github.com/opensassi/a0")
         : persistence(a0Dir + "/db/sessions.db")
+        , resourceProvider(a0Dir + "/db/sessions.db")
         , skillMgr(skillsDir, a0Dir + "/store", &persistence)
         , llmProvider(apiKey)
     {
@@ -451,6 +454,7 @@ struct AgentStack {
         }
 
         skillMgr.setToolRunner(&toolRunner);
+        skillMgr.setResourceProvider(&resourceProvider);
         if (dockerRunner) skillMgr.setDockerRunner(dockerRunner);
         xRegisterSystemHandlers(skillMgr);
 
@@ -580,8 +584,10 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
     auto [evtSender, evtRcvr] = a0::mpsc::Channel<a0::mpsc::AppCoreEvent>::create();
 
     a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek-v4-flash" : "mock",
-                                 &stack.skillMgr, &stack.persistence, personaName,
-                                 personaSkills, personaTools);
+                                 &stack.skillMgr, &stack.persistence,
+                                 &stack.resourceProvider,
+                                 256, 4096, 4096,
+                                 personaName, personaSkills, personaTools);
     if (!mockUrl.empty())
         coreThread.setMockUrl(mockUrl);
     coreThread.start(std::move(cmdRcvr), std::move(evtSender));
@@ -595,7 +601,7 @@ static int cmdRun(const std::string& a0Dir, const std::string& skillsDir,
         auto events = evtRcvr.drain();
         for (auto& ev : events) {
             if (std::holds_alternative<a0::mpsc::Complete>(ev))
-                result = std::get<a0::mpsc::Complete>(ev).text;
+                result = std::get<a0::mpsc::Complete>(ev).summary;
             else if (std::holds_alternative<a0::mpsc::Error>(ev))
                 result = "ERROR: " + std::get<a0::mpsc::Error>(ev).message;
         }
@@ -769,8 +775,10 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
 
     // Start core thread
     a0::AppCoreThread coreThread(apiKey, mockUrl.empty() ? "deepseek-v4-flash" : "mock",
-                                 &stack.skillMgr, &stack.persistence, personaName,
-                                 personaSkills, personaTools);
+                                 &stack.skillMgr, &stack.persistence,
+                                 &stack.resourceProvider,
+                                 256, 4096, 4096,
+                                 personaName, personaSkills, personaTools);
     if (!mockUrl.empty())
         coreThread.setMockUrl(mockUrl);
 

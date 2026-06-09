@@ -1,0 +1,70 @@
+{
+  "duration_seconds": 14717.962,
+  "duration_minutes": 245.29936666666666,
+  "first_message": "2026-06-09T10:48:40.240000+00:00",
+  "last_message": "2026-06-09T14:53:58.202000+00:00",
+  "messages": {
+    "total": 244,
+    "user": 21,
+    "assistant": 223,
+    "tool_parts": 269
+  },
+  "words": {
+    "user": 4986,
+    "assistant": 6817
+  },
+  "tokens": {
+    "input": {
+      "total": 54958143,
+      "cached": 53950720,
+      "uncached": 1007423
+    },
+    "cache_hit_pct": 98.2,
+    "output": 92251,
+    "reasoning": 74612,
+    "total_billed": 55125006
+  },
+  "cost": 0.338823,
+  "tools": {
+    "edit": 76,
+    "bash": 74,
+    "read": 60,
+    "write": 23,
+    "grep": 13,
+    "question": 9,
+    "todowrite": 7,
+    "glob": 5,
+    "task": 1,
+    "invalid": 1
+  },
+  "modes": {
+    "build": 185,
+    "plan": 38
+  },
+  "finish_reasons": {
+    "tool-calls": 207,
+    "stop": 14
+  },
+  "part_types": {
+    "tool": 269,
+    "step-start": 223,
+    "step-finish": 221,
+    "reasoning": 205,
+    "text": 106,
+    "patch": 69
+  },
+  "prompter_active": {
+    "minutes_active": 15.9,
+    "minutes_wall": 245.3,
+    "minutes_idle": 229.4,
+    "gaps_total": 20,
+    "gaps_exceeding_60s_cap": 13,
+    "gap_distribution_seconds": {
+      "0-15s": 2,
+      "15-30s": 2,
+      "30-45s": 2,
+      "45-60s": 1,
+      ">60s": 13
+    }
+  }
+}

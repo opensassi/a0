@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "shared/agent_interfaces.h"
+#include "shared/resource_provider.h"
 #include "llm/llm_provider.h"
 #include "shared/mpsc.h"
 #include "skills/skills.h"
@@ -25,7 +26,11 @@ class DrivenCore {
 public:
     DrivenCore(LlmProvider* provider,
                a0::skills::SkillManager* skillMgr,
-               a0::persistence::PersistenceStore* persistence = nullptr);
+               a0::persistence::PersistenceStore* persistence = nullptr,
+               ResourceProvider* resourceProvider = nullptr,
+               int64_t tokenFlushSize = 256,
+               int64_t toolFlushSize = 4096,
+               int64_t outputPreviewSize = 4096);
 
     /// Submit a new goal. Starts an LLM request. Non-blocking -- call tick() to drive progress.
     void submitGoal(const std::string& goal);
@@ -60,6 +65,9 @@ public:
     /// Get the last completed goal result (populated by runSync or xFinishGoal/xFailGoal).
     const std::string& lastResult() const { return m_lastResult; }
 
+    /// Access the resource provider (may be null).
+    ResourceProvider* resourceProvider() const { return m_resourceProvider; }
+
 private:
     enum class CoreState {
         Idle,
@@ -71,6 +79,10 @@ private:
     LlmProvider* m_provider;
     a0::skills::SkillManager* m_skillMgr;
     a0::persistence::PersistenceStore* m_persistence;
+    ResourceProvider* m_resourceProvider = nullptr;
+    int64_t m_tokenFlushSize = 256;
+    int64_t m_toolFlushSize = 4096;
+    int64_t m_outputPreviewSize = 4096;
 
     std::string m_lastResult;
     std::string m_personaName;

@@ -9,6 +9,7 @@
 #include "core/driven_core.h"
 #include "llm/deepseek_provider.h"
 #include "shared/mpsc.h"
+#include "shared/resource_provider.h"
 #include "skills/skills.h"
 
 namespace a0 {
@@ -33,6 +34,10 @@ public:
                   const std::string& model,
                   a0::skills::SkillManager* skillMgr,
                   a0::persistence::PersistenceStore* persistence = nullptr,
+                  ResourceProvider* resourceProvider = nullptr,
+                  int64_t tokenFlushSize = 256,
+                  int64_t toolFlushSize = 4096,
+                  int64_t outputPreviewSize = 4096,
                   const std::string& personaName = "",
                   const std::vector<std::string>& personaSkills = {},
                   const std::vector<std::string>& personaTools = {});
@@ -71,6 +76,10 @@ private:
     std::vector<std::string> m_personaTools;
     a0::skills::SkillManager* m_skillMgr;
     a0::persistence::PersistenceStore* m_persistence;
+    ResourceProvider* m_resourceProvider = nullptr;
+    int64_t m_tokenFlushSize = 256;
+    int64_t m_toolFlushSize = 4096;
+    int64_t m_outputPreviewSize = 4096;
 
     mpsc::Receiver<mpsc::Command> m_cmdReceiver;
     mpsc::Sender<mpsc::AppCoreEvent> m_evtSender;

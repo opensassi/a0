@@ -2,6 +2,7 @@
 #include "bootstrap/base_prompt.h"
 #include "executor/dependency_graph.h"
 #include "persistence/persistence_store.h"
+#include "shared/resource_provider.h"
 #include "shared/trace.h"
 
 #include <algorithm>
@@ -63,10 +64,18 @@ namespace a0 {
 
 DrivenCore::DrivenCore(LlmProvider* provider,
                        a0::skills::SkillManager* skillMgr,
-                       a0::persistence::PersistenceStore* persistence)
+                       a0::persistence::PersistenceStore* persistence,
+                       ResourceProvider* resourceProvider,
+                       int64_t tokenFlushSize,
+                       int64_t toolFlushSize,
+                       int64_t outputPreviewSize)
     : m_provider(provider)
     , m_skillMgr(skillMgr)
     , m_persistence(persistence)
+    , m_resourceProvider(resourceProvider)
+    , m_tokenFlushSize(tokenFlushSize)
+    , m_toolFlushSize(toolFlushSize)
+    , m_outputPreviewSize(outputPreviewSize)
 {}
 
 void DrivenCore::submitGoal(const std::string& goal) {
@@ -239,21 +248,23 @@ std::vector<mpsc::AppCoreEvent> DrivenCore::tick() {
     if (m_state == CoreState::AwaitingLlm) {
         auto events = m_provider->tick();
         xHandleLlmEvents(events);
-        // Streaming Complete events carry empty text (text was in LlmToken events).
-        // Fill in the actual result text so consumers (cmdRun) get the answer.
-        // If state transitioned to ExecutingTools, this is an intermediate round —
-        // emit RoundComplete instead of Complete so the TUI keeps its streaming
-        // entry alive for the next LLM round.
+        // Forward events — LlmChunk carries tokens, LlmComplete signals end.
+        // Only forward Complete events when the goal is fully finished (state is Idle).
+        // Intermediate Complete events (from tool_calls finish_reason) are suppressed
+        // since more tool turns are pending. These are consumed by xHandleLlmEvents
+        // which transitions state to ExecutingTools or Idle.
+        std::vector<mpsc::AppCoreEvent> filtered;
+        bool goalFinished = (m_state == CoreState::Idle);
         for (auto& ev : events) {
             if (auto* c = std::get_if<mpsc::Complete>(&ev)) {
-                if (c->text.empty() && !m_lastResult.empty())
-                    c->text = m_lastResult;
-                if (m_state != CoreState::Idle) {
-                    ev = mpsc::RoundComplete{std::move(c->text)};
-                }
+                if (c->summary.empty() && !m_lastResult.empty())
+                    c->summary = m_lastResult;
+                c->sessionId = m_sessionDbId;
+                if (!goalFinished) continue; // suppress intermediate Complete
             }
+            filtered.push_back(std::move(ev));
         }
-        return events;
+        return filtered;
     }
 
     if (m_state == CoreState::ExecutingTools) {
@@ -266,12 +277,14 @@ std::vector<mpsc::AppCoreEvent> DrivenCore::tick() {
 void DrivenCore::xHandleLlmEvents(const std::vector<mpsc::AppCoreEvent>& events) {
     TRACE_LOG("DrivenCore::xHandleLlmEvents count=" << events.size());
     for (const auto& ev : events) {
-        if (std::holds_alternative<mpsc::LlmToken>(ev)) {
-            m_accumText += std::get<mpsc::LlmToken>(ev).text;
+        if (std::holds_alternative<mpsc::LlmChunk>(ev)) {
+            m_accumText += std::get<mpsc::LlmChunk>(ev).text;
+        } else if (std::holds_alternative<mpsc::LlmComplete>(ev)) {
+            TRACE_LOG("LLM complete, reason=" << std::get<mpsc::LlmComplete>(ev).finishReason);
         } else if (std::holds_alternative<mpsc::ToolStart>(ev)) {
             const auto& ts = std::get<mpsc::ToolStart>(ev);
             PendingToolCall ptc;
-            ptc.id = ts.id;
+            ptc.id = ts.toolCallId;
             ptc.name = ts.toolName;
             try {
                 ptc.arguments = nlohmann::json::parse(ts.arguments);
@@ -301,11 +314,13 @@ void DrivenCore::xHandleLlmEvents(const std::vector<mpsc::AppCoreEvent>& events)
                 xFinishGoal(m_accumText);
             } else {
                 const auto& complete = std::get<mpsc::Complete>(ev);
-                xFinishGoal(complete.text);
+                xFinishGoal(complete.summary);
             }
         } else if (std::holds_alternative<mpsc::Error>(ev)) {
             const auto& err = std::get<mpsc::Error>(ev);
             xFailGoal(err.message);
+        } else if (std::holds_alternative<mpsc::LlmStart>(ev)) {
+            // LlmStart: streaming began, nothing to do internally
         }
     }
 }
@@ -350,6 +365,7 @@ std::vector<mpsc::AppCoreEvent> DrivenCore::xExecuteTools() {
     auto batchResults = DependencyGraph::executeBatches(
         batches, m_skillMgr, 4);
 
+    int64_t nextInvocationId = 1;
     size_t invIdx = 0;
     for (const auto& br : batchResults) {
         for (size_t i = 0; i < br.outputs.size(); ++i) {
@@ -359,20 +375,30 @@ std::vector<mpsc::AppCoreEvent> DrivenCore::xExecuteTools() {
                 result = br.errors[i] + "\n" + result;
             }
             std::string safeOutput = xSanitizeUtf8(xTruncateForLLM(result));
+            int64_t invocationId = nextInvocationId++;
+            const auto& ptc = m_pendingToolCalls[invIdx];
 
-            mpsc::ToolEnd te;
-            te.toolName = m_pendingToolCalls[invIdx].name;
-            te.exitCode = br.errors.empty() || i >= br.errors.size() || br.errors[i].empty() ? 0 : 1;
-            te.output = safeOutput;
-            events.push_back(std::move(te));
+            // Emit ToolChunk if output is non-empty
+            if (!safeOutput.empty()) {
+                events.push_back(mpsc::ToolChunk{
+                    invocationId, 1, safeOutput, "stdout"});
+            }
 
-            m_messages.push_back({"tool", safeOutput,
-                                  m_pendingToolCalls[invIdx].id});
+            // Emit ToolEnd with preview
+            int64_t totalBytes = safeOutput.size();
+            std::string preview = safeOutput.substr(0, m_outputPreviewSize);
+            if (safeOutput.size() > static_cast<size_t>(m_outputPreviewSize))
+                preview += "...";
+            bool hasError = !br.errors.empty() && i < br.errors.size() && !br.errors[i].empty();
+            events.push_back(mpsc::ToolEnd{
+                invocationId, hasError ? 1 : 0, totalBytes, preview});
+
+            m_messages.push_back({"tool", safeOutput, ptc.id});
 
             if (m_persistence && m_sessionDbId > 0) {
                 m_persistence->appendMessage(m_sessionDbId,
                     m_subSessionId, m_seq++, "tool", safeOutput,
-                    "", m_pendingToolCalls[invIdx].id, "", "");
+                    "", ptc.id, "", "");
             }
             ++invIdx;
         }

@@ -18,6 +18,11 @@ struct MessageEntry {
     std::string toolArgs;
     ToolState toolState = ToolState::Completed;
     std::string toolOutput;
+    std::string outputPreview;          // truncated preview from ToolEnd
+    int64_t resourceId = 0;             // for LoadResource expand (0 = no resource)
+    int64_t resourceTotalBytes = 0;     // total output size
+    bool resourceExpanded = false;      // user clicked to expand
+    bool resourceLoading = false;       // waiting for LoadResourceResult
     int64_t timestamp = 0;
     bool collapsed = true;
     bool streaming = false;
@@ -42,6 +47,7 @@ public:
                             ToolState state, const std::string& args = "");
     int updateLastAssistantTool(int asstIdx, ToolState state,
                                 const std::string& output);
+    int updateLastAssistantToolOutput(int asstIdx, const std::string& text);
     int finalizeAssistant(int asstIdx);
 
     void scrollToBottom();

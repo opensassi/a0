@@ -82,7 +82,7 @@ TEST_F(DrivenCorePersistenceTest, UserMessagePersistedOnSubmit) {
 }
 
 TEST_F(DrivenCorePersistenceTest, AssistantResponsePersistedAfterRunSync) {
-    provider.m_responses = {mpsc::Complete{"found 3 files"}};
+    provider.m_responses = {mpsc::Complete{0, "found 3 files"}};
 
     DrivenCore core = makeCore();
     std::string result = core.runSync("find log files");
@@ -107,7 +107,7 @@ TEST_F(DrivenCorePersistenceTest, NoPersistenceWithoutSession) {
 }
 
 TEST_F(DrivenCorePersistenceTest, SessionSwitchPersistsToCorrectSession) {
-    provider.m_responses = {mpsc::Complete{"done"}};
+    provider.m_responses = {mpsc::Complete{0, "done"}};
     int64_t session2Id = store.createSession("session-2", 0, 0, 1);
 
     // Goal 1 goes to session 1
@@ -116,7 +116,7 @@ TEST_F(DrivenCorePersistenceTest, SessionSwitchPersistsToCorrectSession) {
     core.runSync("goal 1");
 
     // Switch to session 2
-    provider.m_responses = {mpsc::Complete{"done2"}};
+    provider.m_responses = {mpsc::Complete{0, "done2"}};
     core.setSession(session2Id, "session-2");
     core.runSync("goal 2");
 
@@ -130,7 +130,7 @@ TEST_F(DrivenCorePersistenceTest, SessionSwitchPersistsToCorrectSession) {
 }
 
 TEST_F(DrivenCorePersistenceTest, ErrorEventFailsGoal) {
-    provider.m_responses = {mpsc::Error{"something went wrong"}};
+    provider.m_responses = {mpsc::Error{"test", 0, "something went wrong"}};
 
     DrivenCore core = makeCore();
     std::string result = core.runSync("do something");
@@ -155,7 +155,7 @@ TEST_F(DrivenCorePersistenceTest, CancelClearsState) {
 
 TEST_F(DrivenCorePersistenceTest, SetSessionBeforeSubmit) {
     int64_t customSessionId = store.createSession("custom-uuid", 0, 0, 1);
-    provider.m_responses = {mpsc::Complete{"custom result"}};
+    provider.m_responses = {mpsc::Complete{0, "custom result"}};
 
     DrivenCore core(&provider, nullptr, &store);
     core.setSession(customSessionId, "custom-uuid");
@@ -178,7 +178,7 @@ TEST_F(DrivenCorePersistenceTest, SubmitFromIdleOnly) {
 }
 
 TEST_F(DrivenCorePersistenceTest, NullSkillManagerDoesNotCrash) {
-    provider.m_responses = {mpsc::Complete{"no skillmgr result"}};
+    provider.m_responses = {mpsc::Complete{0, "no skillmgr result"}};
     DrivenCore core(&provider, nullptr, &store);
     core.setSession(sessionDbId, sessionUuid);
     EXPECT_NO_FATAL_FAILURE(core.runSync("test"));
@@ -289,7 +289,7 @@ struct DrivenCorePersonaTest : ::testing::Test {
 
 TEST_F(DrivenCorePersonaTest, NoPersona_EmptySchemas) {
     auto core = makeCore();
-    provider.m_responses = {mpsc::Complete{"done"}};
+    provider.m_responses = {mpsc::Complete{0, "done"}};
     core.runSync("test");
     EXPECT_TRUE(provider.m_lastToolSchemas.empty());
 }
@@ -297,7 +297,7 @@ TEST_F(DrivenCorePersonaTest, NoPersona_EmptySchemas) {
 TEST_F(DrivenCorePersonaTest, FilterBySkills) {
     auto core = makeCore();
     core.setPersonaSkills({"system_task-manager"});
-    provider.m_responses = {mpsc::Complete{"done"}};
+    provider.m_responses = {mpsc::Complete{0, "done"}};
     core.runSync("test");
     EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "add-task"));
     EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "list-tasks"));
@@ -310,7 +310,7 @@ TEST_F(DrivenCorePersonaTest, FilterBySkills) {
 TEST_F(DrivenCorePersonaTest, FilterByTools) {
     auto core = makeCore();
     core.setPersonaTools({"system_fs_read"});
-    provider.m_responses = {mpsc::Complete{"done"}};
+    provider.m_responses = {mpsc::Complete{0, "done"}};
     core.runSync("test");
     EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "read"));
     EXPECT_FALSE(hasToolSchema(provider.m_lastToolSchemas, "write"));
@@ -322,7 +322,7 @@ TEST_F(DrivenCorePersonaTest, FilterBySkillsAndTools) {
     auto core = makeCore();
     core.setPersonaSkills({"system_task-manager"});
     core.setPersonaTools({"system_fs_glob"});
-    provider.m_responses = {mpsc::Complete{"done"}};
+    provider.m_responses = {mpsc::Complete{0, "done"}};
     core.runSync("test");
     EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "add-task"));
     EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "list-tasks"));
@@ -335,7 +335,7 @@ TEST_F(DrivenCorePersonaTest, FilterBySkillsAndTools) {
 TEST_F(DrivenCorePersonaTest, FilterEmptyResults) {
     auto core = makeCore();
     core.setPersonaSkills({"system_nonexistent"});
-    provider.m_responses = {mpsc::Complete{"done"}};
+    provider.m_responses = {mpsc::Complete{0, "done"}};
     core.runSync("test");
     EXPECT_TRUE(provider.m_lastToolSchemas.empty());
 }
@@ -345,7 +345,7 @@ TEST_F(DrivenCorePersonaTest, SetPersonaSetters) {
     core.setPersona("software-engineer");
     core.setPersonaSkills({"system_fs"});
     core.setPersonaTools({"system_task-manager_add-task"});
-    provider.m_responses = {mpsc::Complete{"done"}};
+    provider.m_responses = {mpsc::Complete{0, "done"}};
     core.runSync("test");
     EXPECT_TRUE(hasToolSchema(provider.m_lastToolSchemas, "read") ||
                 hasToolSchema(provider.m_lastToolSchemas, "write") ||

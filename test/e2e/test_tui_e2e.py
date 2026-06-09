@@ -266,6 +266,49 @@ class TestTuiToolDisplay:
                     f"Expected tool completion in TUI. Last output: {last_text[:300]}"
                 )
 
+    def test_tool_appears_before_response(self):
+        """Tool call block must render before assistant's final response text.
+
+        After the goal completes, captures the final steady-state TUI frame
+        and asserts the tool block line appears ABOVE the response text line
+        (tools execute before the assistant speaks the result).
+        """
+        scenario = os.path.join(FIXTURES_DIR, "streaming_tool_calls.json")
+        with MockServer(scenario=scenario, stream=True) as server:
+            with TuiDriver(mock_server=server) as driver:
+                assert wait_for_tui_ready(driver, timeout=15), "TUI failed to start"
+
+                driver.send_keys("run a tool")
+                driver.send_enter()
+
+                deadline = time.monotonic() + 30
+                last_text = ""
+                while time.monotonic() < deadline:
+                    text = driver.capture(timeout=2)
+                    if text:
+                        last_text = text
+                        if "Idle" in text:
+                            break
+
+                # Split into lines, find LAST occurrence of each marker
+                # (the final Idle frame is at the end of the captured output)
+                lines = last_text.split("\n")
+                tool_line = max((i for i, l in enumerate(lines) if "\U0001F527" in l), default=-1)
+                text_line = max((i for i, l in enumerate(lines) if "Tool executed" in l), default=-1)
+
+                assert tool_line >= 0, (
+                    f"Tool icon \U0001F527 not found in captured output:\n{last_text[:500]}"
+                )
+                assert text_line >= 0, (
+                    f"'Tool executed' not found in captured output:\n{last_text[:500]}"
+                )
+                assert tool_line < text_line, (
+                    f"Tool block (line {tool_line}) should render ABOVE response text"
+                    f" (line {text_line}) — tool was executed before the response.\n"
+                    f"Lines around tool:\n"
+                    + "\n".join(lines[max(0,tool_line-2):tool_line+3])
+                )
+
 
 class TestTuiMultiTurn:
     """Tests for multi-turn conversation context preservation."""

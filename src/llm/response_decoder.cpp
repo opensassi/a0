@@ -5,12 +5,25 @@ using json = nlohmann::json;
 
 namespace a0 {
 
+ResponseDecoder::ResponseDecoder(ResourceProvider* provider,
+                                 int64_t tokenFlushSize)
+    : m_provider(provider)
+    , m_tokenFlushSize(tokenFlushSize)
+{}
+
+ResponseDecoder::~ResponseDecoder() = default;
+
 void ResponseDecoder::reset() {
     m_buffer.clear();
+    m_textBuffer.clear();
     m_mode = Mode::Unknown;
     m_complete = false;
     m_accumToolCalls.clear();
     m_events.clear();
+    m_startEmitted = false;
+    m_streamId = 0;
+    m_chunkSeq = 0;
+    m_writer.reset();
 }
 
 void ResponseDecoder::feed(const char* data, size_t len) {
@@ -49,6 +62,7 @@ void ResponseDecoder::xFlushLine(const std::string& line) {
     // "data: [DONE]" = stream complete
     if (line == "data: [DONE]") {
         m_complete = true;
+        xFlushText(true);
         return;
     }
 
@@ -68,6 +82,38 @@ void ResponseDecoder::xFlushLine(const std::string& line) {
     }
 }
 
+void ResponseDecoder::xEmitStart() {
+    if (m_startEmitted) return;
+    m_startEmitted = true;
+
+    if (m_provider) {
+        m_writer = m_provider->create(ResourceType::LlmStream);
+        m_streamId = m_writer->id();
+    }
+
+    m_events.push_back(mpsc::LlmStart{m_streamId, m_roundSeq});
+}
+
+void ResponseDecoder::xEmitChunk(bool isFinal) {
+    if (m_textBuffer.empty() && !isFinal) return;
+    if (!m_startEmitted) {
+        xEmitStart();
+    }
+    m_events.push_back(mpsc::LlmChunk{m_streamId, ++m_chunkSeq, m_textBuffer, isFinal});
+    if (m_writer && !m_textBuffer.empty()) {
+        m_writer->append(m_textBuffer);
+    }
+    m_textBuffer.clear();
+}
+
+void ResponseDecoder::xFlushText(bool isFinal) {
+    if (m_textBuffer.empty() && !isFinal) return;
+    xEmitChunk(isFinal);
+    if (isFinal && m_writer) {
+        m_writer->close();
+    }
+}
+
 void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
     // Check for error
     if (j.contains("error")) {
@@ -77,7 +123,8 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
         } else if (j["error"].is_object() && j["error"].contains("message")) {
             msg = j["error"]["message"].get<std::string>();
         }
-        m_events.push_back(mpsc::Error{msg});
+        xFlushText(true);
+        m_events.push_back(mpsc::Error{"api", m_streamId, msg});
         m_complete = true;
         return;
     }
@@ -96,6 +143,12 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
         if (reason == "stop" || reason == "length") {
             m_complete = true;
 
+            // Flush remaining text before emitting final events
+            xFlushText(true);
+
+            // Emit LlmComplete
+            m_events.push_back(mpsc::LlmComplete{m_streamId, reason});
+
             // Emit ToolStart for any tool_calls in the message (non-streaming responses)
             if (choice.contains("message") && choice["message"].contains("tool_calls") &&
                 choice["message"]["tool_calls"].is_array()) {
@@ -108,31 +161,24 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
                         args = tc["function"].value("arguments", "");
                     }
                     if (!name.empty()) {
-                        m_events.push_back(mpsc::ToolStart{id, name, args});
+                        m_events.push_back(mpsc::ToolStart{0, id, name, args});
                     }
                 }
             }
 
-            // Find the assistant message content for non-streaming complete
+            // Emit Complete for non-streaming
             if (choice.contains("message") && choice["message"].contains("content") &&
                 !choice["message"]["content"].is_null()) {
                 std::string content = choice["message"]["content"].get<std::string>();
-                if (!content.empty()) {
-                    m_events.push_back(mpsc::Complete{content});
-                }
-            }
-
-            // If we didn't emit Complete via message.content, emit empty Complete
-            if (m_events.empty() || !std::holds_alternative<mpsc::Complete>(m_events.back())) {
-                m_events.push_back(mpsc::Complete{""});
+                m_events.push_back(mpsc::Complete{0, content});
+            } else {
+                m_events.push_back(mpsc::Complete{0, ""});
             }
             return;
         }
         if (reason == "tool_calls") {
             m_complete = true;
             hasToolCallsFinish = true;
-            // Don't return — fall through to delta processing so tool_calls
-            // arriving in the same chunk are accumulated before emission.
         }
     }
 
@@ -149,11 +195,14 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
         return;
     }
 
-    // Content (text tokens)
+    // Content (text tokens) — buffer and flush at threshold
     if (delta.contains("content") && !delta["content"].is_null()) {
         std::string text = delta["content"].get<std::string>();
         if (!text.empty()) {
-            m_events.push_back(mpsc::LlmToken{text});
+            m_textBuffer += text;
+            if (static_cast<int64_t>(m_textBuffer.size()) >= m_tokenFlushSize) {
+                xEmitChunk(false);
+            }
         }
     }
 
@@ -176,19 +225,21 @@ void ResponseDecoder::xProcessJsonChunk(const nlohmann::json& j) {
         }
     }
 
-    // Emit accumulated tool calls + Complete when finish_reason was "tool_calls"
+    // Emit accumulated tool calls + Completer when finish_reason was "tool_calls"
     if (hasToolCallsFinish) {
+        // Flush any remaining text before tool calls
+        xFlushText(true);
+        m_events.push_back(mpsc::LlmComplete{m_streamId, "tool_calls"});
+
         if (!m_accumToolCalls.empty()) {
             for (auto& [idx, tc] : m_accumToolCalls) {
                 if (!tc.name.empty()) {
-                    m_events.push_back(mpsc::ToolStart{tc.id, tc.name, tc.args});
+                    m_events.push_back(mpsc::ToolStart{0, tc.id, tc.name, tc.args});
                 }
             }
             m_accumToolCalls.clear();
         }
-        if (m_events.empty() || !std::holds_alternative<mpsc::Complete>(m_events.back())) {
-            m_events.push_back(mpsc::Complete{""});
-        }
+        m_events.push_back(mpsc::Complete{0, ""});
         return;
     }
 }
@@ -206,10 +257,10 @@ void ResponseDecoder::xFlushBuffer() {
                 });
                 xProcessJsonChunk(wrapped);
             } else {
-                m_events.push_back(mpsc::Complete{j.dump()});
+                m_events.push_back(mpsc::Complete{0, j.dump()});
             }
         } catch (const nlohmann::json::parse_error&) {
-            m_events.push_back(mpsc::Error{"Failed to parse LLM response"});
+            m_events.push_back(mpsc::Error{"decoder", 0, "Failed to parse LLM response"});
         }
         m_complete = true;
         m_buffer.clear();

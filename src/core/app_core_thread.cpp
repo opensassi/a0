@@ -1,5 +1,6 @@
 #include "core/app_core_thread.h"
 #include "persistence/persistence_store.h"
+#include "shared/resource_provider.h"
 #include "shared/trace.h"
 
 #include <errno.h>
@@ -16,6 +17,10 @@ AppCoreThread::AppCoreThread(const std::string& apiKey,
                              const std::string& model,
                              a0::skills::SkillManager* skillMgr,
                              a0::persistence::PersistenceStore* persistence,
+                             ResourceProvider* resourceProvider,
+                             int64_t tokenFlushSize,
+                             int64_t toolFlushSize,
+                             int64_t outputPreviewSize,
                              const std::string& personaName,
                              const std::vector<std::string>& personaSkills,
                              const std::vector<std::string>& personaTools)
@@ -26,6 +31,10 @@ AppCoreThread::AppCoreThread(const std::string& apiKey,
     , m_personaTools(personaTools)
     , m_skillMgr(skillMgr)
     , m_persistence(persistence)
+    , m_resourceProvider(resourceProvider)
+    , m_tokenFlushSize(tokenFlushSize)
+    , m_toolFlushSize(toolFlushSize)
+    , m_outputPreviewSize(outputPreviewSize)
 {
     m_wakeupFd = eventfd(0, EFD_NONBLOCK);
 }
@@ -86,7 +95,9 @@ void AppCoreThread::xRun() {
     if (!m_mockUrl.empty()) {
         provider.setMockUrl(m_mockUrl);
     }
-    DrivenCore core(&provider, m_skillMgr, m_persistence);
+    DrivenCore core(&provider, m_skillMgr, m_persistence,
+                    m_resourceProvider, m_tokenFlushSize,
+                    m_toolFlushSize, m_outputPreviewSize);
     core.setPersona(m_personaName);
     if (!m_personaSkills.empty()) core.setPersonaSkills(m_personaSkills);
     if (!m_personaTools.empty()) core.setPersonaTools(m_personaTools);
@@ -202,6 +213,19 @@ void AppCoreThread::xRun() {
                     }
                 }
                 m_evtSender.send(std::move(sh));
+            } else if (std::holds_alternative<mpsc::LoadResource>(cmd)) {
+                const auto& lr = std::get<mpsc::LoadResource>(cmd);
+                if (m_resourceProvider) {
+                    auto handle = m_resourceProvider->open(lr.type, lr.id);
+                    if (handle) {
+                        std::string data = handle->read(lr.offset, lr.limit);
+                        m_evtSender.send(mpsc::LoadResourceResult{lr.id, data});
+                    } else {
+                        m_evtSender.send(mpsc::LoadResourceResult{lr.id, ""});
+                    }
+                } else {
+                    m_evtSender.send(mpsc::LoadResourceResult{lr.id, ""});
+                }
             }
         }
 

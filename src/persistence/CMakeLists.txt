@@ -2,6 +2,7 @@ add_library(persistence_lib STATIC
     sqlite_store.cpp
     replay_engine.cpp
     build_identity.cpp
+    sqlite_resource_provider.cpp
 )
 
 target_include_directories(persistence_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
