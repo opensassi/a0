@@ -28,7 +28,11 @@ static void handleSignal(int) {
 }
 
 static std::string xGetWebRoot(const std::string& cwd) {
+#ifdef C2_DEFAULT_WEB_ROOT
+    return C2_DEFAULT_WEB_ROOT;
+#else
     return cwd + "/.a0/git/opensassi/a0/c2/web";
+#endif
 }
 
 int main(int argc, char* argv[]) {
@@ -70,10 +74,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Redirect stderr to log file if specified
+    // Redirect stdout + stderr to log file if specified
     if (!g_c2LogFile.empty()) {
         int fd = ::open(g_c2LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd >= 0) {
+            ::dup2(fd, STDOUT_FILENO);
             ::dup2(fd, STDERR_FILENO);
             ::close(fd);
         }

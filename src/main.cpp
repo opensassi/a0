@@ -20,6 +20,7 @@
 #include "app_core_thread.h"
 #include "personas.h"
 #include "tui/agent_tui.h"
+#include "daemonize.h"
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -191,19 +192,6 @@ static void xExportLogEnv(const std::string& sessionId) {
         ::setenv("A0_LOG_DIR", g_a0LogDir.c_str(), 1);
     if (!sessionId.empty())
         ::setenv("A0_SESSION_ID", sessionId.c_str(), 1);
-}
-
-static void xChildRedirectStdio(const std::string& path) {
-    int fd = -1;
-    if (!path.empty())
-        fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd < 0)
-        fd = ::open("/dev/null", O_WRONLY);
-    if (fd >= 0) {
-        ::dup2(fd, STDOUT_FILENO);
-        ::dup2(fd, STDERR_FILENO);
-        if (fd > 2) ::close(fd);
-    }
 }
 
 static std::string xAbsPath(const std::string& path) {
@@ -746,7 +734,7 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
                     b1Log = xChildLog(g_a0LogFile, "b1");
                 else if (!g_a0LogDir.empty() && !sid.empty())
                     b1Log = xMakeLogPath(sid, getpid(), "-b1");
-                xChildRedirectStdio(b1Log);
+                a0::xDaemonizeChild(b1Log);
                 if (!b1Log.empty()) {
                     execlp(b1Path.c_str(), "b1", "--workdir", initialCwd.c_str(),
                            "--a0-dir", a0Dir.c_str(), "--log-file", b1Log.c_str(), nullptr);
@@ -859,7 +847,7 @@ static int cmdTerminal(const std::string& a0Dir, const std::string& terminalId, 
                     b1Log = xChildLog(g_a0LogFile, "b1");
                 else if (!g_a0LogDir.empty())
                     b1Log = xMakeLogPath(sessionUuid, getpid(), "-b1");
-                xChildRedirectStdio(b1Log);
+                a0::xDaemonizeChild(b1Log);
                 if (!b1Log.empty()) {
                     execlp(b1Path.c_str(), "b1", "--workdir", workdir.c_str(),
                            "--a0-dir", a0Dir.c_str(), "--log-file", b1Log.c_str(), nullptr);

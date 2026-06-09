@@ -46,10 +46,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Redirect stderr to log file if specified
+    // Redirect stdout + stderr to log file if specified
     if (!g_b1LogFile.empty()) {
         int fd = ::open(g_b1LogFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd >= 0) {
+            ::dup2(fd, STDOUT_FILENO);
             ::dup2(fd, STDERR_FILENO);
             ::close(fd);
         }

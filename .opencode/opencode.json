@@ -20,25 +20,5 @@
       }
     }
   },
-  "instructions": [
-    "AGENTS.md"
-  ],
-  "mcp": {
-    "playwright": {
-      "type": "local",
-      "command": [
-        "npx",
-        "@playwright/mcp@latest",
-        "--headless"
-      ],
-      "enabled": true
-    },
-    "debugger": {
-      "type": "local",
-      "command": [
-        "gdb-mcp-server"
-      ],
-      "enabled": true
-    }
-  }
+  "instructions": ["AGENTS.md"]
 }

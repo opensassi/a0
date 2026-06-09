@@ -2,6 +2,7 @@
 #include "command_runner.h"
 #include "ipc_protocol.h"
 #include "trace.h"
+#include "daemonize.h"
 
 std::string g_b1LogFile;
 #include <unistd.h>
@@ -405,40 +406,28 @@ int Supervisor::xHandleTerminalOpen(const ipc::Message& msg, int peerFd) {
     }
     if (a0Path.empty()) a0Path = "a0";
 
-    // Derive child log file path
-    std::string a0Log;
-    if (!g_b1LogFile.empty()) {
-        auto dot = g_b1LogFile.rfind('.');
-        a0Log = (dot != std::string::npos)
-            ? g_b1LogFile.substr(0, dot) + "-a0" + g_b1LogFile.substr(dot)
-            : g_b1LogFile + "-a0";
-    }
-
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        // Redirect child stdout/stderr
-        {
+        // Derive child log file path
+        std::string a0Log;
+        if (!g_b1LogFile.empty()) {
+            auto dot = g_b1LogFile.rfind('.');
+            a0Log = (dot != std::string::npos)
+                ? g_b1LogFile.substr(0, dot) + "-a0" + g_b1LogFile.substr(dot)
+                : g_b1LogFile + "-a0";
+        } else {
             const char* logDir = getenv("A0_LOG_DIR");
             const char* sessionId = getenv("A0_SESSION_ID");
-            std::string termLog;
             if (logDir && sessionId)
-                termLog = std::string(logDir) + "/a0-" + sessionId + "-"
-                        + std::to_string(getpid()) + "-term.log";
-            int fd = -1;
-            if (!termLog.empty())
-                fd = ::open(termLog.c_str(), O_WRONLY|O_CREAT|O_APPEND, 0644);
-            if (fd < 0) fd = ::open("/dev/null", O_WRONLY);
-            if (fd >= 0) {
-                ::dup2(fd, STDOUT_FILENO);
-                ::dup2(fd, STDERR_FILENO);
-                if (fd > 2) ::close(fd);
-            }
+                a0Log = std::string(logDir) + "/a0-" + sessionId + "-"
+                      + std::to_string(getpid()) + "-term.log";
         }
+        a0::xDaemonizeChild(a0Log);
         // Child: launch a0 terminal in the requested directory
         std::string a0Dir = cwd + "/.a0";
         if (!msg.terminalId.empty()) {
-                    if (!a0Log.empty()) {
+            if (!a0Log.empty()) {
                 execlp(a0Path.c_str(), "a0", "--a0-dir", a0Dir.c_str(),
                        "--log-file", a0Log.c_str(),
                        "terminal", "--cwd", cwd.c_str(),
@@ -515,25 +504,19 @@ int Supervisor::xLaunchC2IfNeeded() {
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        // Redirect child stdout/stderr
         const char* logDir = getenv("A0_LOG_DIR");
         const char* sessionId = getenv("A0_SESSION_ID");
         std::string c2Log;
         if (logDir && sessionId)
             c2Log = std::string(logDir) + "/a0-" + sessionId + "-"
                   + std::to_string(getpid()) + "-c2.log";
-        {
-            int fd = -1;
-            if (!c2Log.empty())
-                fd = ::open(c2Log.c_str(), O_WRONLY|O_CREAT|O_APPEND, 0644);
-            if (fd < 0) fd = ::open("/dev/null", O_WRONLY);
-            if (fd >= 0) {
-                ::dup2(fd, STDOUT_FILENO);
-                ::dup2(fd, STDERR_FILENO);
-                if (fd > 2) ::close(fd);
-            }
+        a0::xDaemonizeChild(c2Log);
+        if (!c2Log.empty()) {
+            execlp(c2Path.c_str(), "c2", "--socket", m_c2SocketPath.c_str(),
+                   "--log-file", c2Log.c_str(), nullptr);
+        } else {
+            execlp(c2Path.c_str(), "c2", "--socket", m_c2SocketPath.c_str(), nullptr);
         }
-        execlp(c2Path.c_str(), "c2", "--socket", m_c2SocketPath.c_str(), nullptr);
         _exit(127);
     } else if (pid > 0) {
         m_c2ChildPid = pid;

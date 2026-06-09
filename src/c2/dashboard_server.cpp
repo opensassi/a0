@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include "trace.h"
+#include "daemonize.h"
 
 std::string g_c2LogFile;
 
@@ -533,7 +534,6 @@ void DashboardServer::xSetupRoutes(App* app) {
                 }
                 if (!a0Path.empty()) {
                     TRACE_LOG("c2: terminal_open cwd=" << cwd << " direct fork a0");
-                    pid_t child = fork();
                     // Derive child log file path
                     std::string a0Log;
                     if (!g_c2LogFile.empty()) {
@@ -542,8 +542,10 @@ void DashboardServer::xSetupRoutes(App* app) {
                             ? g_c2LogFile.substr(0, dot) + "-a0" + g_c2LogFile.substr(dot)
                             : g_c2LogFile + "-a0";
                     }
+                    pid_t child = fork();
                     if (child == 0) {
                         setsid();
+                        a0::xDaemonizeChild(a0Log);
                         std::string a0Dir = cwd + "/.a0";
                         if (!a0Log.empty()) {
                             execlp(a0Path.c_str(), "a0", "--a0-dir", a0Dir.c_str(),

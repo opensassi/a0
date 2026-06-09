@@ -61,7 +61,14 @@ target_link_libraries(c2_lib PUBLIC
     z
 )
 
+# Copy web UI files to share directory for default web-root resolution
+file(COPY ${CMAKE_SOURCE_DIR}/c2/web DESTINATION ${CMAKE_BINARY_DIR}/share/c2)
+
 add_executable(c2 c2_main.cpp)
 target_link_libraries(c2 PRIVATE c2_lib)
+target_compile_definitions(c2 PRIVATE
+    C2_DEFAULT_WEB_ROOT="${CMAKE_BINARY_DIR}/share/c2/web"
+)
 set_target_properties(c2 PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 install(TARGETS c2 RUNTIME DESTINATION bin)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/c2/web DESTINATION ${CMAKE_INSTALL_PREFIX}/share/c2)
