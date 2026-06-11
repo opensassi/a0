@@ -59,3 +59,65 @@ Implemented all 10+ modules across ~25 modified/created files, wrote 34 test cas
 
 **Aggregation Tags:**
 C++, skill system, DependencyGraph, ToolState, Playwright, E2E testing, Docker, Compose, JSON Schema, streaming, parallel execution, session evaluation
+
+---
+## Extracted Session Stats
+
+- **Duration:** 15049s (250.8m)
+  - First message: 05:23:01
+  - Last message:  09:33:50
+- **Messages:** 524 total (60 user, 464 assistant)
+- **Tool call parts:** 454
+- **Words:** 16,452 assistant, 8,174 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 135,160,180 |
+| Input Tokens — Cached | 133,369,344 (98.7%) |
+| Input Tokens — Uncached | 1,790,836 |
+| Output Tokens | 152,851 |
+| Reasoning Tokens | 61,173 |
+| Total Billed | 135,374,204 |
+| Cost | $0.684078 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   154 |  33.9% |
+| edit      |   138 |  30.4% |
+| read      |    98 |  21.6% |
+| write     |    26 |   5.7% |
+| todowrite |    25 |   5.5% |
+| grep      |    10 |   2.2% |
+| glob      |     2 |   0.4% |
+| skill     |     1 |   0.2% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 413 | 89.0% |
+| plan | 51 | 11.0% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 404 | 88.4% |
+| stop | 53 | 11.6% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 50.1m
+- **Wall clock:** 250.8m
+- **Idle/waiting:** 200.8m
+- **Gaps >60s (capped):** 40 of 59
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 4 |
+| 15-30s | 6 |
+| 30-45s | 3 |
+| 45-60s | 6 |
+| >60s | 40 |

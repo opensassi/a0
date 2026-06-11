@@ -73,3 +73,64 @@ Full TUI (Terminal User Interface) sub-module implementation for the a0 C++17 ag
 
 **Aggregation Tags:**
 C++, FTXUI, TUI, terminal-user-interface, SQLite, session-management, MD4C, markdown-rendering, clipboard, OSC-52, E2E-testing, CMake, process-management, debugging
+
+---
+## Extracted Session Stats
+
+- **Duration:** 9249s (154.1m)
+  - First message: 08:36:28
+  - Last message:  11:10:37
+- **Messages:** 408 total (39 user, 369 assistant)
+- **Tool call parts:** 395
+- **Words:** 8,232 assistant, 3,011 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 96,159,062 |
+| Input Tokens — Cached | 95,143,936 (98.9%) |
+| Input Tokens — Uncached | 1,015,126 |
+| Output Tokens | 125,323 |
+| Reasoning Tokens | 78,238 |
+| Total Billed | 96,362,623 |
+| Cost | $0.465518 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   128 |  32.4% |
+| read      |    91 |  23.0% |
+| edit      |    87 |  22.0% |
+| write     |    55 |  13.9% |
+| todowrite |    18 |   4.6% |
+| glob      |     7 |   1.8% |
+| grep      |     7 |   1.8% |
+| skill     |     2 |   0.5% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 306 | 82.9% |
+| plan | 63 | 17.1% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 330 | 91.4% |
+| stop | 31 | 8.6% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 31.0m
+- **Wall clock:** 154.1m
+- **Idle/waiting:** 123.2m
+- **Gaps >60s (capped):** 20 of 38
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 8 |
+| 30-45s | 5 |
+| 45-60s | 5 |
+| >60s | 20 |

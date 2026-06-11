@@ -70,3 +70,66 @@ Complete system tool layer with agentic LLM tool dispatch
 
 **Aggregation Tags:**
 system-tools, function-calling, deepseek-api, cpp17, agent-orchestration, persistence, sqlite, filesystem-scanning, utf-8-sanitization, glob-pattern-matching, e2e-testing, opencode-compatibility
+
+---
+## Extracted Session Stats
+
+- **Duration:** 90156s (1502.6m)
+  - First message: 19:17:36
+  - Last message:  20:20:12
+- **Messages:** 349 total (38 user, 311 assistant)
+- **Tool call parts:** 343
+- **Words:** 10,425 assistant, 5,143 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 76,533,244 |
+| Input Tokens — Cached | 75,465,600 (98.6%) |
+| Input Tokens — Uncached | 1,067,644 |
+| Output Tokens | 97,872 |
+| Reasoning Tokens | 70,906 |
+| Total Billed | 76,702,022 |
+| Cost | $0.408032 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| read      |   105 |  30.6% |
+| edit      |    89 |  25.9% |
+| bash      |    73 |  21.3% |
+| todowrite |    33 |   9.6% |
+| write     |    22 |   6.4% |
+| glob      |     9 |   2.6% |
+| task      |     6 |   1.7% |
+| grep      |     3 |   0.9% |
+| skill     |     2 |   0.6% |
+| question  |     1 |   0.3% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 242 | 77.8% |
+| plan | 69 | 22.2% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 273 | 88.9% |
+| stop | 34 | 11.1% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 31.9m
+- **Wall clock:** 1502.6m
+- **Idle/waiting:** 1470.7m
+- **Gaps >60s (capped):** 25 of 37
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 4 |
+| 30-45s | 5 |
+| 45-60s | 3 |
+| >60s | 25 |

@@ -83,3 +83,66 @@ TUI sub-module rewritten as a thin MPSC client with zero core references; AppCor
 
 **Aggregation Tags:**
 C++, concurrency, MPSC, FTXUI, TUI, curl_multi, PTY testing, pytest, E2E, thread architecture, AppCoreThread, session management, signal safety, CSPRNG
+
+---
+## Extracted Session Stats
+
+- **Duration:** 7605s (126.7m)
+  - First message: 18:10:42
+  - Last message:  20:17:26
+- **Messages:** 399 total (32 user, 367 assistant)
+- **Tool call parts:** 376
+- **Words:** 8,827 assistant, 7,514 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 118,129,831 |
+| Input Tokens — Cached | 116,388,096 (98.5%) |
+| Input Tokens — Uncached | 1,741,735 |
+| Output Tokens | 119,440 |
+| Reasoning Tokens | 114,149 |
+| Total Billed | 118,363,420 |
+| Cost | $0.635134 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   119 |  31.6% |
+| read      |    99 |  26.3% |
+| edit      |    74 |  19.7% |
+| grep      |    48 |  12.8% |
+| write     |    18 |   4.8% |
+| todowrite |    11 |   2.9% |
+| glob      |     4 |   1.1% |
+| task      |     2 |   0.5% |
+| skill     |     1 |   0.3% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 301 | 82.0% |
+| plan | 66 | 18.0% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 335 | 94.9% |
+| stop | 18 | 5.1% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 22.6m
+- **Wall clock:** 126.7m
+- **Idle/waiting:** 104.1m
+- **Gaps >60s (capped):** 14 of 31
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 4 |
+| 15-30s | 6 |
+| 30-45s | 1 |
+| 45-60s | 6 |
+| >60s | 14 |

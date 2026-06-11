@@ -71,3 +71,65 @@ Approximately 40-50 hours of senior C++ engineer time:
 
 **Aggregation Tags:**
 sqlite, persistence, schema-design, CLI-refactor, C++17, CMake, test-driven-development, session-management, JSON, data-migration, command-line-parsing
+
+---
+## Extracted Session Stats
+
+- **Duration:** 245929s (4098.8m)
+  - First message: 19:17:36
+  - Last message:  15:36:24
+- **Messages:** 355 total (30 user, 325 assistant)
+- **Tool call parts:** 358
+- **Words:** 10,743 assistant, 5,225 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 81,145,945 |
+| Input Tokens — Cached | 80,190,464 (98.8%) |
+| Input Tokens — Uncached | 955,481 |
+| Output Tokens | 106,106 |
+| Reasoning Tokens | 65,555 |
+| Total Billed | 81,317,606 |
+| Cost | $0.406366 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| read      |   105 |  29.3% |
+| edit      |   104 |  29.1% |
+| bash      |    82 |  22.9% |
+| grep      |    41 |  11.5% |
+| todowrite |    13 |   3.6% |
+| webfetch  |     4 |   1.1% |
+| glob      |     3 |   0.8% |
+| write     |     3 |   0.8% |
+| invalid   |     3 |   0.8% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 247 | 76.0% |
+| plan | 78 | 24.0% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 295 | 91.6% |
+| stop | 27 | 8.4% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 25.9m
+- **Wall clock:** 4098.8m
+- **Idle/waiting:** 4072.9m
+- **Gaps >60s (capped):** 22 of 29
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 2 |
+| 30-45s | 3 |
+| 45-60s | 2 |
+| >60s | 21 |

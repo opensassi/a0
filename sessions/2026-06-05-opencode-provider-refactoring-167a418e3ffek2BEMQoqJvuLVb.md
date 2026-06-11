@@ -81,3 +81,66 @@ Refactoring the a0 C++17 agent's LLM provider architecture from a synchronous `I
 
 **Aggregation Tags:**
 C++17, LLM provider abstraction, curl_multi, async tick-based API, DrivenCore, DeepSeek API, FTXUI TUI, session persistence, SQLite, SSE streaming, ResponseDecoder, DependencyGraph, technical specification, spec.md, test-driven development, GTest, Python E2E, architectural refactoring, code deprecation
+
+---
+## Extracted Session Stats
+
+- **Duration:** 9427s (157.1m)
+  - First message: 15:17:00
+  - Last message:  17:54:07
+- **Messages:** 278 total (28 user, 250 assistant)
+- **Tool call parts:** 266
+- **Words:** 10,668 assistant, 7,315 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 70,893,131 |
+| Input Tokens — Cached | 69,789,056 (98.4%) |
+| Input Tokens — Uncached | 1,104,075 |
+| Output Tokens | 107,192 |
+| Reasoning Tokens | 98,065 |
+| Total Billed | 71,098,388 |
+| Cost | $0.407452 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| read      |    74 |  27.8% |
+| edit      |    63 |  23.7% |
+| bash      |    59 |  22.2% |
+| grep      |    21 |   7.9% |
+| write     |    20 |   7.5% |
+| todowrite |    16 |   6.0% |
+| task      |     7 |   2.6% |
+| glob      |     5 |   1.9% |
+| skill     |     1 |   0.4% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 198 | 79.2% |
+| plan | 52 | 20.8% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 222 | 89.9% |
+| stop | 25 | 10.1% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 22.4m
+- **Wall clock:** 157.1m
+- **Idle/waiting:** 134.7m
+- **Gaps >60s (capped):** 17 of 27
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 1 |
+| 15-30s | 4 |
+| 30-45s | 2 |
+| 45-60s | 3 |
+| >60s | 17 |

@@ -1,0 +1,42 @@
+{
+  "duration_seconds": 20.0,
+  "duration_minutes": 0.3333333333333333,
+  "first_message": "2026-05-31T21:23:57+00:00",
+  "last_message": "2026-05-31T21:24:17+00:00",
+  "messages": {
+    "total": 2,
+    "user": 1,
+    "assistant": 1,
+    "tool_parts": 0
+  },
+  "words": {
+    "user": 1,
+    "assistant": 1922
+  },
+  "tokens": {
+    "input": {
+      "total": 0,
+      "cached": 0,
+      "uncached": 0
+    },
+    "cache_hit_pct": 0,
+    "output": 0,
+    "reasoning": 0,
+    "total_billed": 0
+  },
+  "cost": 0.0,
+  "tools": {},
+  "modes": {},
+  "finish_reasons": {},
+  "part_types": {
+    "text": 2
+  },
+  "prompter_active": {
+    "minutes_active": 0.0,
+    "minutes_wall": 0.3,
+    "minutes_idle": 0.3,
+    "gaps_total": 0,
+    "gaps_exceeding_60s_cap": 0,
+    "gap_distribution_seconds": {}
+  }
+}

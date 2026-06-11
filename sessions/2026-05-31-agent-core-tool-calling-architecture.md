@@ -63,3 +63,39 @@ Agent execution loop — `DefaultAgentCore::processGoal` refactored to expand sk
 
 **Aggregation Tags:**
 C++ agent architecture, LLM tool calling, skill execution pipeline, base prompt design, dynamic tool discovery, schema validation, worktree testing, meta-skill scaffolding, CLI tool generation, session evaluation
+
+---
+## Extracted Session Stats
+
+- **Duration:** 20s (0.3m)
+  - First message: 21:23:57
+  - Last message:  21:24:17
+- **Messages:** 2 total (1 user, 1 assistant)
+- **Tool call parts:** 0
+- **Words:** 1,922 assistant, 1 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 0 |
+| Input Tokens — Cached | 0 (0.0%) |
+| Input Tokens — Uncached | 0 |
+| Output Tokens | 0 |
+| Reasoning Tokens | 0 |
+| Total Billed | 0 |
+| Cost | $0.000000 |
+
+### Tool Usage
+
+
+### Mode & Finish
+
+
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 0.0m
+- **Wall clock:** 0.3m
+- **Idle/waiting:** 0.3m
+- **Gaps >60s (capped):** 0 of 0

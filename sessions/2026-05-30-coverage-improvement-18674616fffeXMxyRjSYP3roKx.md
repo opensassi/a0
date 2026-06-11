@@ -63,3 +63,65 @@ Comprehensive test suite expansion raising overall line coverage from 55% to 79.
 
 **Aggregation Tags:**
 code-coverage, unit-testing, gtest, c++17, integration-testing, mock-server, e2e-testing, gcov, lcov, test-automation, refactoring
+
+---
+## Extracted Session Stats
+
+- **Duration:** 167010s (2783.5m)
+  - First message: 19:17:36
+  - Last message:  17:41:06
+- **Messages:** 411 total (27 user, 384 assistant)
+- **Tool call parts:** 401
+- **Words:** 3,421 assistant, 4,595 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 83,112,802 |
+| Input Tokens — Cached | 82,547,456 (99.3%) |
+| Input Tokens — Uncached | 565,346 |
+| Output Tokens | 98,363 |
+| Reasoning Tokens | 94,074 |
+| Total Billed | 83,305,239 |
+| Cost | $0.364164 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   160 |  39.9% |
+| read      |    86 |  21.4% |
+| edit      |    71 |  17.7% |
+| grep      |    30 |   7.5% |
+| write     |    23 |   5.7% |
+| glob      |    17 |   4.2% |
+| todowrite |     9 |   2.2% |
+| task      |     4 |   1.0% |
+| invalid   |     1 |   0.2% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 373 | 97.1% |
+| plan | 11 | 2.9% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 358 | 96.8% |
+| stop | 12 | 3.2% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 18.6m
+- **Wall clock:** 2783.5m
+- **Idle/waiting:** 2765.0m
+- **Gaps >60s (capped):** 13 of 26
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 6 |
+| 15-30s | 3 |
+| 45-60s | 4 |
+| >60s | 12 |

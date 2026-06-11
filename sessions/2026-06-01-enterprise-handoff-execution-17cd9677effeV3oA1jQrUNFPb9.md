@@ -51,3 +51,60 @@ Approximately 24–32 hours of senior DevOps/engineering effort:
 
 **Aggregation Tags:**
 enterprise-stakeholder-review, handoff-execution, github-issues, project-board, graphql-api, atomic-decomposition, audit-reconciliation, cpp-codebase, opensassi-a0, parallel-implementation, sprint-planning
+
+---
+## Extracted Session Stats
+
+- **Duration:** 321709s (5361.8m)
+  - First message: 19:17:36
+  - Last message:  12:39:24
+- **Messages:** 30 total (3 user, 27 assistant)
+- **Tool call parts:** 54
+- **Words:** 1,828 assistant, 4,564 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 2,322,863 |
+| Input Tokens — Cached | 2,158,720 (92.9%) |
+| Input Tokens — Uncached | 164,143 |
+| Output Tokens | 15,602 |
+| Reasoning Tokens | 8,257 |
+| Total Billed | 2,346,722 |
+| Cost | $0.035705 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |    36 |  66.7% |
+| read      |     5 |   9.3% |
+| glob      |     4 |   7.4% |
+| todowrite |     4 |   7.4% |
+| task      |     3 |   5.6% |
+| skill     |     1 |   1.9% |
+| write     |     1 |   1.9% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 26 | 96.3% |
+| plan | 1 | 3.7% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 24 | 92.3% |
+| stop | 2 | 7.7% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 2.0m
+- **Wall clock:** 5361.8m
+- **Idle/waiting:** 5359.8m
+- **Gaps >60s (capped):** 2 of 2
+
+| Gap Range | Count |
+|-----------|-------|
+| >60s | 1 |

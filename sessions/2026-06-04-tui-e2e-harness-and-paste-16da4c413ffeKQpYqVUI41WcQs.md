@@ -68,3 +68,66 @@ Agent-facing E2E test harness (`test/agent_e2e/`) with 36 Python tests, plus TUI
 
 **Aggregation Tags:**
 TUI, FTXUI, E2E testing, PTY test harness, bracketed paste, copy-on-select, clipboard, C++17, terminal protocols, keyboard focus, thread safety, data race, scenario-driven testing, pytest, TDD
+
+---
+## Extracted Session Stats
+
+- **Duration:** 11529s (192.1m)
+  - First message: 11:18:33
+  - Last message:  14:30:41
+- **Messages:** 406 total (25 user, 381 assistant)
+- **Tool call parts:** 399
+- **Words:** 8,671 assistant, 4,764 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 106,400,960 |
+| Input Tokens — Cached | 105,231,872 (98.9%) |
+| Input Tokens — Uncached | 1,169,088 |
+| Output Tokens | 119,444 |
+| Reasoning Tokens | 160,139 |
+| Total Billed | 106,680,543 |
+| Cost | $0.536605 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   142 |  35.6% |
+| read      |   100 |  25.1% |
+| edit      |    82 |  20.6% |
+| grep      |    22 |   5.5% |
+| write     |    21 |   5.3% |
+| todowrite |    16 |   4.0% |
+| glob      |     9 |   2.3% |
+| question  |     5 |   1.3% |
+| task      |     2 |   0.5% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 284 | 74.5% |
+| plan | 97 | 25.5% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 356 | 94.4% |
+| stop | 21 | 5.6% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 18.5m
+- **Wall clock:** 192.1m
+- **Idle/waiting:** 173.6m
+- **Gaps >60s (capped):** 12 of 24
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 1 |
+| 15-30s | 4 |
+| 30-45s | 5 |
+| 45-60s | 2 |
+| >60s | 12 |

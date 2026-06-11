@@ -65,3 +65,66 @@ Approximately 40–60 hours for a senior C++ engineer to design, implement, test
 
 **Aggregation Tags:**
 C++17, architecture refactoring, handler registry, unified dispatch, SkillManager, SystemToolRegistry elimination, test migration, spec revision, GTest, CMake, Mermaid diagrams
+
+---
+## Extracted Session Stats
+
+- **Duration:** 8332s (138.9m)
+  - First message: 08:20:08
+  - Last message:  10:39:00
+- **Messages:** 320 total (26 user, 294 assistant)
+- **Tool call parts:** 319
+- **Words:** 9,855 assistant, 6,890 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 81,708,458 |
+| Input Tokens — Cached | 80,617,856 (98.7%) |
+| Input Tokens — Uncached | 1,090,602 |
+| Output Tokens | 113,304 |
+| Reasoning Tokens | 84,325 |
+| Total Billed | 81,906,087 |
+| Cost | $0.433750 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| edit      |   117 |  36.7% |
+| read      |    84 |  26.3% |
+| bash      |    56 |  17.6% |
+| grep      |    28 |   8.8% |
+| write     |    16 |   5.0% |
+| todowrite |    12 |   3.8% |
+| glob      |     3 |   0.9% |
+| task      |     1 |   0.3% |
+| question  |     1 |   0.3% |
+| invalid   |     1 |   0.3% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 259 | 88.1% |
+| plan | 35 | 11.9% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 268 | 91.8% |
+| stop | 24 | 8.2% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 20.5m
+- **Wall clock:** 138.9m
+- **Idle/waiting:** 118.4m
+- **Gaps >60s (capped):** 15 of 25
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 2 |
+| 15-30s | 4 |
+| 45-60s | 4 |
+| >60s | 15 |

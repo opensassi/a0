@@ -59,3 +59,67 @@ Implemented all code changes across 15+ source files and 7 test files, traced th
 
 **Aggregation Tags:**
 a0-agent, C++17, architectural-cleanup, refactoring, schema-inference, tool-dispatch, docker-integration, git-skills, subprocess-management, stderr-capture, dependency-resolution, build-system
+
+---
+## Extracted Session Stats
+
+- **Duration:** 15467s (257.8m)
+  - First message: 13:27:10
+  - Last message:  17:44:57
+- **Messages:** 225 total (40 user, 185 assistant)
+- **Tool call parts:** 261
+- **Words:** 8,350 assistant, 6,719 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 34,372,963 |
+| Input Tokens — Cached | 33,546,752 (97.6%) |
+| Input Tokens — Uncached | 826,211 |
+| Output Tokens | 54,190 |
+| Reasoning Tokens | 44,380 |
+| Total Billed | 34,471,533 |
+| Cost | $0.237200 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| read      |    98 |  37.5% |
+| edit      |    61 |  23.4% |
+| grep      |    41 |  15.7% |
+| bash      |    36 |  13.8% |
+| todowrite |    10 |   3.8% |
+| glob      |     6 |   2.3% |
+| task      |     4 |   1.5% |
+| write     |     3 |   1.1% |
+| webfetch  |     1 |   0.4% |
+| skill     |     1 |   0.4% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 100 | 54.1% |
+| plan | 85 | 45.9% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 145 | 81.0% |
+| stop | 34 | 19.0% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 30.5m
+- **Wall clock:** 257.8m
+- **Idle/waiting:** 227.3m
+- **Gaps >60s (capped):** 22 of 39
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 4 |
+| 15-30s | 4 |
+| 30-45s | 7 |
+| 45-60s | 2 |
+| >60s | 22 |

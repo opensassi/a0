@@ -78,3 +78,67 @@ Approximately 120-160 hours of combined SME time:
 
 **Aggregation Tags:**
 enterprise-panel, system-design-review, product-roadmap, security-audit, zero-trust, jwt-auth, git-workspace, ontogeny, mcp-integration, playwright-testing, agentic-development, github-projects
+
+---
+## Extracted Session Stats
+
+- **Duration:** 319376s (5322.9m)
+  - First message: 19:17:36
+  - Last message:  12:00:32
+- **Messages:** 450 total (96 user, 354 assistant)
+- **Tool call parts:** 301
+- **Words:** 27,436 assistant, 14,334 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 122,541,522 |
+| Input Tokens — Cached | 120,905,216 (98.7%) |
+| Input Tokens — Uncached | 1,636,306 |
+| Output Tokens | 199,555 |
+| Reasoning Tokens | 44,469 |
+| Total Billed | 122,785,546 |
+| Cost | $0.635944 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   183 |  60.8% |
+| read      |    32 |  10.6% |
+| edit      |    32 |  10.6% |
+| write     |    16 |   5.3% |
+| todowrite |     9 |   3.0% |
+| glob      |     8 |   2.7% |
+| webfetch  |     8 |   2.7% |
+| task      |     7 |   2.3% |
+| grep      |     5 |   1.7% |
+| skill     |     1 |   0.3% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 287 | 81.1% |
+| plan | 67 | 18.9% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 258 | 73.5% |
+| stop | 93 | 26.5% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 80.9m
+- **Wall clock:** 5322.9m
+- **Idle/waiting:** 5242.1m
+- **Gaps >60s (capped):** 67 of 95
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 3 |
+| 15-30s | 12 |
+| 30-45s | 8 |
+| 45-60s | 5 |
+| >60s | 66 |

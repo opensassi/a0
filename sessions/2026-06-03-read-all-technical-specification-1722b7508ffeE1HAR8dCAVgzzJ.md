@@ -55,3 +55,60 @@ Session focused on loading the full technical specification tree (6 files, 4,286
 
 **Session Evaluation:**
 Focused, well-scoped session that moved from analysis (reading all specs, cataloguing gh commands) to implementation (github skill + E2E test) to validation (8/8 assertions passing with clean cleanup). The skill integrates with the existing a0 tool‑calling loop via `tools_for_prompt` tool discovery, providing a template for future domain-specific skills. The E2E test demonstrates the full pattern: create real GitHub resources → run a0 agent with mock LLM → verify via API → cleanup.
+
+---
+## Extracted Session Stats
+
+- **Duration:** 3161s (52.7m)
+  - First message: 14:12:57
+  - Last message:  15:05:38
+- **Messages:** 114 total (8 user, 106 assistant)
+- **Tool call parts:** 136
+- **Words:** 4,302 assistant, 4,489 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 20,591,282 |
+| Input Tokens — Cached | 20,028,032 (97.3%) |
+| Input Tokens — Uncached | 563,250 |
+| Output Tokens | 36,300 |
+| Reasoning Tokens | 53,273 |
+| Total Billed | 20,680,855 |
+| Cost | $0.160014 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |    55 |  40.4% |
+| read      |    50 |  36.8% |
+| edit      |    13 |   9.6% |
+| write     |     9 |   6.6% |
+| glob      |     5 |   3.7% |
+| todowrite |     4 |   2.9% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 72 | 67.9% |
+| plan | 34 | 32.1% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 98 | 93.3% |
+| stop | 7 | 6.7% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 6.9m
+- **Wall clock:** 52.7m
+- **Idle/waiting:** 45.8m
+- **Gaps >60s (capped):** 6 of 7
+
+| Gap Range | Count |
+|-----------|-------|
+| 45-60s | 1 |
+| >60s | 6 |

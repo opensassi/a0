@@ -1,0 +1,3892 @@
+{
+  "generated_at": "2026-06-11T02:44:12.790657+00:00",
+  "session_count": 44,
+  "sessions": [
+    {
+      "slug": "2026-05-28-a0-mvp-19122c3eeffe8oWtGInH1MCesP",
+      "prompter": {
+        "total_hours_min": 1.5,
+        "total_hours_max": 1.5,
+        "is_range": false,
+        "total_raw": "~1.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.8,
+            "hours_max": 0.8,
+            "is_range": false,
+            "raw": "~0.8 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 23.0,
+        "total_hours_max": 23.0,
+        "is_range": false,
+        "total_raw": "~23 hours",
+        "annotation": "(senior C++ engineer)",
+        "sub_items": [
+          {
+            "label": "Project scaffolding and CMake/build system setup",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "C++ interface design and architecture",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Implementation of 9 modules (TDD)",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Test writing and debugging",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Coverage setup and gap resolution",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "E2E test infrastructure (mock server + runner)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Documentation and spec updates",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-28-docker-sub-module-18f02515fffeOSSZ17jUZ0MCzC",
+      "prompter": {
+        "total_hours_min": 1.5,
+        "total_hours_max": 1.5,
+        "is_range": false,
+        "total_raw": "1.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.6,
+            "hours_max": 0.6,
+            "is_range": false,
+            "raw": "~0.6 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 32.0,
+        "is_range": true,
+        "total_raw": "~24\u201332 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architectural design and interface definition",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3\u20134 hours"
+          },
+          {
+            "label": "Docker CLI wrapper with process management and signal handling",
+            "hours_min": 4.0,
+            "hours_max": 5.0,
+            "is_range": true,
+            "raw": "4\u20135 hours"
+          },
+          {
+            "label": "Container pool lifecycle manager with pruning",
+            "hours_min": 4.0,
+            "hours_max": 5.0,
+            "is_range": true,
+            "raw": "4\u20135 hours"
+          },
+          {
+            "label": "Docker Compose orchestration with network tracking",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3\u20134 hours"
+          },
+          {
+            "label": "ToolRunner implementation with args/stdin modes",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3\u20134 hours"
+          },
+          {
+            "label": "Build system integration with CMake",
+            "hours_min": 1.0,
+            "hours_max": 2.0,
+            "is_range": true,
+            "raw": "1\u20132 hours"
+          },
+          {
+            "label": "Unit test infrastructure with mock Docker",
+            "hours_min": 4.0,
+            "hours_max": 5.0,
+            "is_range": true,
+            "raw": "4\u20135 hours"
+          },
+          {
+            "label": "E2E test script authoring",
+            "hours_min": 2.0,
+            "hours_max": 3.0,
+            "is_range": true,
+            "raw": "2\u20133 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-28-v2-spec-revisions-18ff9f2b7ffeHcgiA56UomZGfh",
+      "prompter": {
+        "total_hours_min": 1.0,
+        "total_hours_max": 1.0,
+        "is_range": false,
+        "total_raw": "~1.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.2,
+            "hours_max": 0.2,
+            "is_range": false,
+            "raw": "~0.2 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 12.5,
+        "total_hours_max": 12.5,
+        "is_range": false,
+        "total_raw": "~12.5 hours",
+        "annotation": "(senior C++ engineer, Linux systems expertise)",
+        "sub_items": [
+          {
+            "label": "Signal-safe subprocess timeout implementation (fork/exec/waitpid + alarm)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Recursive dependency resolver design and implementation",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Parameter substitution engine and validator prefix",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "1.5 hours"
+          },
+          {
+            "label": "Test writing (unit + E2E negative)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Debugging and fixes",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Spec documentation updates",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-29-agent-ecosystem-b1-c2-18bd4dd71ffe0W8EdVw0Pqt2qa",
+      "prompter": {
+        "total_hours_min": 4.5,
+        "total_hours_max": 4.5,
+        "is_range": false,
+        "total_raw": "4.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "~2.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 60.0,
+        "is_range": true,
+        "total_raw": "40\u201360 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture and design",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "IPC library implementation and testing",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "b1 supervisor implementation",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "c2 dashboard implementation",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Docker integration and container pooling",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "a0 CLI extension (--run, b1 auto-launch)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Rename/restructure (components\u2192skills, Skill\u2192Prompt)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Tests and E2E",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Documentation (specs)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-29-agentic-tool-system-18b3ccfb3ffe7BcL5jq85CvRBI",
+      "prompter": {
+        "total_hours_min": 4.5,
+        "total_hours_max": 4.5,
+        "is_range": false,
+        "total_raw": "4.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "~2.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 40.0,
+        "is_range": false,
+        "total_raw": "~40 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Tool C++ implementation",
+            "hours_min": 12.0,
+            "hours_max": 12.0,
+            "is_range": false,
+            "raw": "12 hours"
+          },
+          {
+            "label": "LLM function-calling integration",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Testing and debugging",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Persistence wiring",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Code review and hardening",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Documentation and specs",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-29-skills-persistence-command-runner-18e71a0dbffe4Aco1VAu5qiYN7",
+      "prompter": {
+        "total_hours_min": 3.5,
+        "total_hours_max": 3.5,
+        "is_range": false,
+        "total_raw": "~3.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 34.0,
+        "total_hours_max": 34.0,
+        "is_range": false,
+        "total_raw": "~34 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architectural design review and iteration (system architect, 3 rounds)",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "C++ implementation (senior engineer, 3 modules)",
+            "hours_min": 16.0,
+            "hours_max": 16.0,
+            "is_range": false,
+            "raw": "16 hours"
+          },
+          {
+            "label": "Build system integration and debugging (devops engineer)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Documentation and specification writing (technical writer)",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-30-c2-web-ui-sse-187c814dbffe7QiQREe2OBfkpi",
+      "prompter": {
+        "total_hours_min": 4.2,
+        "total_hours_max": 4.2,
+        "is_range": false,
+        "total_raw": "4.2 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.8,
+            "hours_max": 1.8,
+            "is_range": false,
+            "raw": "~1.8 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.2,
+            "hours_max": 1.2,
+            "is_range": false,
+            "raw": "~1.2 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.2,
+            "hours_max": 1.2,
+            "is_range": false,
+            "raw": "~1.2 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 60.0,
+        "is_range": true,
+        "total_raw": "40\u201360 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Systems architecture and protocol design",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "C++ SSE infrastructure (SseManager, EventStore, IPC extensions)",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "DashboardServer rewrite and route implementation",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "b1 supervisor bidirectional IPC",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "C2Listener b1 tracking and sendToB1",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "WebComponents SPA (15 components, 5 pages)",
+            "hours_min": 12.0,
+            "hours_max": 12.0,
+            "is_range": false,
+            "raw": "12 hours"
+          },
+          {
+            "label": "Conversation viewer with pruning/scrolling/collapse",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Build system, signal handling, PID files, daemon isolation",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Testing and debugging",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-30-coverage-improvement-18674616fffeXMxyRjSYP3roKx",
+      "prompter": {
+        "total_hours_min": 1.5,
+        "total_hours_max": 1.5,
+        "is_range": false,
+        "total_raw": "~1.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.8,
+            "hours_max": 0.8,
+            "is_range": false,
+            "raw": "~0.8 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 17.0,
+        "total_hours_max": 17.0,
+        "is_range": false,
+        "total_raw": "~17 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "C++ test infrastructure setup and analysis",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Writing 130+ test cases across 10 files",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "E2E test script refactoring and debugging",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Bug fix in VersionManager",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Mock server enhancement",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Coverage analysis and iteration",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-30-git-docker-system-tools-18463f3ecffeSIcmXahDXFhJQz",
+      "prompter": {
+        "total_hours_min": 5.5,
+        "total_hours_max": 5.5,
+        "is_range": false,
+        "total_raw": "~5.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "~3.0 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 40.0,
+        "is_range": false,
+        "total_raw": "~40 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture design and spec",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Git skill implementation (163 commands, handler groups, templates)",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Docker/compose skill implementation (99 commands, security filter)",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "System sub-module refactoring",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Test fixture updates and debugging",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Discovery/analysis infrastructure (tools_for_prompt, show_skills)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Generation scripts and tool data",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Prompt engineering and iteration",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-30-skill-porting-1887ae5f2ffeOYnyZGaybXbxbo",
+      "prompter": {
+        "total_hours_min": 6.0,
+        "total_hours_max": 6.0,
+        "is_range": false,
+        "total_raw": "6.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "~3.0 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 40.0,
+        "is_range": false,
+        "total_raw": "~40 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": ". Breakdown: C++17 system architecture design (",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6h"
+          },
+          {
+            "label": "), SkillManager/SkillLoader implementation (",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8h"
+          },
+          {
+            "label": "), agent_core/processGoal rewrite (",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6h"
+          },
+          {
+            "label": "), test framework + 19 test cases (",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8h"
+          },
+          {
+            "label": "), skill file authoring \u2014 19 prompts + 5 scripts (",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8h"
+          },
+          {
+            "label": "), debugging + fixing (",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4h"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-30-streaming-terminal-infrastructure-18713e81affeg9vZvsSCeKU0bw",
+      "prompter": {
+        "total_hours_min": 4.5,
+        "total_hours_max": 4.5,
+        "is_range": false,
+        "total_raw": "4.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "~2.0 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 60.0,
+        "is_range": true,
+        "total_raw": "~40\u201360 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Persistence schema design and implementation",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Concurrent process execution infrastructure",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "IPC protocol design and implementation",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "b1 supervisor relay integration",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "a0 PTY terminal mode",
+            "hours_min": 5.0,
+            "hours_max": 5.0,
+            "is_range": false,
+            "raw": "5 hours"
+          },
+          {
+            "label": "c2 REST/SSE/DB endpoint implementation",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Web UI xterm.js integration and WebComponents",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Debugging and integration testing",
+            "hours_min": 10.0,
+            "hours_max": 10.0,
+            "is_range": false,
+            "raw": "10 hours"
+          },
+          {
+            "label": "Architecture and design decisions",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-31-agent-core-tool-calling-architecture",
+      "prompter": {
+        "total_hours_min": 5.5,
+        "total_hours_max": 5.5,
+        "is_range": false,
+        "total_raw": "5.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 3.2,
+            "hours_max": 3.2,
+            "is_range": false,
+            "raw": "~3.2 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.3,
+            "hours_max": 1.3,
+            "is_range": false,
+            "raw": "~1.3 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hour"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 13.5,
+        "total_hours_max": 13.5,
+        "is_range": false,
+        "total_raw": "13.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "C++17 agent architecture design and refactoring",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "CMake build system integration and test suite debugging",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "System tool removal (registry, schemas, handlers, tests)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Base prompt file-based template system",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Worktree-based testing infrastructure setup",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "1.5 hours"
+          },
+          {
+            "label": "Multi-file spec revision documentation",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-31-dynamic-tool-accumulation-17fb83287ffeLbBFOqKKH7o5mQ",
+      "prompter": {
+        "total_hours_min": 0.5,
+        "total_hours_max": 0.5,
+        "is_range": false,
+        "total_raw": "0.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.2,
+            "hours_max": 0.2,
+            "is_range": false,
+            "raw": "~0.2 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.15,
+            "hours_max": 0.15,
+            "is_range": false,
+            "raw": "~0.15 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.15,
+            "hours_max": 0.15,
+            "is_range": false,
+            "raw": "~0.15 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 6.0,
+        "total_hours_max": 6.0,
+        "is_range": false,
+        "total_raw": "~6 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "total \u2014 spec analysis + cross-referencing (",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "1.5h"
+          },
+          {
+            "label": "), C++ implementation across 7 files including header/source/spec (",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "2.5h"
+          },
+          {
+            "label": "), build system integration + test debugging (",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "1.5h"
+          },
+          {
+            "label": "), prompt engineering for LLM structured output (",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "0.5h"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-31-hex-session-id-format-1810ebad2ffeHayDqW0n28lzNA",
+      "prompter": {
+        "total_hours_min": 0.4,
+        "total_hours_max": 0.4,
+        "is_range": false,
+        "total_raw": "0.4 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.15,
+            "hours_max": 0.15,
+            "is_range": false,
+            "raw": "~0.15 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.15,
+            "hours_max": 0.15,
+            "is_range": false,
+            "raw": "~0.15 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.1,
+            "hours_max": 0.1,
+            "is_range": false,
+            "raw": "~0.1 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 3.0,
+        "total_hours_max": 3.0,
+        "is_range": false,
+        "total_raw": "~3 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Audit all session ID touchpoints in the codebase",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Design UUID generation approach and interface changes",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "0.5 hours"
+          },
+          {
+            "label": "Implement changes across 10+ files",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Fix test compilation and verify all tests pass",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "0.5 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-31-spec-staleness-revision-18130c0f6ffeE7SX7Vrkb3TfE3",
+      "prompter": {
+        "total_hours_min": 1.5,
+        "total_hours_max": 1.5,
+        "is_range": false,
+        "total_raw": "1.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.6,
+            "hours_max": 0.6,
+            "is_range": false,
+            "raw": "~0.6 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.6,
+            "hours_max": 0.6,
+            "is_range": false,
+            "raw": "~0.6 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 24.0,
+        "is_range": false,
+        "total_raw": "~24 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Audit 44 spec-to-source mappings and cross-reference git history",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Generate revision proposals for 27 files",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Apply edits precisely across all files",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Update diagrams and data flow descriptions",
+            "hours_min": 5.0,
+            "hours_max": 5.0,
+            "is_range": false,
+            "raw": "5 hours"
+          },
+          {
+            "label": "Review and verify consistency",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Generate session report",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-05-31-sqlite-persistence-overhaul-181e5690bffeJbs5lPvi1tDYlY",
+      "prompter": {
+        "total_hours_min": 4.0,
+        "total_hours_max": 4.0,
+        "is_range": false,
+        "total_raw": "4.0 hours",
+        "annotation": "(cumulative, over a single intensive sitting)",
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 50.0,
+        "is_range": true,
+        "total_raw": "40-50 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture and schema design",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "SQLite schema migration implementation",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "PersistenceStore interface redesign",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "agent_core.cpp forked-loop rewrite",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "ValidationEngine migration from file to SQLite",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "CLI refactor with CLI11",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Test suite updates and debugging",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Documentation updates (specs, prompts, scripts)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Code review iterations",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Cross-cutting concerns (build system, edge cases, error handling)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-01-enterprise-handoff-execution-17cd9677effeV3oA1jQrUNFPb9",
+      "prompter": {
+        "total_hours_min": 1.0,
+        "total_hours_max": 1.0,
+        "is_range": false,
+        "total_raw": "1.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 32.0,
+        "is_range": true,
+        "total_raw": "24\u201332 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Codebase analysis and issue gap analysis",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Atomic decomposition with code-first mapping",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "GitHub issue creation (14 issues) with structured bodies",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Project board GraphQL API setup (42 mutations)",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Parent epic tasklist updates with body preservation",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Audit reconciliation across 23 requirements \u00d7 14 issues",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Report generation",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-01-enterprise-panel-roadmap-17f17158effe3l0X6pyZ5qxxTv",
+      "prompter": {
+        "total_hours_min": 8.0,
+        "total_hours_max": 8.0,
+        "is_range": false,
+        "total_raw": "8.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 3.5,
+            "hours_max": 3.5,
+            "is_range": false,
+            "raw": "~3.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "~2.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "~2.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 120.0,
+        "total_hours_max": 160.0,
+        "is_range": true,
+        "total_raw": "120-160 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Product management / strategic planning",
+            "hours_min": 40.0,
+            "hours_max": 40.0,
+            "is_range": false,
+            "raw": "40 hours"
+          },
+          {
+            "label": "Security architecture review",
+            "hours_min": 24.0,
+            "hours_max": 24.0,
+            "is_range": false,
+            "raw": "24 hours"
+          },
+          {
+            "label": "DevOps / CI project board engineering",
+            "hours_min": 16.0,
+            "hours_max": 16.0,
+            "is_range": false,
+            "raw": "16 hours"
+          },
+          {
+            "label": "Technical writing / documentation",
+            "hours_min": 24.0,
+            "hours_max": 24.0,
+            "is_range": false,
+            "raw": "24 hours"
+          },
+          {
+            "label": "Software engineering / code review",
+            "hours_min": 16.0,
+            "hours_max": 16.0,
+            "is_range": false,
+            "raw": "16 hours"
+          },
+          {
+            "label": "GitHub administration / GraphQL API scripting",
+            "hours_min": 16.0,
+            "hours_max": 16.0,
+            "is_range": false,
+            "raw": "16 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-02-a0-architectural-cleanup-1777bba30ffexd2vQv21odnw8j",
+      "prompter": {
+        "total_hours_min": 3.5,
+        "total_hours_max": 3.5,
+        "is_range": false,
+        "total_raw": "3.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 40.0,
+        "is_range": false,
+        "total_raw": "~40 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture review and dependency analysis",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "SchemaInferenceEngine removal (interface + implementation + wiring)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Separator bug root cause analysis and fix propagation",
+            "hours_min": 5.0,
+            "hours_max": 5.0,
+            "is_range": false,
+            "raw": "5 hours"
+          },
+          {
+            "label": "Docker/docker_compose LLM tool removal",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Git skill.json restructuring",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "CommandRunner stderr pipe fix + deadlock resolution",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Test maintenance and coverage verification",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Spec/doc file updates across 7 files",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Skill.json dependency format migration",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Build system and CI validation",
+            "hours_min": 5.0,
+            "hours_max": 5.0,
+            "is_range": false,
+            "raw": "5 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-02-agent-worktree-session-178122546ffeG1OFkvzeR5wkqa",
+      "prompter": {
+        "total_hours_min": 2.5,
+        "total_hours_max": 2.5,
+        "is_range": false,
+        "total_raw": "2.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.8,
+            "hours_max": 0.8,
+            "is_range": false,
+            "raw": "~0.8 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.7,
+            "hours_max": 0.7,
+            "is_range": false,
+            "raw": "~0.7 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 40.0,
+        "is_range": false,
+        "total_raw": "~40 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture design and planning",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "SQLite schema design and implementation",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "C++ refactoring (SkillManager, SkillLoader, parseQualifiedName)",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Git worktree feature implementation",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "CLI argument parsing and b1 integration",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Testing and test fixture updates",
+            "hours_min": 7.0,
+            "hours_max": 7.0,
+            "is_range": false,
+            "raw": "7 hours"
+          },
+          {
+            "label": "Docker integration updates",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "JSON schema updates and tool renames",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-02-skill-manager-unified-dispatch-17894d313ffey2yp6xmKmDGJYm",
+      "prompter": {
+        "total_hours_min": 3.5,
+        "total_hours_max": 3.5,
+        "is_range": false,
+        "total_raw": "3.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 60.0,
+        "is_range": true,
+        "total_raw": "40\u201360 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture analysis and design",
+            "hours_min": 8.0,
+            "hours_max": 12.0,
+            "is_range": true,
+            "raw": "8\u201312 hours"
+          },
+          {
+            "label": "Handler extraction and implementation",
+            "hours_min": 12.0,
+            "hours_max": 16.0,
+            "is_range": true,
+            "raw": "12\u201316 hours"
+          },
+          {
+            "label": "Consumer migration (AgentCore, SkillRunner, main.cpp)",
+            "hours_min": 8.0,
+            "hours_max": 10.0,
+            "is_range": true,
+            "raw": "8\u201310 hours"
+          },
+          {
+            "label": "Test migration + debugging",
+            "hours_min": 8.0,
+            "hours_max": 12.0,
+            "is_range": true,
+            "raw": "8\u201312 hours"
+          },
+          {
+            "label": "Spec file revision",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4\u20136 hours"
+          },
+          {
+            "label": "Git + documentation",
+            "hours_min": 2.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "2\u20134 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-03-c2-agent-interact-feature-17298ba58ffe3upnuFGhgSGVO9",
+      "prompter": {
+        "total_hours_min": 1.0,
+        "total_hours_max": 1.0,
+        "is_range": false,
+        "total_raw": "1.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 32.0,
+        "is_range": true,
+        "total_raw": "24\u201332 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "C++ backend development (REST endpoint, IPC protocol, bug fixes)",
+            "hours_min": 8.0,
+            "hours_max": 10.0,
+            "is_range": true,
+            "raw": "8\u201310 hours"
+          },
+          {
+            "label": "Frontend WebComponent development (interact-page, CSS, SPA routing)",
+            "hours_min": 6.0,
+            "hours_max": 8.0,
+            "is_range": true,
+            "raw": "6\u20138 hours"
+          },
+          {
+            "label": "E2E test infrastructure (SQLite seeding, IPC registration helper, bridge integration)",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4\u20136 hours"
+          },
+          {
+            "label": "Debugging and integration (live stack setup, browser caching, IPC timing)",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4\u20136 hours"
+          },
+          {
+            "label": "Spec writing and documentation (6 spec files updated)",
+            "hours_min": 2.0,
+            "hours_max": 3.0,
+            "is_range": true,
+            "raw": "2\u20133 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-03-c2-e2e-testing-1730e2ac8ffenOZwe2hVY0AaAO",
+      "prompter": {
+        "total_hours_min": 2.0,
+        "total_hours_max": 2.0,
+        "is_range": false,
+        "total_raw": "~2.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.8,
+            "hours_max": 0.8,
+            "is_range": false,
+            "raw": "~0.8 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.6,
+            "hours_max": 0.6,
+            "is_range": false,
+            "raw": "~0.6 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          },
+          {
+            "label": "Watching browser-based testing",
+            "hours_min": 0.2,
+            "hours_max": 0.2,
+            "is_range": false,
+            "raw": "~0.2 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 15.0,
+        "total_hours_max": 15.0,
+        "is_range": false,
+        "total_raw": "~15 hours",
+        "annotation": "(senior full-stack engineer)",
+        "sub_items": [
+          {
+            "label": "CLI flag plumbing (`--log-file`, `--cwd`, `--terminal-id`) across 3 daemons",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Fork/exec propagation of `--log-file` through multi-level process chains",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Debugging CLI11 argument ordering and subcommand parsing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "WebComponent folder restructuring (16 components, manifest, import paths)",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "`selectById` bridge action + global helper",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "TRACE_LOG instrumentation across c2 and b1 (15 call sites)",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "E2E test script (29 assertions, cleanup, helpers)",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Spec file updates (8 .spec.md + 3 technical-specification.md)",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Build linking and ODR debugging",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-03-read-all-technical-specification-1722b7508ffeE1HAR8dCAVgzzJ",
+      "prompter": {
+        "total_hours_min": 1.0,
+        "total_hours_max": 1.0,
+        "is_range": false,
+        "total_raw": "~1.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.2,
+            "hours_max": 0.2,
+            "is_range": false,
+            "raw": "~0.2 hours"
+          },
+          {
+            "label": "Reviewing test output and fixing",
+            "hours_min": 0.1,
+            "hours_max": 0.1,
+            "is_range": false,
+            "raw": "~0.1 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 8.5,
+        "total_hours_max": 8.5,
+        "is_range": false,
+        "total_raw": "~8.5 hours",
+        "annotation": "(senior full-stack engineer)",
+        "sub_items": [
+          {
+            "label": "Reading 6 technical specs (4,286 lines) and extracting gh command catalog",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Designing 7-tool + 4-prompt skill architecture",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "1.5 hours"
+          },
+          {
+            "label": "Implementing skill.json conforming to schema conventions",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Implementing stateful multi-turn mock server with context tracking",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Writing 8-assertion E2E test with setup/cleanup/verification",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Debugging bracket syntax, label mismatch, and cleanup path issues",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-03-skill-system-implementation-174109f09ffe1V8l6q5Iow1KNX",
+      "prompter": {
+        "total_hours_min": 5.0,
+        "total_hours_max": 5.0,
+        "is_range": false,
+        "total_raw": "~5.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "~2.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 60.0,
+        "is_range": true,
+        "total_raw": "~40-60 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "C++17 system design and interface specification",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Subprocess fork/exec/pipe streaming + stdin implementation",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "JSON Schema design + Draft-07 validation integration",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Playwright/Chromium automation daemon (Node.js)",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Docker multi-stage build + Compose orchestration",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Test fixture setup with mock handlers + timing verification",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "E2E test scripting with Docker + curl + jq",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Technical writing (developer guide)",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Debugging and troubleshooting (Wayland, Docker build failures)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-04-opensassi-command-reference-16ced483effeIUanAxz9Ua9mo8",
+      "prompter": {
+        "total_hours_min": 1.5,
+        "total_hours_max": 1.5,
+        "is_range": false,
+        "total_raw": "~1.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.6,
+            "hours_max": 0.6,
+            "is_range": false,
+            "raw": "~0.6 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 12.0,
+        "total_hours_max": 12.0,
+        "is_range": false,
+        "total_raw": "~12 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Project architecture review and documentation",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "C++ TUI implementation (scrollback, Input disable, paste cursor)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "E2E test infrastructure and test writing",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Build system debugging (init ordering, log redirect, thread safety)",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Session evaluation and archiving",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-04-tui-e2e-harness-and-paste-16da4c413ffeKQpYqVUI41WcQs",
+      "prompter": {
+        "total_hours_min": 4.5,
+        "total_hours_max": 4.5,
+        "is_range": false,
+        "total_raw": "4.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "~2.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 60.0,
+        "is_range": true,
+        "total_raw": "~40\u201360 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "FTXUI component tree debugging and focus analysis",
+            "hours_min": 8.0,
+            "hours_max": 12.0,
+            "is_range": true,
+            "raw": "8\u201312 hours"
+          },
+          {
+            "label": "Build PTY-based test harness with event injection",
+            "hours_min": 10.0,
+            "hours_max": 16.0,
+            "is_range": true,
+            "raw": "10\u201316 hours"
+          },
+          {
+            "label": "Write and debug 36 E2E tests",
+            "hours_min": 8.0,
+            "hours_max": 12.0,
+            "is_range": true,
+            "raw": "8\u201312 hours"
+          },
+          {
+            "label": "Implement bracketed paste with placeholder expansion",
+            "hours_min": 8.0,
+            "hours_max": 10.0,
+            "is_range": true,
+            "raw": "8\u201310 hours"
+          },
+          {
+            "label": "Copy-on-select reimplementation",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4\u20136 hours"
+          },
+          {
+            "label": "Thread safety audit and StatusBar fix",
+            "hours_min": 2.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "2\u20134 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-04-tui-implementation-session-16e39259effeveRwRVfWbvG632",
+      "prompter": {
+        "total_hours_min": 2.5,
+        "total_hours_max": 2.5,
+        "is_range": false,
+        "total_raw": "2.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 36.0,
+        "total_hours_max": 36.0,
+        "is_range": false,
+        "total_raw": "36 hours",
+        "annotation": "(solo C++ engineer with FTXUI experience)",
+        "sub_items": [
+          {
+            "label": "Project setup and CMake integration (FTXUI + MD4C FetchContent)",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Implement 8 panel components (styles, input, status_bar, message_panel, dialog_manager, session_manager, markdown_renderer, agent_tui)",
+            "hours_min": 16.0,
+            "hours_max": 16.0,
+            "is_range": false,
+            "raw": "16 hours"
+          },
+          {
+            "label": "Debugging integration issues (FTXUI API compat, CatchEvent, Event::Return, child FD inheritance, FK constraint)",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Test infrastructure (TestScreen, mock components, 52 test cases)",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Session lifecycle centralization (ensureSession, interface changes)",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Logging infrastructure (--log-dir, xChildRedirectStdio, env var propagation)",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Documentation and spec updates",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-04-tui-streaming-implementation-16c3a2c67ffej0dIR02hIfgatR",
+      "prompter": {
+        "total_hours_min": 2.5,
+        "total_hours_max": 2.5,
+        "is_range": false,
+        "total_raw": "2.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.2,
+            "hours_max": 1.2,
+            "is_range": false,
+            "raw": "~1.2 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.8,
+            "hours_max": 0.8,
+            "is_range": false,
+            "raw": "~0.8 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 40.0,
+        "is_range": false,
+        "total_raw": "~40 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "SSE streaming implementation with libcurl",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Multi-turn tool-calling loop design and implementation",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Threading model audit and remediation design",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Architecture refactoring plan documentation",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "E2E test infrastructure (mock server SSE + Python harness + C++ unit tests)",
+            "hours_min": 10.0,
+            "hours_max": 10.0,
+            "is_range": false,
+            "raw": "10 hours"
+          },
+          {
+            "label": "Debugging and log analysis (render starvation, 7-round loop)",
+            "hours_min": 5.0,
+            "hours_max": 5.0,
+            "is_range": false,
+            "raw": "5 hours"
+          },
+          {
+            "label": "Code review and integration testing",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-05-coverage-improvement-1659dc0b6ffe6xEBz9D8M6bA7B",
+      "prompter": {
+        "total_hours_min": 0.2,
+        "total_hours_max": 0.2,
+        "is_range": false,
+        "total_raw": "0.2 hours",
+        "annotation": "(cumulative)",
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.1,
+            "hours_max": 0.1,
+            "is_range": false,
+            "raw": "~0.1 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.05,
+            "hours_max": 0.05,
+            "is_range": false,
+            "raw": "~0.05 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.05,
+            "hours_max": 0.05,
+            "is_range": false,
+            "raw": "~0.05 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 19.0,
+        "total_hours_max": 19.0,
+        "is_range": false,
+        "total_raw": "19 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Coverage analysis and lcov configuration",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "1.5h"
+          },
+          {
+            "label": "tool_runner edge case tests",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2.0h"
+          },
+          {
+            "label": "system_handlers read/glob/grep/edit/write tests",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3.0h"
+          },
+          {
+            "label": "skill_loader manifest and schema tests",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "2.5h"
+          },
+          {
+            "label": "skill_manager handler dispatch and schemas tests",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3.0h"
+          },
+          {
+            "label": "version_manager and validation_engine tests",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2.0h"
+          },
+          {
+            "label": "session_context and a0_dir tests",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "1.5h"
+          },
+          {
+            "label": "dependency_graph executeBatches tests",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1.0h"
+          },
+          {
+            "label": "Iterative build-fix-test cycles",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "2.5h"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-05-opencode-provider-refactoring-167a418e3ffek2BEMQoqJvuLVb",
+      "prompter": {
+        "total_hours_min": 4.5,
+        "total_hours_max": 4.5,
+        "is_range": false,
+        "total_raw": "4.5 hours",
+        "annotation": "(cumulative, likely over several sittings)",
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "~2.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 20.0,
+        "total_hours_max": 20.0,
+        "is_range": false,
+        "total_raw": "20 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture design and interface definition",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Implementation of `LlmProvider`/`DrivenProvider`/`DeepSeekProvider` hierarchy",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Refactoring `DrivenCore`, `main.cpp`, `AgentTui` for unified path",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Writing and debugging session persistence fix",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Updating CMake build and managing deprecation",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Writing unit tests and E2E debugging",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Updating all spec and technical documentation",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-05-threaded-app-core-implementation-168faffcdffeVBknJBzVEH15PI",
+      "prompter": {
+        "total_hours_min": 7.0,
+        "total_hours_max": 7.0,
+        "is_range": false,
+        "total_raw": "~7 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "~3 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "~2 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "~2 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 25.0,
+        "total_hours_max": 25.0,
+        "is_range": false,
+        "total_raw": "~25 hours",
+        "annotation": "(senior C++ engineer)",
+        "sub_items": [
+          {
+            "label": "MPSC channel design and implementation",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "curl_multi async provider with SSE decoder",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "State machine tool-calling loop (replacing two paths)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "poll()-based event loop thread",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "AgentTui refactoring (remove AgentCore, wire new modules)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Test adaptation and debugging",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Spec file inventory, creation, and updates (43 files)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Debugging curl_multi/Screen::Post integration issues",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-05-tui-architecture-overhaul-16705130bffeF9iQwbEtbGaR32",
+      "prompter": {
+        "total_hours_min": 6.0,
+        "total_hours_max": 6.0,
+        "is_range": false,
+        "total_raw": "6 hours",
+        "annotation": "(cumulative, across a single focused session)",
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 2.5,
+            "hours_max": 2.5,
+            "is_range": false,
+            "raw": "~2.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "~2 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 24.0,
+        "is_range": false,
+        "total_raw": "24 hours",
+        "annotation": "(3 days of senior C++ systems engineer)",
+        "sub_items": [
+          {
+            "label": "Architecture review and design decision analysis",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "C++ concurrency model implementation (MPSC channels, background thread, event propagation)",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "Test infrastructure development (Python PTY harness, pytest migration, 19 tests)",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Debugging and instrumentation (trace analysis, GDB, strace, RequestAnimationFrame fix)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Spec and documentation updates (technical-specification.md v3.0, concurrency-model.md, AGENTS.md)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-05-tui-bugfix-streaming-multi-turn-16669750fffedupBOW8mInEDW3",
+      "prompter": {
+        "total_hours_min": 0.4883,
+        "total_hours_max": 0.4883,
+        "is_range": false,
+        "total_raw": "0.4883 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Prompter active",
+            "hours_min": 0.4883,
+            "hours_max": 0.4883,
+            "is_range": false,
+            "raw": "29.3m"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 13.0,
+        "total_hours_max": 13.0,
+        "is_range": false,
+        "total_raw": "13.0",
+        "annotation": null,
+        "sub_items": []
+      }
+    },
+    {
+      "slug": "2026-06-05-tui-implementation-bufferedsocket-1683ef904ffekEuWB7nwr2QOFn",
+      "prompter": {
+        "total_hours_min": 4.0,
+        "total_hours_max": 4.0,
+        "is_range": false,
+        "total_raw": "4.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 24.0,
+        "is_range": false,
+        "total_raw": "24 hours",
+        "annotation": "(3 days of senior engineer time)",
+        "sub_items": [
+          {
+            "label": "Concurrency model technical specification and review",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8 hours"
+          },
+          {
+            "label": "curl_multi async DNS debugging and fix",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "BufferedSocket design, implementation, and migration",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "Test engineering (15 unit tests + 4 caller-pattern + OSC 52 + conftest)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Spec documentation updates (10 files)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-06-opensassi-root-skill-ecosystem-161d1b7f4ffema1BKEjjviPZ5G",
+      "prompter": {
+        "total_hours_min": 1.2,
+        "total_hours_max": 1.2,
+        "is_range": false,
+        "total_raw": "1.2 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.3,
+            "hours_max": 0.3,
+            "is_range": false,
+            "raw": "~0.3 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 14.0,
+        "total_hours_max": 14.0,
+        "is_range": false,
+        "total_raw": "~14 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Session dump analysis and debugging",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Root cause tracing across 5 modules",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Bug fix implementation (3 changes)",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Spec discrepancy audit across 60+ files",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Spec rewrite (11 files, ~2000 lines total)",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "New spec and README creation",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Test suite runs and verification",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-06-persona-system-implementation-16275e3d3ffeuDtHHbBYpD7UPp",
+      "prompter": {
+        "total_hours_min": 2.5,
+        "total_hours_max": 2.5,
+        "is_range": false,
+        "total_raw": "2.5h",
+        "annotation": "(cumulative, over the session)",
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.2,
+            "hours_max": 1.2,
+            "is_range": false,
+            "raw": "~1.2h"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.8,
+            "hours_max": 0.8,
+            "is_range": false,
+            "raw": "~0.8h"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5h"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 50.0,
+        "is_range": true,
+        "total_raw": "40\u201350 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture design",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6h"
+          },
+          {
+            "label": "Persona system implementation (PersonaLoader, schema, filtering)",
+            "hours_min": 10.0,
+            "hours_max": 10.0,
+            "is_range": false,
+            "raw": "10h"
+          },
+          {
+            "label": "Task-manager skill (SQLite schema, handlers, tool interfaces)",
+            "hours_min": 8.0,
+            "hours_max": 8.0,
+            "is_range": false,
+            "raw": "8h"
+          },
+          {
+            "label": "Qualified name convention rename (28+ files, test fixes)",
+            "hours_min": 12.0,
+            "hours_max": 12.0,
+            "is_range": false,
+            "raw": "12h"
+          },
+          {
+            "label": "Wildcard bug fix and testing",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4h"
+          },
+          {
+            "label": "System prompt persistence",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3h"
+          },
+          {
+            "label": "Documentation (PERSONA-IMPLEMENTATION.md, session eval)",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3h"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-06-tui-improvements-163218543ffeu90liVTQkx6zc9",
+      "prompter": {
+        "total_hours_min": 3.5,
+        "total_hours_max": 3.5,
+        "is_range": false,
+        "total_raw": "3.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 24.0,
+        "is_range": false,
+        "total_raw": "~24 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "FTXUI API research and paragraph/focus/hflow integration",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "TUI message_panel + markdown_renderer modifications",
+            "hours_min": 4.0,
+            "hours_max": 4.0,
+            "is_range": false,
+            "raw": "4 hours"
+          },
+          {
+            "label": "Cleanup script design and testing",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          },
+          {
+            "label": "Fixture conversion script design and implementation",
+            "hours_min": 6.0,
+            "hours_max": 6.0,
+            "is_range": false,
+            "raw": "6 hours"
+          },
+          {
+            "label": "TuiDriver debugging (stderr pollution, mock server interaction)",
+            "hours_min": 5.0,
+            "hours_max": 5.0,
+            "is_range": false,
+            "raw": "5 hours"
+          },
+          {
+            "label": "Test writing and verification",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "3 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-08-tui-collapsible-tool-calls-1593e05d2ffeKpTL7MfonvWvqV",
+      "prompter": {
+        "total_hours_min": 3.5,
+        "total_hours_max": 3.5,
+        "is_range": false,
+        "total_raw": "3.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 6.0,
+        "total_hours_max": 8.0,
+        "is_range": true,
+        "total_raw": "6\u20138 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architecture design and API specification",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "1.5 hours"
+          },
+          {
+            "label": "Implementation of per-assistant children model",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "MPSC protocol extension (RoundComplete)",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "0.5 hours"
+          },
+          {
+            "label": "FTXUI reflect-based click handling",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Test debugging (E2E and unit)",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          },
+          {
+            "label": "Documentation updates",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "1 hour"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-08-tui-enhancements-159deb04dffe2bC1QLXC7xQFtj",
+      "prompter": {
+        "total_hours_min": 3.0,
+        "total_hours_max": 3.0,
+        "is_range": false,
+        "total_raw": "3.0 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.75,
+            "hours_max": 0.75,
+            "is_range": false,
+            "raw": "~0.75 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.75,
+            "hours_max": 0.75,
+            "is_range": false,
+            "raw": "~0.75 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 20.0,
+        "total_hours_max": 28.0,
+        "is_range": true,
+        "total_raw": "20-28 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "FTXUI component debugging and scroll system architecture",
+            "hours_min": 6.0,
+            "hours_max": 8.0,
+            "is_range": true,
+            "raw": "6-8 hours"
+          },
+          {
+            "label": "Tool call lifecycle and event queue design",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4-6 hours"
+          },
+          {
+            "label": "E2E test infrastructure debugging (PTY buffer, capture timing)",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4-6 hours"
+          },
+          {
+            "label": "Documentation writing and code review",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3-4 hours"
+          },
+          {
+            "label": "Test writing and verification",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3-4 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-09-bottom-up-spec-update-1531a5a7fffeUZ382O9KFO2Yr9",
+      "prompter": {
+        "total_hours_min": 2.5,
+        "total_hours_max": 2.5,
+        "is_range": false,
+        "total_raw": "2.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.8,
+            "hours_max": 0.8,
+            "is_range": false,
+            "raw": "~0.8 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.7,
+            "hours_max": 0.7,
+            "is_range": false,
+            "raw": "~0.7 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 32.0,
+        "is_range": true,
+        "total_raw": "24\u201332 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Spec tree audit and git analysis",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "2 hours"
+          },
+          {
+            "label": "Create 13 new file-level specs with diagrams",
+            "hours_min": 6.0,
+            "hours_max": 8.0,
+            "is_range": true,
+            "raw": "6\u20138 hours"
+          },
+          {
+            "label": "Update 38 stale specs (read source diff + update class/method signatures, diagrams, tests)",
+            "hours_min": 8.0,
+            "hours_max": 10.0,
+            "is_range": true,
+            "raw": "8\u201310 hours"
+          },
+          {
+            "label": "Regenerate 13 technical-specification.md as aggregation documents",
+            "hours_min": 6.0,
+            "hours_max": 8.0,
+            "is_range": true,
+            "raw": "6\u20138 hours"
+          },
+          {
+            "label": "Move and verify 27 relocated spec files",
+            "hours_min": 1.0,
+            "hours_max": 2.0,
+            "is_range": true,
+            "raw": "1\u20132 hours"
+          },
+          {
+            "label": "Root spec regeneration and cross-referencing",
+            "hours_min": 1.0,
+            "hours_max": 2.0,
+            "is_range": true,
+            "raw": "1\u20132 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-09-persistence-first-io-architecture-1540053faffe7zECvheqLjxJoh",
+      "prompter": {
+        "total_hours_min": 3.5,
+        "total_hours_max": 3.5,
+        "is_range": false,
+        "total_raw": "3.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 40.0,
+        "total_hours_max": 60.0,
+        "is_range": true,
+        "total_raw": "~40-60 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Architectural design & spec authoring",
+            "hours_min": 8.0,
+            "hours_max": 10.0,
+            "is_range": true,
+            "raw": "8-10 hours"
+          },
+          {
+            "label": "Sqlite-backed resource provider implementation",
+            "hours_min": 6.0,
+            "hours_max": 8.0,
+            "is_range": true,
+            "raw": "6-8 hours"
+          },
+          {
+            "label": "MPSC event type refactoring (11 types, 10 files)",
+            "hours_min": 8.0,
+            "hours_max": 12.0,
+            "is_range": true,
+            "raw": "8-12 hours"
+          },
+          {
+            "label": "TUI event handling rewrite with 3 bug fixes",
+            "hours_min": 6.0,
+            "hours_max": 8.0,
+            "is_range": true,
+            "raw": "6-8 hours"
+          },
+          {
+            "label": "Cap'n Proto schema design + CMake integration",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4-6 hours"
+          },
+          {
+            "label": "Testing (unit, E2E, debugging, test additions)",
+            "hours_min": 8.0,
+            "hours_max": 16.0,
+            "is_range": true,
+            "raw": "8-16 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-09-sub-module-design-review-154de9fe1ffea7NEakDhR8QCbc",
+      "prompter": {
+        "total_hours_min": 1.5,
+        "total_hours_max": 1.5,
+        "is_range": false,
+        "total_raw": "1.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 0.6,
+            "hours_max": 0.6,
+            "is_range": false,
+            "raw": "~0.6 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 0.5,
+            "hours_max": 0.5,
+            "is_range": false,
+            "raw": "~0.5 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 0.4,
+            "hours_max": 0.4,
+            "is_range": false,
+            "raw": "~0.4 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 24.0,
+        "total_hours_max": 32.0,
+        "is_range": true,
+        "total_raw": "24\u201332 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Full codebase architecture review across 87 source files",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4\u20136 hours"
+          },
+          {
+            "label": "Include-dependency tracing and boundary analysis",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3\u20134 hours"
+          },
+          {
+            "label": "Persistence-first I/O interface design with handle abstraction",
+            "hours_min": 4.0,
+            "hours_max": 6.0,
+            "is_range": true,
+            "raw": "4\u20136 hours"
+          },
+          {
+            "label": "IPC protocol design (Cap'n Proto schema, routing topology)",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3\u20134 hours"
+          },
+          {
+            "label": "Sub-module reorganization plan with CMake build graph",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3\u20134 hours"
+          },
+          {
+            "label": "Implementation plan writing with phased migration order",
+            "hours_min": 3.0,
+            "hours_max": 4.0,
+            "is_range": true,
+            "raw": "3\u20134 hours"
+          },
+          {
+            "label": "Spec reading and comprehension (5,600 lines of technical documentation)",
+            "hours_min": 2.0,
+            "hours_max": 3.0,
+            "is_range": true,
+            "raw": "2\u20133 hours"
+          },
+          {
+            "label": "Dead code audit and dependency chain verification",
+            "hours_min": 2.0,
+            "hours_max": 3.0,
+            "is_range": true,
+            "raw": "2\u20133 hours"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "2026-06-09-sub-module-reorganization-154399b45ffeAUo39hGlqsJkHb",
+      "prompter": {
+        "total_hours_min": 3.5,
+        "total_hours_max": 3.5,
+        "is_range": false,
+        "total_raw": "3.5 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": "Reading",
+            "hours_min": 1.5,
+            "hours_max": 1.5,
+            "is_range": false,
+            "raw": "~1.5 hours"
+          },
+          {
+            "label": "Thinking",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          },
+          {
+            "label": "Writing",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1.0 hours"
+          }
+        ]
+      },
+      "sme": {
+        "total_hours_min": 10.0,
+        "total_hours_max": 14.0,
+        "is_range": true,
+        "total_raw": "10\u201314 hours",
+        "annotation": null,
+        "sub_items": [
+          {
+            "label": ". A senior C++ build engineer would need",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "~3 hours"
+          },
+          {
+            "label": "to plan the restructuring,",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "~2 hours"
+          },
+          {
+            "label": "to write CMakeLists,",
+            "hours_min": 3.0,
+            "hours_max": 3.0,
+            "is_range": false,
+            "raw": "~3 hours"
+          },
+          {
+            "label": "to move files and update includes,",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "~2 hours"
+          },
+          {
+            "label": "to resolve circular dependency and build errors,",
+            "hours_min": 2.0,
+            "hours_max": 2.0,
+            "is_range": false,
+            "raw": "~2 hours"
+          },
+          {
+            "label": "to update tests, and",
+            "hours_min": 1.0,
+            "hours_max": 1.0,
+            "is_range": false,
+            "raw": "~1 hour"
+          }
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "total_prompter_hours_min": 135.4883,
+    "total_prompter_hours_max": 135.4883,
+    "total_sme_hours_min": 1243.5,
+    "total_sme_hours_max": 1497.5,
+    "session_count": 44,
+    "sessions_fully_parsed": 44,
+    "sessions_partial": 0
+  }
+}

@@ -52,3 +52,66 @@ Implemented all C++ changes across 15+ files: `skills.h`, `skill_loader.cpp`, `s
 
 **Aggregation Tags:**
 c++, skill-system, cmake, test-framework, prompt-engineering, bash, docker, gtest, template-engine, session-evaluation
+
+---
+## Extracted Session Stats
+
+- **Duration:** 137316s (2288.6m)
+  - First message: 19:17:36
+  - Last message:  09:26:12
+- **Messages:** 448 total (41 user, 407 assistant)
+- **Tool call parts:** 460
+- **Words:** 18,506 assistant, 7,630 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 121,030,247 |
+| Input Tokens — Cached | 119,685,376 (98.9%) |
+| Input Tokens — Uncached | 1,344,871 |
+| Output Tokens | 157,917 |
+| Reasoning Tokens | 94,092 |
+| Total Billed | 121,282,256 |
+| Cost | $0.593964 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| read      |   111 |  24.1% |
+| edit      |   110 |  23.9% |
+| bash      |    85 |  18.5% |
+| write     |    84 |  18.3% |
+| grep      |    36 |   7.8% |
+| todowrite |    24 |   5.2% |
+| glob      |     7 |   1.5% |
+| question  |     2 |   0.4% |
+| task      |     1 |   0.2% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 305 | 74.9% |
+| plan | 102 | 25.1% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 366 | 90.8% |
+| stop | 37 | 9.2% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 35.0m
+- **Wall clock:** 2288.6m
+- **Idle/waiting:** 2253.6m
+- **Gaps >60s (capped):** 27 of 40
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 1 |
+| 15-30s | 2 |
+| 30-45s | 7 |
+| 45-60s | 3 |
+| >60s | 26 |

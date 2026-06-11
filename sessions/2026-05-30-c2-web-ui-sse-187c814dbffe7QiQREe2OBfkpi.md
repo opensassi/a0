@@ -85,3 +85,65 @@ Approximately 40–60 hours of combined senior C++ engineer, front-end engineer,
 
 **Aggregation Tags:**
 c2-dashboard, SSE, WebComponents, real-time-events, IPC, unix-sockets, uWebSockets, daemon-lifecycle, signal-handling, build-system, kill-all, user-prompt, conversation-viewer, multi-host
+
+---
+## Extracted Session Stats
+
+- **Duration:** 147314s (2455.2m)
+  - First message: 19:17:36
+  - Last message:  12:12:50
+- **Messages:** 203 total (30 user, 173 assistant)
+- **Tool call parts:** 228
+- **Words:** 11,864 assistant, 3,701 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 34,879,451 |
+| Input Tokens — Cached | 34,083,584 (97.7%) |
+| Input Tokens — Uncached | 795,867 |
+| Output Tokens | 98,713 |
+| Reasoning Tokens | 68,660 |
+| Total Billed | 35,046,824 |
+| Cost | $0.253720 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| read      |    64 |  28.1% |
+| bash      |    55 |  24.1% |
+| edit      |    43 |  18.9% |
+| write     |    41 |  18.0% |
+| grep      |    12 |   5.3% |
+| todowrite |     8 |   3.5% |
+| glob      |     2 |   0.9% |
+| skill     |     1 |   0.4% |
+| task      |     1 |   0.4% |
+| invalid   |     1 |   0.4% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 127 | 73.4% |
+| plan | 46 | 26.6% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 143 | 84.6% |
+| stop | 26 | 15.4% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 26.9m
+- **Wall clock:** 2455.2m
+- **Idle/waiting:** 2428.4m
+- **Gaps >60s (capped):** 22 of 29
+
+| Gap Range | Count |
+|-----------|-------|
+| 30-45s | 5 |
+| 45-60s | 2 |
+| >60s | 21 |

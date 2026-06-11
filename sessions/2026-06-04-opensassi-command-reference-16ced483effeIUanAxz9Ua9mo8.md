@@ -66,3 +66,66 @@ Command reference overview and technical specification review for the opensassi/
 
 **Aggregation Tags:**
 opensassi, a0, C++, FTXUI, TUI, terminal UI, streaming, LLM integration, E2E testing, PTY, session-evaluation, implementation
+
+---
+## Extracted Session Stats
+
+- **Duration:** 11521s (192.0m)
+  - First message: 14:38:58
+  - Last message:  17:50:58
+- **Messages:** 553 total (32 user, 521 assistant)
+- **Tool call parts:** 520
+- **Words:** 8,821 assistant, 4,862 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 146,146,163 |
+| Input Tokens — Cached | 144,935,424 (99.2%) |
+| Input Tokens — Uncached | 1,210,739 |
+| Output Tokens | 111,841 |
+| Reasoning Tokens | 151,085 |
+| Total Billed | 146,409,089 |
+| Cost | $0.648942 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   202 |  38.8% |
+| read      |   148 |  28.5% |
+| edit      |   105 |  20.2% |
+| grep      |    36 |   6.9% |
+| todowrite |    18 |   3.5% |
+| glob      |     6 |   1.2% |
+| question  |     2 |   0.4% |
+| invalid   |     2 |   0.4% |
+| skill     |     1 |   0.2% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 418 | 80.2% |
+| plan | 103 | 19.8% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 490 | 95.0% |
+| stop | 26 | 5.0% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 25.5m
+- **Wall clock:** 192.0m
+- **Idle/waiting:** 166.5m
+- **Gaps >60s (capped):** 19 of 31
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 2 |
+| 15-30s | 3 |
+| 30-45s | 4 |
+| 45-60s | 3 |
+| >60s | 19 |

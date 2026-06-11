@@ -65,3 +65,61 @@ Specification tree revision — 27 spec files updated across 7 sub-module areas 
 
 **Aggregation Tags:**
 specification, code-audit, staleness-check, revision, C++, SQLite, IPC, Docker, persistence, tool-calling, streaming, session-evaluation
+
+---
+## Extracted Session Stats
+
+- **Duration:** 249872s (4164.5m)
+  - First message: 19:17:36
+  - Last message:  16:42:08
+- **Messages:** 162 total (7 user, 155 assistant)
+- **Tool call parts:** 217
+- **Words:** 6,587 assistant, 4,318 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 34,137,309 |
+| Input Tokens — Cached | 33,543,936 (98.3%) |
+| Input Tokens — Uncached | 593,373 |
+| Output Tokens | 76,570 |
+| Reasoning Tokens | 8,047 |
+| Total Billed | 34,221,926 |
+| Cost | $0.200688 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| edit      |   108 |  49.8% |
+| read      |    55 |  25.3% |
+| bash      |    38 |  17.5% |
+| grep      |     9 |   4.1% |
+| todowrite |     4 |   1.8% |
+| glob      |     2 |   0.9% |
+| task      |     1 |   0.5% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 134 | 86.5% |
+| plan | 21 | 13.5% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 148 | 96.1% |
+| stop | 6 | 3.9% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 5.5m
+- **Wall clock:** 4164.5m
+- **Idle/waiting:** 4159.0m
+- **Gaps >60s (capped):** 5 of 6
+
+| Gap Range | Count |
+|-----------|-------|
+| 30-45s | 1 |
+| >60s | 4 |

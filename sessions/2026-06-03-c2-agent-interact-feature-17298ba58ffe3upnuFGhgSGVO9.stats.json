@@ -1,0 +1,73 @@
+{
+  "duration_seconds": 4165.356,
+  "duration_minutes": 69.4226,
+  "first_message": "2026-06-03T12:13:36.067000+00:00",
+  "last_message": "2026-06-03T13:23:01.423000+00:00",
+  "messages": {
+    "total": 248,
+    "user": 15,
+    "assistant": 233,
+    "tool_parts": 249
+  },
+  "words": {
+    "user": 6637,
+    "assistant": 4001
+  },
+  "tokens": {
+    "input": {
+      "total": 53776607,
+      "cached": 52915712,
+      "uncached": 860895
+    },
+    "cache_hit_pct": 98.4,
+    "output": 67845,
+    "reasoning": 53479,
+    "total_billed": 53897931
+  },
+  "cost": 0.30266,
+  "tools": {
+    "bash": 99,
+    "read": 52,
+    "edit": 38,
+    "grep": 17,
+    "playwright_browser_navigate": 12,
+    "todowrite": 11,
+    "write": 5,
+    "task": 4,
+    "playwright_browser_console_messages": 3,
+    "playwright_browser_evaluate": 3,
+    "glob": 1,
+    "question": 1,
+    "playwright_browser_snapshot": 1,
+    "playwright_browser_close": 1,
+    "skill": 1
+  },
+  "modes": {
+    "build": 213,
+    "plan": 20
+  },
+  "finish_reasons": {
+    "tool-calls": 218,
+    "stop": 11
+  },
+  "part_types": {
+    "tool": 249,
+    "step-start": 233,
+    "step-finish": 229,
+    "reasoning": 220,
+    "patch": 76,
+    "text": 71
+  },
+  "prompter_active": {
+    "minutes_active": 10.5,
+    "minutes_wall": 69.4,
+    "minutes_idle": 58.9,
+    "gaps_total": 14,
+    "gaps_exceeding_60s_cap": 8,
+    "gap_distribution_seconds": {
+      "0-15s": 3,
+      "30-45s": 3,
+      ">60s": 8
+    }
+  }
+}

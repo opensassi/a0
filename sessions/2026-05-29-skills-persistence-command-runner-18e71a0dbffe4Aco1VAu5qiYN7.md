@@ -63,3 +63,66 @@ Three new sub-modules: Skills (`src/skills/`), CommandRunner (`src/command_runne
 
 **Aggregation Tags:**
 C++, agent architecture, skill ecosystem, subprocess management, SQLite persistence, deterministic replay, CMake, POSIX, version management, LLM tool orchestration, command runner, build system
+
+---
+## Extracted Session Stats
+
+- **Duration:** 69385s (1156.4m)
+  - First message: 19:17:36
+  - Last message:  14:34:01
+- **Messages:** 203 total (27 user, 176 assistant)
+- **Tool call parts:** 244
+- **Words:** 16,986 assistant, 5,367 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 41,358,296 |
+| Input Tokens — Cached | 40,402,304 (97.7%) |
+| Input Tokens — Uncached | 955,992 |
+| Output Tokens | 113,917 |
+| Reasoning Tokens | 50,536 |
+| Total Billed | 41,522,749 |
+| Cost | $0.293012 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| edit      |    76 |  31.1% |
+| read      |    68 |  27.9% |
+| write     |    34 |  13.9% |
+| bash      |    33 |  13.5% |
+| todowrite |     9 |   3.7% |
+| question  |     8 |   3.3% |
+| webfetch  |     7 |   2.9% |
+| grep      |     5 |   2.0% |
+| task      |     2 |   0.8% |
+| skill     |     1 |   0.4% |
+| glob      |     1 |   0.4% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 131 | 74.4% |
+| plan | 45 | 25.6% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 149 | 85.1% |
+| stop | 26 | 14.9% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 24.4m
+- **Wall clock:** 1156.4m
+- **Idle/waiting:** 1132.1m
+- **Gaps >60s (capped):** 23 of 26
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 2 |
+| 45-60s | 1 |
+| >60s | 23 |

@@ -67,3 +67,66 @@ Git system skill + skill-based tool infrastructure (handler groups, skill manife
 
 **Aggregation Tags:**
 git, docker, docker-compose, system-tools, cpp17, skill-system, security-filter, function-calling, tool-discovery, agent-architecture, cmake, sub-module, test-refactoring
+
+---
+## Extracted Session Stats
+
+- **Duration:** 209692s (3494.9m)
+  - First message: 19:17:36
+  - Last message:  05:32:28
+- **Messages:** 396 total (40 user, 356 assistant)
+- **Tool call parts:** 422
+- **Words:** 16,395 assistant, 6,040 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 114,494,915 |
+| Input Tokens — Cached | 112,796,416 (98.5%) |
+| Input Tokens — Uncached | 1,698,499 |
+| Output Tokens | 160,499 |
+| Reasoning Tokens | 96,963 |
+| Total Billed | 114,752,377 |
+| Cost | $0.625709 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   125 |  29.6% |
+| read      |   103 |  24.4% |
+| edit      |    89 |  21.1% |
+| write     |    42 |  10.0% |
+| grep      |    40 |   9.5% |
+| todowrite |    13 |   3.1% |
+| glob      |     6 |   1.4% |
+| task      |     2 |   0.5% |
+| skill     |     1 |   0.2% |
+| invalid   |     1 |   0.2% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 293 | 82.3% |
+| plan | 63 | 17.7% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 316 | 89.3% |
+| stop | 38 | 10.7% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 36.2m
+- **Wall clock:** 3494.9m
+- **Idle/waiting:** 3458.7m
+- **Gaps >60s (capped):** 30 of 39
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 1 |
+| 30-45s | 4 |
+| 45-60s | 4 |
+| >60s | 29 |

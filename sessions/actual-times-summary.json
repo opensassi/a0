@@ -1,0 +1,1849 @@
+{
+  "generated_at": "2026-06-11T03:14:36.715633+00:00",
+  "session_count": 44,
+  "calendar_span_hours": 289.7,
+  "sessions": [
+    {
+      "slug": "2026-05-28-a0-mvp-19122c3eeffe8oWtGInH1MCesP",
+      "date": "2026-05-28",
+      "duration": {
+        "minutes": 268.0103,
+        "hours": 4.4668
+      },
+      "prompter_active": {
+        "minutes": 11.5,
+        "hours": 0.1917,
+        "pct_of_wall": 4.3,
+        "gaps_total": 15,
+        "gaps_exceeding_60s_cap": 9
+      },
+      "messages": {
+        "total": 254,
+        "user": 16,
+        "assistant": 238,
+        "tool_parts": 340
+      },
+      "words": {
+        "user": 4474,
+        "assistant": 4679
+      },
+      "tokens": {
+        "total_billed": 35718882,
+        "input_cached": 35031552,
+        "input_uncached": 579567,
+        "output": 77920,
+        "reasoning": 29843,
+        "cache_hit_pct": 98.4
+      },
+      "cost": 0.209401,
+      "top_tools": {
+        "bash": 108,
+        "edit": 90,
+        "write": 72,
+        "read": 31,
+        "todowrite": 22
+      }
+    },
+    {
+      "slug": "2026-05-28-docker-sub-module-18f02515fffeOSSZ17jUZ0MCzC",
+      "date": "2026-05-28",
+      "duration": {
+        "minutes": 294.2979,
+        "hours": 4.905
+      },
+      "prompter_active": {
+        "minutes": 3.1,
+        "hours": 0.0517,
+        "pct_of_wall": 1.1,
+        "gaps_total": 4,
+        "gaps_exceeding_60s_cap": 3
+      },
+      "messages": {
+        "total": 90,
+        "user": 5,
+        "assistant": 85,
+        "tool_parts": 124
+      },
+      "words": {
+        "user": 5697,
+        "assistant": 3429
+      },
+      "tokens": {
+        "total_billed": 9507943,
+        "input_cached": 9158528,
+        "input_uncached": 264523,
+        "output": 43845,
+        "reasoning": 41047,
+        "cache_hit_pct": 97.2
+      },
+      "cost": 0.086447,
+      "top_tools": {
+        "edit": 38,
+        "read": 30,
+        "bash": 28,
+        "write": 18,
+        "todowrite": 6
+      }
+    },
+    {
+      "slug": "2026-05-28-v2-spec-revisions-18ff9f2b7ffeHcgiA56UomZGfh",
+      "date": "2026-05-28",
+      "duration": {
+        "minutes": 62.8032,
+        "hours": 1.0467
+      },
+      "prompter_active": {
+        "minutes": 7.9,
+        "hours": 0.1317,
+        "pct_of_wall": 12.6,
+        "gaps_total": 10,
+        "gaps_exceeding_60s_cap": 5
+      },
+      "messages": {
+        "total": 110,
+        "user": 11,
+        "assistant": 99,
+        "tool_parts": 110
+      },
+      "words": {
+        "user": 7205,
+        "assistant": 5661
+      },
+      "tokens": {
+        "total_billed": 9227582,
+        "input_cached": 8921472,
+        "input_uncached": 242186,
+        "output": 37439,
+        "reasoning": 26485,
+        "cache_hit_pct": 97.4
+      },
+      "cost": 0.076785,
+      "top_tools": {
+        "read": 37,
+        "edit": 37,
+        "bash": 23,
+        "todowrite": 9,
+        "write": 2
+      }
+    },
+    {
+      "slug": "2026-05-29-agent-ecosystem-b1-c2-18bd4dd71ffe0W8EdVw0Pqt2qa",
+      "date": "2026-05-29",
+      "duration": {
+        "minutes": 1324.7974,
+        "hours": 22.08
+      },
+      "prompter_active": {
+        "minutes": 33.5,
+        "hours": 0.5583,
+        "pct_of_wall": 2.5,
+        "gaps_total": 42,
+        "gaps_exceeding_60s_cap": 23
+      },
+      "messages": {
+        "total": 456,
+        "user": 43,
+        "assistant": 413,
+        "tool_parts": 431
+      },
+      "words": {
+        "user": 3413,
+        "assistant": 11243
+      },
+      "tokens": {
+        "total_billed": 104552609,
+        "input_cached": 103313920,
+        "input_uncached": 1033582,
+        "output": 145381,
+        "reasoning": 59726,
+        "cache_hit_pct": 99.0
+      },
+      "cost": 0.49141,
+      "top_tools": {
+        "bash": 140,
+        "edit": 111,
+        "read": 76,
+        "write": 68,
+        "grep": 18
+      }
+    },
+    {
+      "slug": "2026-05-29-agentic-tool-system-18b3ccfb3ffe7BcL5jq85CvRBI",
+      "date": "2026-05-29",
+      "duration": {
+        "minutes": 1502.6041,
+        "hours": 25.0434
+      },
+      "prompter_active": {
+        "minutes": 31.9,
+        "hours": 0.5317,
+        "pct_of_wall": 2.1,
+        "gaps_total": 37,
+        "gaps_exceeding_60s_cap": 25
+      },
+      "messages": {
+        "total": 349,
+        "user": 38,
+        "assistant": 311,
+        "tool_parts": 343
+      },
+      "words": {
+        "user": 5143,
+        "assistant": 10425
+      },
+      "tokens": {
+        "total_billed": 76702022,
+        "input_cached": 75465600,
+        "input_uncached": 1067644,
+        "output": 97872,
+        "reasoning": 70906,
+        "cache_hit_pct": 98.6
+      },
+      "cost": 0.408032,
+      "top_tools": {
+        "read": 105,
+        "edit": 89,
+        "bash": 73,
+        "todowrite": 33,
+        "write": 22
+      }
+    },
+    {
+      "slug": "2026-05-29-skills-persistence-command-runner-18e71a0dbffe4Aco1VAu5qiYN7",
+      "date": "2026-05-29",
+      "duration": {
+        "minutes": 1156.4196,
+        "hours": 19.2737
+      },
+      "prompter_active": {
+        "minutes": 24.4,
+        "hours": 0.4067,
+        "pct_of_wall": 2.1,
+        "gaps_total": 26,
+        "gaps_exceeding_60s_cap": 23
+      },
+      "messages": {
+        "total": 203,
+        "user": 27,
+        "assistant": 176,
+        "tool_parts": 244
+      },
+      "words": {
+        "user": 5367,
+        "assistant": 16986
+      },
+      "tokens": {
+        "total_billed": 41522749,
+        "input_cached": 40402304,
+        "input_uncached": 955992,
+        "output": 113917,
+        "reasoning": 50536,
+        "cache_hit_pct": 97.7
+      },
+      "cost": 0.293012,
+      "top_tools": {
+        "edit": 76,
+        "read": 68,
+        "write": 34,
+        "bash": 33,
+        "todowrite": 9
+      }
+    },
+    {
+      "slug": "2026-05-30-c2-web-ui-sse-187c814dbffe7QiQREe2OBfkpi",
+      "date": "2026-05-30",
+      "duration": {
+        "minutes": 2455.2285,
+        "hours": 40.9205
+      },
+      "prompter_active": {
+        "minutes": 26.9,
+        "hours": 0.4483,
+        "pct_of_wall": 1.1,
+        "gaps_total": 29,
+        "gaps_exceeding_60s_cap": 22
+      },
+      "messages": {
+        "total": 203,
+        "user": 30,
+        "assistant": 173,
+        "tool_parts": 228
+      },
+      "words": {
+        "user": 3701,
+        "assistant": 11864
+      },
+      "tokens": {
+        "total_billed": 35046824,
+        "input_cached": 34083584,
+        "input_uncached": 795867,
+        "output": 98713,
+        "reasoning": 68660,
+        "cache_hit_pct": 97.7
+      },
+      "cost": 0.25372,
+      "top_tools": {
+        "read": 64,
+        "bash": 55,
+        "edit": 43,
+        "write": 41,
+        "grep": 12
+      }
+    },
+    {
+      "slug": "2026-05-30-coverage-improvement-18674616fffeXMxyRjSYP3roKx",
+      "date": "2026-05-30",
+      "duration": {
+        "minutes": 2783.5054,
+        "hours": 46.3918
+      },
+      "prompter_active": {
+        "minutes": 18.6,
+        "hours": 0.31,
+        "pct_of_wall": 0.7,
+        "gaps_total": 26,
+        "gaps_exceeding_60s_cap": 13
+      },
+      "messages": {
+        "total": 411,
+        "user": 27,
+        "assistant": 384,
+        "tool_parts": 401
+      },
+      "words": {
+        "user": 4595,
+        "assistant": 3421
+      },
+      "tokens": {
+        "total_billed": 83305239,
+        "input_cached": 82547456,
+        "input_uncached": 565346,
+        "output": 98363,
+        "reasoning": 94074,
+        "cache_hit_pct": 99.3
+      },
+      "cost": 0.364164,
+      "top_tools": {
+        "bash": 160,
+        "read": 86,
+        "edit": 71,
+        "grep": 30,
+        "write": 23
+      }
+    },
+    {
+      "slug": "2026-05-30-git-docker-system-tools-18463f3ecffeSIcmXahDXFhJQz",
+      "date": "2026-05-30",
+      "duration": {
+        "minutes": 3494.866,
+        "hours": 58.2478
+      },
+      "prompter_active": {
+        "minutes": 36.2,
+        "hours": 0.6033,
+        "pct_of_wall": 1.0,
+        "gaps_total": 39,
+        "gaps_exceeding_60s_cap": 30
+      },
+      "messages": {
+        "total": 396,
+        "user": 40,
+        "assistant": 356,
+        "tool_parts": 422
+      },
+      "words": {
+        "user": 6040,
+        "assistant": 16395
+      },
+      "tokens": {
+        "total_billed": 114752377,
+        "input_cached": 112796416,
+        "input_uncached": 1698499,
+        "output": 160499,
+        "reasoning": 96963,
+        "cache_hit_pct": 98.5
+      },
+      "cost": 0.625709,
+      "top_tools": {
+        "bash": 125,
+        "read": 103,
+        "edit": 89,
+        "write": 42,
+        "grep": 40
+      }
+    },
+    {
+      "slug": "2026-05-30-skill-porting-1887ae5f2ffeOYnyZGaybXbxbo",
+      "date": "2026-05-30",
+      "duration": {
+        "minutes": 2288.6024,
+        "hours": 38.1434
+      },
+      "prompter_active": {
+        "minutes": 35.0,
+        "hours": 0.5833,
+        "pct_of_wall": 1.5,
+        "gaps_total": 40,
+        "gaps_exceeding_60s_cap": 27
+      },
+      "messages": {
+        "total": 448,
+        "user": 41,
+        "assistant": 407,
+        "tool_parts": 460
+      },
+      "words": {
+        "user": 7630,
+        "assistant": 18506
+      },
+      "tokens": {
+        "total_billed": 121282256,
+        "input_cached": 119685376,
+        "input_uncached": 1344871,
+        "output": 157917,
+        "reasoning": 94092,
+        "cache_hit_pct": 98.9
+      },
+      "cost": 0.593964,
+      "top_tools": {
+        "read": 111,
+        "edit": 110,
+        "bash": 85,
+        "write": 84,
+        "grep": 36
+      }
+    },
+    {
+      "slug": "2026-05-30-streaming-terminal-infrastructure-18713e81affeg9vZvsSCeKU0bw",
+      "date": "2026-05-30",
+      "duration": {
+        "minutes": 2648.6862,
+        "hours": 44.1448
+      },
+      "prompter_active": {
+        "minutes": 36.0,
+        "hours": 0.6,
+        "pct_of_wall": 1.4,
+        "gaps_total": 41,
+        "gaps_exceeding_60s_cap": 31
+      },
+      "messages": {
+        "total": 452,
+        "user": 42,
+        "assistant": 410,
+        "tool_parts": 408
+      },
+      "words": {
+        "user": 3520,
+        "assistant": 13644
+      },
+      "tokens": {
+        "total_billed": 116548869,
+        "input_cached": 115220608,
+        "input_uncached": 1104575,
+        "output": 126637,
+        "reasoning": 97049,
+        "cache_hit_pct": 99.1
+      },
+      "cost": 0.53989,
+      "top_tools": {
+        "edit": 140,
+        "read": 121,
+        "bash": 90,
+        "grep": 24,
+        "todowrite": 13
+      }
+    },
+    {
+      "slug": "2026-05-31-agent-core-tool-calling-architecture-9c372bd94aa3efea6b9907e2d63a2ca8",
+      "date": "2026-05-31",
+      "duration": {
+        "minutes": 0.3333,
+        "hours": 0.0056
+      },
+      "prompter_active": {
+        "minutes": 0.0,
+        "hours": 0.0,
+        "pct_of_wall": 0.0,
+        "gaps_total": 0,
+        "gaps_exceeding_60s_cap": 0
+      },
+      "messages": {
+        "total": 2,
+        "user": 1,
+        "assistant": 1,
+        "tool_parts": 0
+      },
+      "words": {
+        "user": 1,
+        "assistant": 1922
+      },
+      "tokens": {
+        "total_billed": 0,
+        "input_cached": 0,
+        "input_uncached": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache_hit_pct": 0
+      },
+      "cost": 0.0,
+      "top_tools": {}
+    },
+    {
+      "slug": "2026-05-31-dynamic-tool-accumulation-17fb83287ffeLbBFOqKKH7o5mQ",
+      "date": "2026-05-31",
+      "duration": {
+        "minutes": 4570.4129,
+        "hours": 76.1735
+      },
+      "prompter_active": {
+        "minutes": 6.8,
+        "hours": 0.1133,
+        "pct_of_wall": 0.1,
+        "gaps_total": 8,
+        "gaps_exceeding_60s_cap": 6
+      },
+      "messages": {
+        "total": 51,
+        "user": 9,
+        "assistant": 42,
+        "tool_parts": 58
+      },
+      "words": {
+        "user": 4250,
+        "assistant": 3103
+      },
+      "tokens": {
+        "total_billed": 4875862,
+        "input_cached": 4494208,
+        "input_uncached": 350328,
+        "output": 17555,
+        "reasoning": 13771,
+        "cache_hit_pct": 92.8
+      },
+      "cost": 0.070401,
+      "top_tools": {
+        "read": 20,
+        "edit": 15,
+        "bash": 12,
+        "todowrite": 5,
+        "glob": 3
+      }
+    },
+    {
+      "slug": "2026-05-31-hex-session-id-format-1810ebad2ffeHayDqW0n28lzNA",
+      "date": "2026-05-31",
+      "duration": {
+        "minutes": 4206.0937,
+        "hours": 70.1016
+      },
+      "prompter_active": {
+        "minutes": 9.3,
+        "hours": 0.155,
+        "pct_of_wall": 0.2,
+        "gaps_total": 11,
+        "gaps_exceeding_60s_cap": 5
+      },
+      "messages": {
+        "total": 79,
+        "user": 12,
+        "assistant": 67,
+        "tool_parts": 104
+      },
+      "words": {
+        "user": 2309,
+        "assistant": 3303
+      },
+      "tokens": {
+        "total_billed": 7278303,
+        "input_cached": 6940928,
+        "input_uncached": 297529,
+        "output": 20586,
+        "reasoning": 19260,
+        "cache_hit_pct": 95.9
+      },
+      "cost": 0.072246,
+      "top_tools": {
+        "bash": 31,
+        "read": 29,
+        "edit": 24,
+        "grep": 8,
+        "todowrite": 3
+      }
+    },
+    {
+      "slug": "2026-05-31-spec-staleness-revision-18130c0f6ffeE7SX7Vrkb3TfE3",
+      "date": "2026-05-31",
+      "duration": {
+        "minutes": 4164.5289,
+        "hours": 69.4088
+      },
+      "prompter_active": {
+        "minutes": 5.5,
+        "hours": 0.0917,
+        "pct_of_wall": 0.1,
+        "gaps_total": 6,
+        "gaps_exceeding_60s_cap": 5
+      },
+      "messages": {
+        "total": 162,
+        "user": 7,
+        "assistant": 155,
+        "tool_parts": 217
+      },
+      "words": {
+        "user": 4318,
+        "assistant": 6587
+      },
+      "tokens": {
+        "total_billed": 34221926,
+        "input_cached": 33543936,
+        "input_uncached": 593373,
+        "output": 76570,
+        "reasoning": 8047,
+        "cache_hit_pct": 98.3
+      },
+      "cost": 0.200688,
+      "top_tools": {
+        "edit": 108,
+        "read": 55,
+        "bash": 38,
+        "grep": 9,
+        "todowrite": 4
+      }
+    },
+    {
+      "slug": "2026-05-31-sqlite-persistence-overhaul-181e5690bffeJbs5lPvi1tDYlY",
+      "date": "2026-05-31",
+      "duration": {
+        "minutes": 4098.8084,
+        "hours": 68.3135
+      },
+      "prompter_active": {
+        "minutes": 25.9,
+        "hours": 0.4317,
+        "pct_of_wall": 0.6,
+        "gaps_total": 29,
+        "gaps_exceeding_60s_cap": 22
+      },
+      "messages": {
+        "total": 355,
+        "user": 30,
+        "assistant": 325,
+        "tool_parts": 358
+      },
+      "words": {
+        "user": 5225,
+        "assistant": 10743
+      },
+      "tokens": {
+        "total_billed": 81317606,
+        "input_cached": 80190464,
+        "input_uncached": 955481,
+        "output": 106106,
+        "reasoning": 65555,
+        "cache_hit_pct": 98.8
+      },
+      "cost": 0.406366,
+      "top_tools": {
+        "read": 105,
+        "edit": 104,
+        "bash": 82,
+        "grep": 41,
+        "todowrite": 13
+      }
+    },
+    {
+      "slug": "2026-06-01-enterprise-handoff-execution-17cd9677effeV3oA1jQrUNFPb9",
+      "date": "2026-06-01",
+      "duration": {
+        "minutes": 5361.8102,
+        "hours": 89.3635
+      },
+      "prompter_active": {
+        "minutes": 2.0,
+        "hours": 0.0333,
+        "pct_of_wall": 0.0,
+        "gaps_total": 2,
+        "gaps_exceeding_60s_cap": 2
+      },
+      "messages": {
+        "total": 30,
+        "user": 3,
+        "assistant": 27,
+        "tool_parts": 54
+      },
+      "words": {
+        "user": 4564,
+        "assistant": 1828
+      },
+      "tokens": {
+        "total_billed": 2346722,
+        "input_cached": 2158720,
+        "input_uncached": 164143,
+        "output": 15602,
+        "reasoning": 8257,
+        "cache_hit_pct": 92.9
+      },
+      "cost": 0.035705,
+      "top_tools": {
+        "bash": 36,
+        "read": 5,
+        "glob": 4,
+        "todowrite": 4,
+        "task": 3
+      }
+    },
+    {
+      "slug": "2026-06-01-enterprise-panel-roadmap-17f17158effe3l0X6pyZ5qxxTv",
+      "date": "2026-06-01",
+      "duration": {
+        "minutes": 5322.9326,
+        "hours": 88.7155
+      },
+      "prompter_active": {
+        "minutes": 80.9,
+        "hours": 1.3483,
+        "pct_of_wall": 1.5,
+        "gaps_total": 95,
+        "gaps_exceeding_60s_cap": 67
+      },
+      "messages": {
+        "total": 450,
+        "user": 96,
+        "assistant": 354,
+        "tool_parts": 301
+      },
+      "words": {
+        "user": 14334,
+        "assistant": 27436
+      },
+      "tokens": {
+        "total_billed": 122785546,
+        "input_cached": 120905216,
+        "input_uncached": 1636306,
+        "output": 199555,
+        "reasoning": 44469,
+        "cache_hit_pct": 98.7
+      },
+      "cost": 0.635944,
+      "top_tools": {
+        "bash": 183,
+        "read": 32,
+        "edit": 32,
+        "write": 16,
+        "todowrite": 9
+      }
+    },
+    {
+      "slug": "2026-06-02-a0-architectural-cleanup-1777bba30ffexd2vQv21odnw8j",
+      "date": "2026-06-02",
+      "duration": {
+        "minutes": 257.7779,
+        "hours": 4.2963
+      },
+      "prompter_active": {
+        "minutes": 30.5,
+        "hours": 0.5083,
+        "pct_of_wall": 11.8,
+        "gaps_total": 39,
+        "gaps_exceeding_60s_cap": 22
+      },
+      "messages": {
+        "total": 225,
+        "user": 40,
+        "assistant": 185,
+        "tool_parts": 261
+      },
+      "words": {
+        "user": 6719,
+        "assistant": 8350
+      },
+      "tokens": {
+        "total_billed": 34471533,
+        "input_cached": 33546752,
+        "input_uncached": 826211,
+        "output": 54190,
+        "reasoning": 44380,
+        "cache_hit_pct": 97.6
+      },
+      "cost": 0.2372,
+      "top_tools": {
+        "read": 98,
+        "edit": 61,
+        "grep": 41,
+        "bash": 36,
+        "todowrite": 10
+      }
+    },
+    {
+      "slug": "2026-06-02-agent-worktree-session-178122546ffeG1OFkvzeR5wkqa",
+      "date": "2026-06-02",
+      "duration": {
+        "minutes": 156.0384,
+        "hours": 2.6006
+      },
+      "prompter_active": {
+        "minutes": 39.1,
+        "hours": 0.6517,
+        "pct_of_wall": 25.1,
+        "gaps_total": 49,
+        "gaps_exceeding_60s_cap": 28
+      },
+      "messages": {
+        "total": 333,
+        "user": 50,
+        "assistant": 283,
+        "tool_parts": 255
+      },
+      "words": {
+        "user": 7350,
+        "assistant": 11811
+      },
+      "tokens": {
+        "total_billed": 64493571,
+        "input_cached": 63516672,
+        "input_uncached": 830668,
+        "output": 82615,
+        "reasoning": 63616,
+        "cache_hit_pct": 98.7
+      },
+      "cost": 0.335085,
+      "top_tools": {
+        "edit": 82,
+        "read": 74,
+        "bash": 45,
+        "todowrite": 22,
+        "grep": 16
+      }
+    },
+    {
+      "slug": "2026-06-02-skill-manager-unified-dispatch-17894d313ffey2yp6xmKmDGJYm",
+      "date": "2026-06-02",
+      "duration": {
+        "minutes": 138.8699,
+        "hours": 2.3145
+      },
+      "prompter_active": {
+        "minutes": 20.5,
+        "hours": 0.3417,
+        "pct_of_wall": 14.8,
+        "gaps_total": 25,
+        "gaps_exceeding_60s_cap": 15
+      },
+      "messages": {
+        "total": 320,
+        "user": 26,
+        "assistant": 294,
+        "tool_parts": 319
+      },
+      "words": {
+        "user": 6890,
+        "assistant": 9855
+      },
+      "tokens": {
+        "total_billed": 81906087,
+        "input_cached": 80617856,
+        "input_uncached": 1090602,
+        "output": 113304,
+        "reasoning": 84325,
+        "cache_hit_pct": 98.7
+      },
+      "cost": 0.43375,
+      "top_tools": {
+        "edit": 117,
+        "read": 84,
+        "bash": 56,
+        "grep": 28,
+        "write": 16
+      }
+    },
+    {
+      "slug": "2026-06-03-c2-agent-interact-feature-17298ba58ffe3upnuFGhgSGVO9",
+      "date": "2026-06-03",
+      "duration": {
+        "minutes": 69.4226,
+        "hours": 1.157
+      },
+      "prompter_active": {
+        "minutes": 10.5,
+        "hours": 0.175,
+        "pct_of_wall": 15.1,
+        "gaps_total": 14,
+        "gaps_exceeding_60s_cap": 8
+      },
+      "messages": {
+        "total": 248,
+        "user": 15,
+        "assistant": 233,
+        "tool_parts": 249
+      },
+      "words": {
+        "user": 6637,
+        "assistant": 4001
+      },
+      "tokens": {
+        "total_billed": 53897931,
+        "input_cached": 52915712,
+        "input_uncached": 860895,
+        "output": 67845,
+        "reasoning": 53479,
+        "cache_hit_pct": 98.4
+      },
+      "cost": 0.30266,
+      "top_tools": {
+        "bash": 99,
+        "read": 52,
+        "edit": 38,
+        "grep": 17,
+        "playwright_browser_navigate": 12
+      }
+    },
+    {
+      "slug": "2026-06-03-c2-e2e-testing-1730e2ac8ffenOZwe2hVY0AaAO",
+      "date": "2026-06-03",
+      "duration": {
+        "minutes": 122.5897,
+        "hours": 2.0432
+      },
+      "prompter_active": {
+        "minutes": 22.6,
+        "hours": 0.3767,
+        "pct_of_wall": 18.4,
+        "gaps_total": 27,
+        "gaps_exceeding_60s_cap": 18
+      },
+      "messages": {
+        "total": 354,
+        "user": 28,
+        "assistant": 326,
+        "tool_parts": 354
+      },
+      "words": {
+        "user": 7128,
+        "assistant": 9958
+      },
+      "tokens": {
+        "total_billed": 86392634,
+        "input_cached": 85218688,
+        "input_uncached": 1002626,
+        "output": 97687,
+        "reasoning": 73633,
+        "cache_hit_pct": 98.8
+      },
+      "cost": 0.42695,
+      "top_tools": {
+        "edit": 132,
+        "read": 109,
+        "bash": 58,
+        "todowrite": 27,
+        "grep": 16
+      }
+    },
+    {
+      "slug": "2026-06-03-read-all-technical-specification-1722b7508ffeE1HAR8dCAVgzzJ",
+      "date": "2026-06-03",
+      "duration": {
+        "minutes": 52.6867,
+        "hours": 0.8781
+      },
+      "prompter_active": {
+        "minutes": 6.9,
+        "hours": 0.115,
+        "pct_of_wall": 13.1,
+        "gaps_total": 7,
+        "gaps_exceeding_60s_cap": 6
+      },
+      "messages": {
+        "total": 114,
+        "user": 8,
+        "assistant": 106,
+        "tool_parts": 136
+      },
+      "words": {
+        "user": 4489,
+        "assistant": 4302
+      },
+      "tokens": {
+        "total_billed": 20680855,
+        "input_cached": 20028032,
+        "input_uncached": 563250,
+        "output": 36300,
+        "reasoning": 53273,
+        "cache_hit_pct": 97.3
+      },
+      "cost": 0.160014,
+      "top_tools": {
+        "bash": 55,
+        "read": 50,
+        "edit": 13,
+        "write": 9,
+        "glob": 5
+      }
+    },
+    {
+      "slug": "2026-06-03-skill-system-implementation-174109f09ffe1V8l6q5Iow1KNX",
+      "date": "2026-06-03",
+      "duration": {
+        "minutes": 250.8115,
+        "hours": 4.1802
+      },
+      "prompter_active": {
+        "minutes": 50.1,
+        "hours": 0.835,
+        "pct_of_wall": 20.0,
+        "gaps_total": 59,
+        "gaps_exceeding_60s_cap": 40
+      },
+      "messages": {
+        "total": 524,
+        "user": 60,
+        "assistant": 464,
+        "tool_parts": 454
+      },
+      "words": {
+        "user": 8174,
+        "assistant": 16452
+      },
+      "tokens": {
+        "total_billed": 135374204,
+        "input_cached": 133369344,
+        "input_uncached": 1790836,
+        "output": 152851,
+        "reasoning": 61173,
+        "cache_hit_pct": 98.7
+      },
+      "cost": 0.684078,
+      "top_tools": {
+        "bash": 154,
+        "edit": 138,
+        "read": 98,
+        "write": 26,
+        "todowrite": 25
+      }
+    },
+    {
+      "slug": "2026-06-04-opensassi-command-reference-16ced483effeIUanAxz9Ua9mo8",
+      "date": "2026-06-04",
+      "duration": {
+        "minutes": 192.0133,
+        "hours": 3.2002
+      },
+      "prompter_active": {
+        "minutes": 25.5,
+        "hours": 0.425,
+        "pct_of_wall": 13.3,
+        "gaps_total": 31,
+        "gaps_exceeding_60s_cap": 19
+      },
+      "messages": {
+        "total": 553,
+        "user": 32,
+        "assistant": 521,
+        "tool_parts": 520
+      },
+      "words": {
+        "user": 4862,
+        "assistant": 8821
+      },
+      "tokens": {
+        "total_billed": 146409089,
+        "input_cached": 144935424,
+        "input_uncached": 1210739,
+        "output": 111841,
+        "reasoning": 151085,
+        "cache_hit_pct": 99.2
+      },
+      "cost": 0.648942,
+      "top_tools": {
+        "bash": 202,
+        "read": 148,
+        "edit": 105,
+        "grep": 36,
+        "todowrite": 18
+      }
+    },
+    {
+      "slug": "2026-06-04-tui-e2e-harness-and-paste-16da4c413ffeKQpYqVUI41WcQs",
+      "date": "2026-06-04",
+      "duration": {
+        "minutes": 192.1419,
+        "hours": 3.2024
+      },
+      "prompter_active": {
+        "minutes": 18.5,
+        "hours": 0.3083,
+        "pct_of_wall": 9.6,
+        "gaps_total": 24,
+        "gaps_exceeding_60s_cap": 12
+      },
+      "messages": {
+        "total": 406,
+        "user": 25,
+        "assistant": 381,
+        "tool_parts": 399
+      },
+      "words": {
+        "user": 4764,
+        "assistant": 8671
+      },
+      "tokens": {
+        "total_billed": 106680543,
+        "input_cached": 105231872,
+        "input_uncached": 1169088,
+        "output": 119444,
+        "reasoning": 160139,
+        "cache_hit_pct": 98.9
+      },
+      "cost": 0.536605,
+      "top_tools": {
+        "bash": 142,
+        "read": 100,
+        "edit": 82,
+        "grep": 22,
+        "write": 21
+      }
+    },
+    {
+      "slug": "2026-06-04-tui-implementation-session-16e39259effeveRwRVfWbvG632",
+      "date": "2026-06-04",
+      "duration": {
+        "minutes": 154.1469,
+        "hours": 2.5691
+      },
+      "prompter_active": {
+        "minutes": 31.0,
+        "hours": 0.5167,
+        "pct_of_wall": 20.1,
+        "gaps_total": 38,
+        "gaps_exceeding_60s_cap": 20
+      },
+      "messages": {
+        "total": 408,
+        "user": 39,
+        "assistant": 369,
+        "tool_parts": 395
+      },
+      "words": {
+        "user": 3011,
+        "assistant": 8232
+      },
+      "tokens": {
+        "total_billed": 96362623,
+        "input_cached": 95143936,
+        "input_uncached": 1015126,
+        "output": 125323,
+        "reasoning": 78238,
+        "cache_hit_pct": 98.9
+      },
+      "cost": 0.465518,
+      "top_tools": {
+        "bash": 128,
+        "read": 91,
+        "edit": 87,
+        "write": 55,
+        "todowrite": 18
+      }
+    },
+    {
+      "slug": "2026-06-04-tui-streaming-implementation-16c3a2c67ffej0dIR02hIfgatR",
+      "date": "2026-06-04",
+      "duration": {
+        "minutes": 103.1169,
+        "hours": 1.7186
+      },
+      "prompter_active": {
+        "minutes": 16.9,
+        "hours": 0.2817,
+        "pct_of_wall": 16.4,
+        "gaps_total": 17,
+        "gaps_exceeding_60s_cap": 16
+      },
+      "messages": {
+        "total": 149,
+        "user": 18,
+        "assistant": 131,
+        "tool_parts": 128
+      },
+      "words": {
+        "user": 4753,
+        "assistant": 6589
+      },
+      "tokens": {
+        "total_billed": 20563105,
+        "input_cached": 19872128,
+        "input_uncached": 580536,
+        "output": 45817,
+        "reasoning": 64624,
+        "cache_hit_pct": 97.2
+      },
+      "cost": 0.16784,
+      "top_tools": {
+        "bash": 51,
+        "read": 33,
+        "edit": 33,
+        "todowrite": 4,
+        "grep": 3
+      }
+    },
+    {
+      "slug": "2026-06-05-coverage-improvement-1659dc0b6ffe6xEBz9D8M6bA7B",
+      "date": "2026-06-05",
+      "duration": {
+        "minutes": 48.5923,
+        "hours": 0.8099
+      },
+      "prompter_active": {
+        "minutes": 4.7,
+        "hours": 0.0783,
+        "pct_of_wall": 9.7,
+        "gaps_total": 6,
+        "gaps_exceeding_60s_cap": 4
+      },
+      "messages": {
+        "total": 136,
+        "user": 7,
+        "assistant": 129,
+        "tool_parts": 168
+      },
+      "words": {
+        "user": 4316,
+        "assistant": 2236
+      },
+      "tokens": {
+        "total_billed": 25157421,
+        "input_cached": 24573184,
+        "input_uncached": 512928,
+        "output": 38052,
+        "reasoning": 33257,
+        "cache_hit_pct": 98.0
+      },
+      "cost": 0.160581,
+      "top_tools": {
+        "bash": 68,
+        "read": 63,
+        "edit": 24,
+        "glob": 5,
+        "todowrite": 4
+      }
+    },
+    {
+      "slug": "2026-06-05-opencode-provider-refactoring-167a418e3ffek2BEMQoqJvuLVb",
+      "date": "2026-06-05",
+      "duration": {
+        "minutes": 157.1159,
+        "hours": 2.6186
+      },
+      "prompter_active": {
+        "minutes": 22.4,
+        "hours": 0.3733,
+        "pct_of_wall": 14.3,
+        "gaps_total": 27,
+        "gaps_exceeding_60s_cap": 17
+      },
+      "messages": {
+        "total": 278,
+        "user": 28,
+        "assistant": 250,
+        "tool_parts": 266
+      },
+      "words": {
+        "user": 7315,
+        "assistant": 10668
+      },
+      "tokens": {
+        "total_billed": 71098388,
+        "input_cached": 69789056,
+        "input_uncached": 1104075,
+        "output": 107192,
+        "reasoning": 98065,
+        "cache_hit_pct": 98.4
+      },
+      "cost": 0.407452,
+      "top_tools": {
+        "read": 74,
+        "edit": 63,
+        "bash": 59,
+        "grep": 21,
+        "write": 20
+      }
+    },
+    {
+      "slug": "2026-06-05-threaded-app-core-implementation-168faffcdffeVBknJBzVEH15PI",
+      "date": "2026-06-05",
+      "duration": {
+        "minutes": 199.0583,
+        "hours": 3.3176
+      },
+      "prompter_active": {
+        "minutes": 5.5,
+        "hours": 0.0917,
+        "pct_of_wall": 2.8,
+        "gaps_total": 6,
+        "gaps_exceeding_60s_cap": 5
+      },
+      "messages": {
+        "total": 412,
+        "user": 7,
+        "assistant": 405,
+        "tool_parts": 416
+      },
+      "words": {
+        "user": 6555,
+        "assistant": 4149
+      },
+      "tokens": {
+        "total_billed": 95629738,
+        "input_cached": 94717824,
+        "input_uncached": 682317,
+        "output": 120044,
+        "reasoning": 109553,
+        "cache_hit_pct": 99.3
+      },
+      "cost": 0.425021,
+      "top_tools": {
+        "bash": 160,
+        "edit": 109,
+        "read": 81,
+        "grep": 28,
+        "write": 18
+      }
+    },
+    {
+      "slug": "2026-06-05-tui-architecture-overhaul-16705130bffeF9iQwbEtbGaR32",
+      "date": "2026-06-05",
+      "duration": {
+        "minutes": 126.748,
+        "hours": 2.1125
+      },
+      "prompter_active": {
+        "minutes": 22.6,
+        "hours": 0.3767,
+        "pct_of_wall": 17.8,
+        "gaps_total": 31,
+        "gaps_exceeding_60s_cap": 14
+      },
+      "messages": {
+        "total": 399,
+        "user": 32,
+        "assistant": 367,
+        "tool_parts": 376
+      },
+      "words": {
+        "user": 7514,
+        "assistant": 8827
+      },
+      "tokens": {
+        "total_billed": 118363420,
+        "input_cached": 116388096,
+        "input_uncached": 1741735,
+        "output": 119440,
+        "reasoning": 114149,
+        "cache_hit_pct": 98.5
+      },
+      "cost": 0.635134,
+      "top_tools": {
+        "bash": 119,
+        "read": 99,
+        "edit": 74,
+        "grep": 48,
+        "write": 18
+      }
+    },
+    {
+      "slug": "2026-06-05-tui-bugfix-streaming-multi-turn-16669750fffedupBOW8mInEDW3",
+      "date": "2026-06-05",
+      "duration": {
+        "minutes": 136.7304,
+        "hours": 2.2788
+      },
+      "prompter_active": {
+        "minutes": 29.3,
+        "hours": 0.4883,
+        "pct_of_wall": 21.4,
+        "gaps_total": 34,
+        "gaps_exceeding_60s_cap": 23
+      },
+      "messages": {
+        "total": 264,
+        "user": 35,
+        "assistant": 229,
+        "tool_parts": 251
+      },
+      "words": {
+        "user": 5215,
+        "assistant": 8098
+      },
+      "tokens": {
+        "total_billed": 63492663,
+        "input_cached": 62226176,
+        "input_uncached": 1112548,
+        "output": 69144,
+        "reasoning": 84795,
+        "cache_hit_pct": 98.2
+      },
+      "cost": 0.373093,
+      "top_tools": {
+        "bash": 88,
+        "read": 72,
+        "edit": 46,
+        "grep": 19,
+        "todowrite": 13
+      }
+    },
+    {
+      "slug": "2026-06-05-tui-implementation-bufferedsocket-1683ef904ffekEuWB7nwr2QOFn",
+      "date": "2026-06-05",
+      "duration": {
+        "minutes": 161.2093,
+        "hours": 2.6868
+      },
+      "prompter_active": {
+        "minutes": 28.8,
+        "hours": 0.48,
+        "pct_of_wall": 17.9,
+        "gaps_total": 33,
+        "gaps_exceeding_60s_cap": 23
+      },
+      "messages": {
+        "total": 292,
+        "user": 34,
+        "assistant": 258,
+        "tool_parts": 284
+      },
+      "words": {
+        "user": 9239,
+        "assistant": 17306
+      },
+      "tokens": {
+        "total_billed": 81178410,
+        "input_cached": 79874304,
+        "input_uncached": 1130925,
+        "output": 101683,
+        "reasoning": 71498,
+        "cache_hit_pct": 98.6
+      },
+      "cost": 0.430468,
+      "top_tools": {
+        "read": 94,
+        "edit": 85,
+        "bash": 54,
+        "grep": 19,
+        "todowrite": 19
+      }
+    },
+    {
+      "slug": "2026-06-06-opensassi-root-skill-ecosystem-161d1b7f4ffema1BKEjjviPZ5G",
+      "date": "2026-06-06",
+      "duration": {
+        "minutes": 53.704,
+        "hours": 0.8951
+      },
+      "prompter_active": {
+        "minutes": 8.5,
+        "hours": 0.1417,
+        "pct_of_wall": 15.8,
+        "gaps_total": 12,
+        "gaps_exceeding_60s_cap": 6
+      },
+      "messages": {
+        "total": 156,
+        "user": 13,
+        "assistant": 143,
+        "tool_parts": 183
+      },
+      "words": {
+        "user": 6592,
+        "assistant": 4007
+      },
+      "tokens": {
+        "total_billed": 32688846,
+        "input_cached": 31720448,
+        "input_uncached": 874719,
+        "output": 64629,
+        "reasoning": 29050,
+        "cache_hit_pct": 97.3
+      },
+      "cost": 0.237508,
+      "top_tools": {
+        "read": 50,
+        "bash": 41,
+        "edit": 37,
+        "write": 14,
+        "task": 12
+      }
+    },
+    {
+      "slug": "2026-06-06-persona-system-implementation-16275e3d3ffeuDtHHbBYpD7UPp",
+      "date": "2026-06-06",
+      "duration": {
+        "minutes": 174.7637,
+        "hours": 2.9127
+      },
+      "prompter_active": {
+        "minutes": 30.0,
+        "hours": 0.5,
+        "pct_of_wall": 17.2,
+        "gaps_total": 33,
+        "gaps_exceeding_60s_cap": 25
+      },
+      "messages": {
+        "total": 367,
+        "user": 34,
+        "assistant": 333,
+        "tool_parts": 447
+      },
+      "words": {
+        "user": 5328,
+        "assistant": 11487
+      },
+      "tokens": {
+        "total_billed": 93873765,
+        "input_cached": 92124416,
+        "input_uncached": 1569123,
+        "output": 104013,
+        "reasoning": 76213,
+        "cache_hit_pct": 98.3
+      },
+      "cost": 0.528089,
+      "top_tools": {
+        "read": 140,
+        "edit": 118,
+        "bash": 102,
+        "grep": 55,
+        "todowrite": 16
+      }
+    },
+    {
+      "slug": "2026-06-06-tui-improvements-163218543ffeu90liVTQkx6zc9",
+      "date": "2026-06-06",
+      "duration": {
+        "minutes": 134.2141,
+        "hours": 2.2369
+      },
+      "prompter_active": {
+        "minutes": 29.9,
+        "hours": 0.4983,
+        "pct_of_wall": 22.3,
+        "gaps_total": 35,
+        "gaps_exceeding_60s_cap": 25
+      },
+      "messages": {
+        "total": 241,
+        "user": 36,
+        "assistant": 205,
+        "tool_parts": 207
+      },
+      "words": {
+        "user": 5289,
+        "assistant": 4687
+      },
+      "tokens": {
+        "total_billed": 39837500,
+        "input_cached": 37725056,
+        "input_uncached": 1988411,
+        "output": 40496,
+        "reasoning": 83537,
+        "cache_hit_pct": 95.0
+      },
+      "cost": 0.418737,
+      "top_tools": {
+        "bash": 71,
+        "read": 63,
+        "edit": 29,
+        "grep": 27,
+        "todowrite": 8
+      }
+    },
+    {
+      "slug": "2026-06-08-tui-collapsible-tool-calls-1593e05d2ffeKpTL7MfonvWvqV",
+      "date": "2026-06-08",
+      "duration": {
+        "minutes": 138.6737,
+        "hours": 2.3112
+      },
+      "prompter_active": {
+        "minutes": 36.9,
+        "hours": 0.615,
+        "pct_of_wall": 26.6,
+        "gaps_total": 38,
+        "gaps_exceeding_60s_cap": 34
+      },
+      "messages": {
+        "total": 228,
+        "user": 39,
+        "assistant": 189,
+        "tool_parts": 184
+      },
+      "words": {
+        "user": 5227,
+        "assistant": 10309
+      },
+      "tokens": {
+        "total_billed": 49535292,
+        "input_cached": 48312448,
+        "input_uncached": 1016606,
+        "output": 68023,
+        "reasoning": 138215,
+        "cache_hit_pct": 97.9
+      },
+      "cost": 0.335346,
+      "top_tools": {
+        "read": 64,
+        "edit": 50,
+        "bash": 38,
+        "grep": 11,
+        "todowrite": 10
+      }
+    },
+    {
+      "slug": "2026-06-08-tui-enhancements-159deb04dffe2bC1QLXC7xQFtj",
+      "date": "2026-06-08",
+      "duration": {
+        "minutes": 169.3505,
+        "hours": 2.8225
+      },
+      "prompter_active": {
+        "minutes": 19.1,
+        "hours": 0.3183,
+        "pct_of_wall": 11.3,
+        "gaps_total": 22,
+        "gaps_exceeding_60s_cap": 18
+      },
+      "messages": {
+        "total": 200,
+        "user": 23,
+        "assistant": 177,
+        "tool_parts": 185
+      },
+      "words": {
+        "user": 4931,
+        "assistant": 7337
+      },
+      "tokens": {
+        "total_billed": 44909304,
+        "input_cached": 43709312,
+        "input_uncached": 977391,
+        "output": 71570,
+        "reasoning": 151031,
+        "cache_hit_pct": 97.8
+      },
+      "cost": 0.321549,
+      "top_tools": {
+        "edit": 72,
+        "bash": 53,
+        "read": 44,
+        "todowrite": 9,
+        "grep": 5
+      }
+    },
+    {
+      "slug": "2026-06-09-bottom-up-spec-update-1531a5a7fffeUZ382O9KFO2Yr9",
+      "date": "2026-06-09",
+      "duration": {
+        "minutes": 36.2709,
+        "hours": 0.6045
+      },
+      "prompter_active": {
+        "minutes": 5.0,
+        "hours": 0.0833,
+        "pct_of_wall": 13.8,
+        "gaps_total": 5,
+        "gaps_exceeding_60s_cap": 5
+      },
+      "messages": {
+        "total": 55,
+        "user": 6,
+        "assistant": 49,
+        "tool_parts": 99
+      },
+      "words": {
+        "user": 4469,
+        "assistant": 2000
+      },
+      "tokens": {
+        "total_billed": 5832341,
+        "input_cached": 5399808,
+        "input_uncached": 367441,
+        "output": 43867,
+        "reasoning": 21225,
+        "cache_hit_pct": 93.6
+      },
+      "cost": 0.084787,
+      "top_tools": {
+        "read": 38,
+        "bash": 24,
+        "write": 18,
+        "task": 11,
+        "todowrite": 6
+      }
+    },
+    {
+      "slug": "2026-06-09-persistence-first-io-architecture-1540053faffe7zECvheqLjxJoh",
+      "date": "2026-06-09",
+      "duration": {
+        "minutes": 245.2994,
+        "hours": 4.0883
+      },
+      "prompter_active": {
+        "minutes": 15.9,
+        "hours": 0.265,
+        "pct_of_wall": 6.5,
+        "gaps_total": 20,
+        "gaps_exceeding_60s_cap": 13
+      },
+      "messages": {
+        "total": 244,
+        "user": 21,
+        "assistant": 223,
+        "tool_parts": 269
+      },
+      "words": {
+        "user": 4986,
+        "assistant": 6817
+      },
+      "tokens": {
+        "total_billed": 55125006,
+        "input_cached": 53950720,
+        "input_uncached": 1007423,
+        "output": 92251,
+        "reasoning": 74612,
+        "cache_hit_pct": 98.2
+      },
+      "cost": 0.338823,
+      "top_tools": {
+        "edit": 76,
+        "bash": 74,
+        "read": 60,
+        "write": 23,
+        "grep": 13
+      }
+    },
+    {
+      "slug": "2026-06-09-sub-module-design-review-154de9fe1ffea7NEakDhR8QCbc",
+      "date": "2026-06-09",
+      "duration": {
+        "minutes": 94.6494,
+        "hours": 1.5775
+      },
+      "prompter_active": {
+        "minutes": 14.8,
+        "hours": 0.2467,
+        "pct_of_wall": 15.6,
+        "gaps_total": 16,
+        "gaps_exceeding_60s_cap": 14
+      },
+      "messages": {
+        "total": 58,
+        "user": 17,
+        "assistant": 41,
+        "tool_parts": 54
+      },
+      "words": {
+        "user": 5260,
+        "assistant": 9220
+      },
+      "tokens": {
+        "total_billed": 5059579,
+        "input_cached": 4477568,
+        "input_uncached": 531285,
+        "output": 27926,
+        "reasoning": 22800,
+        "cache_hit_pct": 89.4
+      },
+      "cost": 0.10112,
+      "top_tools": {
+        "read": 37,
+        "bash": 4,
+        "glob": 3,
+        "todowrite": 3,
+        "grep": 3
+      }
+    },
+    {
+      "slug": "2026-06-09-sub-module-reorganization-154399b45ffeAUo39hGlqsJkHb",
+      "date": "2026-06-09",
+      "duration": {
+        "minutes": 59.1978,
+        "hours": 0.9866
+      },
+      "prompter_active": {
+        "minutes": 5.2,
+        "hours": 0.0867,
+        "pct_of_wall": 8.8,
+        "gaps_total": 6,
+        "gaps_exceeding_60s_cap": 4
+      },
+      "messages": {
+        "total": 125,
+        "user": 7,
+        "assistant": 118,
+        "tool_parts": 270
+      },
+      "words": {
+        "user": 4483,
+        "assistant": 3682
+      },
+      "tokens": {
+        "total_billed": 21200414,
+        "input_cached": 20505216,
+        "input_uncached": 616167,
+        "output": 47072,
+        "reasoning": 31959,
+        "cache_hit_pct": 97.1
+      },
+      "cost": 0.165807,
+      "top_tools": {
+        "edit": 102,
+        "read": 55,
+        "grep": 39,
+        "bash": 34,
+        "write": 21
+      }
+    }
+  ],
+  "summary": {
+    "total_prompter_active_hours": 15.7684,
+    "total_messages": 11590,
+    "total_tokens_billed": 2651207579,
+    "total_cost": 14.726041,
+    "avg_cost_per_session": 0.334683,
+    "avg_prompter_active_hours": 0.36,
+    "avg_cache_hit_pct": 98.5,
+    "top_tools": {
+      "bash": 3317,
+      "read": 3049,
+      "edit": 2950,
+      "write": 744,
+      "grep": 728,
+      "todowrite": 503,
+      "glob": 210,
+      "task": 101,
+      "question": 44,
+      "skill": 33,
+      "webfetch": 20,
+      "invalid": 13,
+      "playwright_browser_navigate": 12,
+      "playwright_browser_console_messages": 3,
+      "playwright_browser_evaluate": 3,
+      "playwright_browser_snapshot": 1,
+      "playwright_browser_close": 1
+    },
+    "part_type_totals": {
+      "tool": 11732,
+      "step-start": 10414,
+      "step-finish": 10278,
+      "reasoning": 9709,
+      "text": 3999,
+      "patch": 3223
+    },
+    "mode_totals": {
+      "build": 8517,
+      "plan": 1914
+    },
+    "finish_reason_totals": {
+      "tool-calls": 9286,
+      "stop": 992
+    }
+  }
+}

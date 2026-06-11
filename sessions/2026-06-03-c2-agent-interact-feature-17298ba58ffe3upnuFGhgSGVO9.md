@@ -65,3 +65,70 @@ Approximately 24–32 hours of combined engineering effort:
 
 **Aggregation Tags:**
 c2 dashboard, agent interaction, WebComponents, C++ REST API, Playwright E2E, SSE streaming, SQLite, IPC protocol, bug fixing, spec documentation
+
+---
+## Extracted Session Stats
+
+- **Duration:** 4165s (69.4m)
+  - First message: 12:13:36
+  - Last message:  13:23:01
+- **Messages:** 248 total (15 user, 233 assistant)
+- **Tool call parts:** 249
+- **Words:** 4,001 assistant, 6,637 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 53,776,607 |
+| Input Tokens — Cached | 52,915,712 (98.4%) |
+| Input Tokens — Uncached | 860,895 |
+| Output Tokens | 67,845 |
+| Reasoning Tokens | 53,479 |
+| Total Billed | 53,897,931 |
+| Cost | $0.302660 |
+
+### Tool Usage
+
+| Tool                                | Calls | % |
+|--------------------------------------|-------|---|
+| bash                                |    99 |  39.8% |
+| read                                |    52 |  20.9% |
+| edit                                |    38 |  15.3% |
+| grep                                |    17 |   6.8% |
+| playwright_browser_navigate         |    12 |   4.8% |
+| todowrite                           |    11 |   4.4% |
+| write                               |     5 |   2.0% |
+| task                                |     4 |   1.6% |
+| playwright_browser_console_messages |     3 |   1.2% |
+| playwright_browser_evaluate         |     3 |   1.2% |
+| glob                                |     1 |   0.4% |
+| question                            |     1 |   0.4% |
+| playwright_browser_snapshot         |     1 |   0.4% |
+| playwright_browser_close            |     1 |   0.4% |
+| skill                               |     1 |   0.4% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 213 | 91.4% |
+| plan | 20 | 8.6% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 218 | 95.2% |
+| stop | 11 | 4.8% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 10.5m
+- **Wall clock:** 69.4m
+- **Idle/waiting:** 58.9m
+- **Gaps >60s (capped):** 8 of 14
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 3 |
+| 30-45s | 3 |
+| >60s | 8 |

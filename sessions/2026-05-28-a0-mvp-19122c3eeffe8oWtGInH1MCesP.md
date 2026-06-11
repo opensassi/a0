@@ -72,3 +72,64 @@ Building the initial MVP of `a0` — a minimal self-evolving agent written in C+
 
 **Aggregation Tags:**
 C++17, C++ agent, DeepSeek API, libcurl, CMake, TDD, unit testing, Google Test, code coverage, E2E testing, mock server, REPL loop, subprocess, JSON Lines, virtual interfaces, dependency injection
+
+---
+## Extracted Session Stats
+
+- **Duration:** 16081s (268.0m)
+  - First message: 13:54:13
+  - Last message:  18:22:13
+- **Messages:** 254 total (16 user, 238 assistant)
+- **Tool call parts:** 340
+- **Words:** 4,679 assistant, 4,474 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 35,611,119 |
+| Input Tokens — Cached | 35,031,552 (98.4%) |
+| Input Tokens — Uncached | 579,567 |
+| Output Tokens | 77,920 |
+| Reasoning Tokens | 29,843 |
+| Total Billed | 35,718,882 |
+| Cost | $0.209401 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   108 |  31.8% |
+| edit      |    90 |  26.5% |
+| write     |    72 |  21.2% |
+| read      |    31 |   9.1% |
+| todowrite |    22 |   6.5% |
+| glob      |    12 |   3.5% |
+| question  |     3 |   0.9% |
+| skill     |     2 |   0.6% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 220 | 92.4% |
+| plan | 18 | 7.6% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 223 | 95.3% |
+| stop | 11 | 4.7% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 11.5m
+- **Wall clock:** 268.0m
+- **Idle/waiting:** 256.5m
+- **Gaps >60s (capped):** 9 of 15
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 1 |
+| 15-30s | 2 |
+| 30-45s | 3 |
+| >60s | 9 |

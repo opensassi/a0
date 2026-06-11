@@ -67,3 +67,66 @@ Approximately 40–60 hours of senior C++ systems engineer time, broken down as:
 
 **Aggregation Tags:**
 C++, systems programming, IPC, Unix sockets, Docker, container pooling, process supervision, uWebSockets, dashboard, TDD, E2E testing, CMake
+
+---
+## Extracted Session Stats
+
+- **Duration:** 79488s (1324.8m)
+  - First message: 19:17:36
+  - Last message:  17:22:24
+- **Messages:** 456 total (43 user, 413 assistant)
+- **Tool call parts:** 431
+- **Words:** 11,243 assistant, 3,413 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 104,347,502 |
+| Input Tokens — Cached | 103,313,920 (99.0%) |
+| Input Tokens — Uncached | 1,033,582 |
+| Output Tokens | 145,381 |
+| Reasoning Tokens | 59,726 |
+| Total Billed | 104,552,609 |
+| Cost | $0.491410 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   140 |  32.5% |
+| edit      |   111 |  25.8% |
+| read      |    76 |  17.6% |
+| write     |    68 |  15.8% |
+| grep      |    18 |   4.2% |
+| todowrite |    11 |   2.6% |
+| glob      |     3 |   0.7% |
+| task      |     3 |   0.7% |
+| skill     |     1 |   0.2% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 366 | 88.6% |
+| plan | 47 | 11.4% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 372 | 91.6% |
+| stop | 34 | 8.4% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 33.5m
+- **Wall clock:** 1324.8m
+- **Idle/waiting:** 1291.3m
+- **Gaps >60s (capped):** 23 of 42
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 2 |
+| 15-30s | 8 |
+| 30-45s | 5 |
+| 45-60s | 4 |
+| >60s | 23 |

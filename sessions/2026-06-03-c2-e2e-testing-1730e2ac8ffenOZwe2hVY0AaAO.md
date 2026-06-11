@@ -72,3 +72,64 @@ Intensive co-development session on the a0/b1/c2 agent stack. Focused on buildin
 
 **Session Evaluation:**
 High-velocity development session with concurrent work across C++ backend, Node.js bridge, and WebComponents frontend. The zero-commit workflow allowed rapid iteration: bugs found in the E2E test were fixed in the source and immediately re-tested. The `--log-file` system with path derivation across fork chains resolves a long-standing debugging pain point. The component manifests provide a foundation for structured E2E tests using selectById across shadow DOM boundaries.
+
+---
+## Extracted Session Stats
+
+- **Duration:** 7355s (122.6m)
+  - First message: 10:05:19
+  - Last message:  12:07:54
+- **Messages:** 354 total (28 user, 326 assistant)
+- **Tool call parts:** 354
+- **Words:** 9,958 assistant, 7,128 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 86,221,314 |
+| Input Tokens — Cached | 85,218,688 (98.8%) |
+| Input Tokens — Uncached | 1,002,626 |
+| Output Tokens | 97,687 |
+| Reasoning Tokens | 73,633 |
+| Total Billed | 86,392,634 |
+| Cost | $0.426950 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| edit      |   132 |  37.3% |
+| read      |   109 |  30.8% |
+| bash      |    58 |  16.4% |
+| todowrite |    27 |   7.6% |
+| grep      |    16 |   4.5% |
+| glob      |     6 |   1.7% |
+| task      |     3 |   0.8% |
+| skill     |     2 |   0.6% |
+| write     |     1 |   0.3% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 287 | 88.0% |
+| plan | 39 | 12.0% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 298 | 93.4% |
+| stop | 21 | 6.6% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 22.6m
+- **Wall clock:** 122.6m
+- **Idle/waiting:** 100.0m
+- **Gaps >60s (capped):** 18 of 27
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 6 |
+| 45-60s | 3 |
+| >60s | 18 |

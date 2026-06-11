@@ -67,3 +67,66 @@ Concurrency model technical specification + BufferedSocket IPC refactor + TUI co
 
 **Aggregation Tags:**
 C++, concurrency-model, curl-multi, asynchronous-io, tcp-ipc, tui, buffered-io, technical-specification, test-automation, e2e-testing, cmake, systems-programming
+
+---
+## Extracted Session Stats
+
+- **Duration:** 9673s (161.2m)
+  - First message: 12:27:50
+  - Last message:  15:09:02
+- **Messages:** 292 total (34 user, 258 assistant)
+- **Tool call parts:** 284
+- **Words:** 17,306 assistant, 9,239 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 81,005,229 |
+| Input Tokens — Cached | 79,874,304 (98.6%) |
+| Input Tokens — Uncached | 1,130,925 |
+| Output Tokens | 101,683 |
+| Reasoning Tokens | 71,498 |
+| Total Billed | 81,178,410 |
+| Cost | $0.430468 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| read      |    94 |  33.1% |
+| edit      |    85 |  29.9% |
+| bash      |    54 |  19.0% |
+| grep      |    19 |   6.7% |
+| todowrite |    19 |   6.7% |
+| glob      |     7 |   2.5% |
+| write     |     3 |   1.1% |
+| skill     |     2 |   0.7% |
+| task      |     1 |   0.4% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 193 | 74.8% |
+| plan | 65 | 25.2% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 224 | 87.5% |
+| stop | 32 | 12.5% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 28.8m
+- **Wall clock:** 161.2m
+- **Idle/waiting:** 132.4m
+- **Gaps >60s (capped):** 23 of 33
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 2 |
+| 15-30s | 2 |
+| 30-45s | 3 |
+| 45-60s | 3 |
+| >60s | 23 |

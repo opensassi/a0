@@ -61,3 +61,62 @@ Implementing Version 2.0 revisions to the `a0` minimal self-evolving C++17 agent
 
 **Aggregation Tags:**
 C++17, subprocess timeout, fork/exec/waitpid, SIGALRM, dependency resolution, transitive deps, parameter substitution, args mode, TDD, unit testing, E2E testing, negative testing, code coverage, Linux systems programming, signal handling
+
+---
+## Extracted Session Stats
+
+- **Duration:** 3768s (62.8m)
+  - First message: 19:17:36
+  - Last message:  20:20:24
+- **Messages:** 110 total (11 user, 99 assistant)
+- **Tool call parts:** 110
+- **Words:** 5,661 assistant, 7,205 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 9,163,658 |
+| Input Tokens — Cached | 8,921,472 (97.4%) |
+| Input Tokens — Uncached | 242,186 |
+| Output Tokens | 37,439 |
+| Reasoning Tokens | 26,485 |
+| Total Billed | 9,227,582 |
+| Cost | $0.076785 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| read      |    37 |  33.6% |
+| edit      |    37 |  33.6% |
+| bash      |    23 |  20.9% |
+| todowrite |     9 |   8.2% |
+| write     |     2 |   1.8% |
+| task      |     1 |   0.9% |
+| skill     |     1 |   0.9% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 85 | 85.9% |
+| plan | 14 | 14.1% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 88 | 90.7% |
+| stop | 9 | 9.3% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 7.9m
+- **Wall clock:** 62.8m
+- **Idle/waiting:** 54.9m
+- **Gaps >60s (capped):** 5 of 10
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 3 |
+| 45-60s | 2 |
+| >60s | 5 |

@@ -96,3 +96,64 @@ Implementing the thread-separated App Core architecture for the `a0` agent's TUI
 
 **Aggregation Tags:**
 C++17, C++ agent, DeepSeek API, libcurl, curl_multi, CMake, FTXUI, TUI, state machine, MPSC, eventfd, SSE streaming, thread-safe, TDD, unit testing, E2E testing, technical specification, SSE decoder, async HTTP, software architecture, refactoring
+
+---
+## Extracted Session Stats
+
+- **Duration:** 11944s (199.1m)
+  - First message: 09:02:27
+  - Last message:  12:21:31
+- **Messages:** 412 total (7 user, 405 assistant)
+- **Tool call parts:** 416
+- **Words:** 4,149 assistant, 6,555 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 95,400,141 |
+| Input Tokens — Cached | 94,717,824 (99.3%) |
+| Input Tokens — Uncached | 682,317 |
+| Output Tokens | 120,044 |
+| Reasoning Tokens | 109,553 |
+| Total Billed | 95,629,738 |
+| Cost | $0.425021 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |   160 |  38.5% |
+| edit      |   109 |  26.2% |
+| read      |    81 |  19.5% |
+| grep      |    28 |   6.7% |
+| write     |    18 |   4.3% |
+| task      |     7 |   1.7% |
+| glob      |     6 |   1.4% |
+| todowrite |     4 |   1.0% |
+| skill     |     2 |   0.5% |
+| question  |     1 |   0.2% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 398 | 98.3% |
+| plan | 7 | 1.7% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 398 | 98.8% |
+| stop | 5 | 1.2% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 5.5m
+- **Wall clock:** 199.1m
+- **Idle/waiting:** 193.6m
+- **Gaps >60s (capped):** 5 of 6
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 1 |
+| >60s | 5 |

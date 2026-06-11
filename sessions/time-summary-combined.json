@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-06-11T03:14:50.063070+00:00",
+  "session_count": 44,
+  "calendar_span_hours": 289.7,
+  "estimates": {
+    "total_prompter_hours_min": 135.4883,
+    "total_prompter_hours_max": 135.4883,
+    "total_sme_hours_min": 1243.5,
+    "total_sme_hours_max": 1497.5,
+    "session_count": 44,
+    "sessions_fully_parsed": 44,
+    "sessions_partial": 0
+  },
+  "actual": {
+    "total_prompter_active_hours": 15.7684,
+    "total_messages": 11590,
+    "total_tokens_billed": 2651207579,
+    "total_cost": 14.726041,
+    "avg_cost_per_session": 0.334683,
+    "avg_prompter_active_hours": 0.36,
+    "avg_cache_hit_pct": 98.5,
+    "top_tools": {
+      "bash": 3317,
+      "read": 3049,
+      "edit": 2950,
+      "write": 744,
+      "grep": 728,
+      "todowrite": 503,
+      "glob": 210,
+      "task": 101,
+      "question": 44,
+      "skill": 33,
+      "webfetch": 20,
+      "invalid": 13,
+      "playwright_browser_navigate": 12,
+      "playwright_browser_console_messages": 3,
+      "playwright_browser_evaluate": 3,
+      "playwright_browser_snapshot": 1,
+      "playwright_browser_close": 1
+    },
+    "part_type_totals": {
+      "tool": 11732,
+      "step-start": 10414,
+      "step-finish": 10278,
+      "reasoning": 9709,
+      "text": 3999,
+      "patch": 3223
+    },
+    "mode_totals": {
+      "build": 8517,
+      "plan": 1914
+    },
+    "finish_reason_totals": {
+      "tool-calls": 9286,
+      "stop": 992
+    }
+  }
+}

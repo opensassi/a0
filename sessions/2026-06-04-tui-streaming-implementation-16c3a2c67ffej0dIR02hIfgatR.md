@@ -70,3 +70,62 @@ TUI streaming implementation and architecture refactoring plan for the a0 C++17 
 
 **Aggregation Tags:**
 SSE streaming, libcurl, FTXUI, TUI, render starvation, threading model, poller, multi-turn tool loop, C++17, curl_multi, mpsc queue, E2E testing, architecture refactoring, DeepSeek provider, session evaluation
+
+---
+## Extracted Session Stats
+
+- **Duration:** 6187s (103.1m)
+  - First message: 17:54:36
+  - Last message:  19:37:43
+- **Messages:** 149 total (18 user, 131 assistant)
+- **Tool call parts:** 128
+- **Words:** 6,589 assistant, 4,753 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 20,452,664 |
+| Input Tokens — Cached | 19,872,128 (97.2%) |
+| Input Tokens — Uncached | 580,536 |
+| Output Tokens | 45,817 |
+| Reasoning Tokens | 64,624 |
+| Total Billed | 20,563,105 |
+| Cost | $0.167840 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| bash      |    51 |  39.8% |
+| read      |    33 |  25.8% |
+| edit      |    33 |  25.8% |
+| todowrite |     4 |   3.1% |
+| grep      |     3 |   2.3% |
+| task      |     2 |   1.6% |
+| glob      |     1 |   0.8% |
+| write     |     1 |   0.8% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 111 | 84.7% |
+| plan | 20 | 15.3% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 113 | 89.0% |
+| stop | 14 | 11.0% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 16.9m
+- **Wall clock:** 103.1m
+- **Idle/waiting:** 86.2m
+- **Gaps >60s (capped):** 16 of 17
+
+| Gap Range | Count |
+|-----------|-------|
+| 45-60s | 1 |
+| >60s | 16 |

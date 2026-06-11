@@ -61,3 +61,66 @@ Implemented all C++ code (persistence schema, CommandRunner streaming, ToolRunne
 
 **Aggregation Tags:**
 C++, streaming, terminal, PTY, IPC, SSE, WebComponents, xterm.js, SQLite, fork/exec, realpath, uWebSockets, agent, Docker, process management, concurrent execution
+
+---
+## Extracted Session Stats
+
+- **Duration:** 158921s (2648.7m)
+  - First message: 19:17:36
+  - Last message:  15:26:17
+- **Messages:** 452 total (42 user, 410 assistant)
+- **Tool call parts:** 408
+- **Words:** 13,644 assistant, 3,520 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 116,325,183 |
+| Input Tokens — Cached | 115,220,608 (99.1%) |
+| Input Tokens — Uncached | 1,104,575 |
+| Output Tokens | 126,637 |
+| Reasoning Tokens | 97,049 |
+| Total Billed | 116,548,869 |
+| Cost | $0.539890 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| edit      |   140 |  34.3% |
+| read      |   121 |  29.7% |
+| bash      |    90 |  22.1% |
+| grep      |    24 |   5.9% |
+| todowrite |    13 |   3.2% |
+| glob      |    11 |   2.7% |
+| write     |     4 |   1.0% |
+| task      |     2 |   0.5% |
+| question  |     2 |   0.5% |
+| invalid   |     1 |   0.2% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 378 | 92.2% |
+| plan | 32 | 7.8% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 368 | 91.5% |
+| stop | 34 | 8.5% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 36.0m
+- **Wall clock:** 2648.7m
+- **Idle/waiting:** 2612.7m
+- **Gaps >60s (capped):** 31 of 41
+
+| Gap Range | Count |
+|-----------|-------|
+| 15-30s | 7 |
+| 30-45s | 2 |
+| 45-60s | 1 |
+| >60s | 30 |

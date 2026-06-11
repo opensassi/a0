@@ -9,16 +9,56 @@ Reads the bzip2-compressed JSON export, computes stats, appends an "Extracted
 Session Stats" section to the sibling .md file (before any trailing "---"
 marker if present), and writes a .stats.json file with the full data.
 """
-import json, sys, os, bz2
+import json, sys, os, bz2, gzip
 from datetime import datetime, timezone
 from collections import Counter
 
 
+def normalize_jsonl_msg(raw):
+    """Convert a .jsonl line to the .json.bz2 internal message format."""
+    ts = None
+    if raw.get("created_at"):
+        try:
+            dt = datetime.fromisoformat(raw["created_at"])
+            ts = int(dt.timestamp() * 1000)
+        except (ValueError, TypeError):
+            pass
+    return {
+        "info": {
+            "role": raw.get("role", ""),
+            "time": {"created": ts} if ts else {},
+            "tokens": {},
+            "cost": None,
+            "mode": "",
+            "finish": "",
+        },
+        "parts": [
+            {"type": "text", "text": raw.get("content", "")}
+        ],
+    }
+
+
+def read_archive(path):
+    """Read messages from a .json.bz2 or .jsonl.gz archive."""
+    if path.endswith(".json.bz2"):
+        with bz2.open(path, "rt") as f:
+            raw = json.load(f)
+        return raw.get("messages", [])
+    elif path.endswith(".jsonl.gz"):
+        messages = []
+        with gzip.open(path, "rt") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    messages.append(normalize_jsonl_msg(json.loads(line)))
+        return messages
+    else:
+        raise ValueError(f"Unsupported archive format: {path}")
+
+
 def analyze(path):
     """Run analysis on a session export, return (markdown, stats_dict)."""
-    with bz2.open(path, "rt") as f:
-        raw = json.load(f)
-    data = raw.get("messages", [])
+    data = read_archive(path)
 
     user_msgs = asst_msgs = 0
     total_uc = total_uw = total_ac = total_aw = 0
@@ -237,15 +277,16 @@ def analyze(path):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: session_stats.py <archive.json.bz2>", file=sys.stderr)
+        print("Usage: session_stats.py <archive.json.bz2|.jsonl.gz>", file=sys.stderr)
         sys.exit(1)
 
     archive_path = sys.argv[1]
-    if not archive_path.endswith(".json.bz2"):
-        print("Expected a .json.bz2 archive", file=sys.stderr)
+    if not (archive_path.endswith(".json.bz2") or archive_path.endswith(".jsonl.gz")):
+        print("Expected a .json.bz2 or .jsonl.gz archive", file=sys.stderr)
         sys.exit(1)
 
-    md_path = archive_path.replace(".json.bz2", ".md")
+    suffix = ".jsonl.gz" if archive_path.endswith(".jsonl.gz") else ".json.bz2"
+    md_path = archive_path.replace(suffix, ".md")
     if not os.path.exists(md_path):
         print(f"Evaluation file not found: {md_path}", file=sys.stderr)
         sys.exit(1)
@@ -253,7 +294,7 @@ def main():
     markdown, stats = analyze(archive_path)
 
     # Write .stats.json
-    stats_path = archive_path.replace(".json.bz2", ".stats.json")
+    stats_path = archive_path.replace(suffix, ".stats.json")
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)
     print(f"Wrote {stats_path}")

@@ -55,3 +55,62 @@ Implemented all 10 source files across `src/docker/`; modified 7 existing files 
 
 **Aggregation Tags:**
 docker, containers, cpp17, cmake, docker-compose, container-pooling, unit-testing, e2e-testing, posix-processes, static-library, cli-flags, agent-integration
+
+---
+## Extracted Session Stats
+
+- **Duration:** 17658s (294.3m)
+  - First message: 19:17:36
+  - Last message:  00:11:54
+- **Messages:** 90 total (5 user, 85 assistant)
+- **Tool call parts:** 124
+- **Words:** 3,429 assistant, 5,697 user
+
+### Tokens & Cost
+
+| Metric | Value |
+|--------|-------|
+| Input Tokens — Total | 9,423,051 |
+| Input Tokens — Cached | 9,158,528 (97.2%) |
+| Input Tokens — Uncached | 264,523 |
+| Output Tokens | 43,845 |
+| Reasoning Tokens | 41,047 |
+| Total Billed | 9,507,943 |
+| Cost | $0.086447 |
+
+### Tool Usage
+
+| Tool      | Calls | % |
+|------------|-------|---|
+| edit      |    38 |  30.6% |
+| read      |    30 |  24.2% |
+| bash      |    28 |  22.6% |
+| write     |    18 |  14.5% |
+| todowrite |     6 |   4.8% |
+| grep      |     2 |   1.6% |
+| glob      |     1 |   0.8% |
+| skill     |     1 |   0.8% |
+
+### Mode & Finish
+
+| Mode | Count | % |
+|------|-------|---|
+| build | 76 | 89.4% |
+| plan | 9 | 10.6% |
+
+| Finish Reason | Count | % |
+|---------------|-------|---|
+| tool-calls | 80 | 95.2% |
+| stop | 4 | 4.8% |
+
+### Prompter Active Time (gap-based)
+
+- **Prompter active:** 3.1m
+- **Wall clock:** 294.3m
+- **Idle/waiting:** 291.2m
+- **Gaps >60s (capped):** 3 of 4
+
+| Gap Range | Count |
+|-----------|-------|
+| 0-15s | 1 |
+| >60s | 3 |
