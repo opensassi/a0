@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sys
+import time
 import argparse
 from pathlib import Path
 
@@ -199,6 +200,7 @@ class ScenarioRunner:
 class MockHandler(http.server.BaseHTTPRequestHandler):
     scenario_runner = None
     stream_mode = False
+    chunk_delay = 0.0
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
@@ -245,31 +247,36 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
             return LEGACY_RESPONSES["files"]
 
     def _respond_streaming(self, messages, payload):
-        # Build full SSE body at once (curl receives it as one chunk,
-        # ResponseDecoder handles batch arrival fine)
-        body = ""
-        if self.__class__.scenario_runner:
-            has_tools = bool(payload.get("tools"))
-            for chunk in self.__class__.scenario_runner.next_turn_streaming(messages, has_tools):
-                body += chunk
-        else:
-            response = self._legacy_respond(payload, messages)
-            choices = response.get("choices", [])
-            if choices and choices[0].get("message", {}).get("tool_calls"):
-                for chunk in sse_tool_call_chunks(choices[0]["message"]["tool_calls"]):
-                    body += chunk
-            else:
-                for chunk in sse_content_chunks("Tool executed successfully"):
-                    body += chunk
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
         self.end_headers()
+        delay = self.__class__.chunk_delay
         try:
-            self.wfile.write(body.encode())
-            self.wfile.flush()
-        except BrokenPipeError:
+            if self.__class__.scenario_runner:
+                has_tools = bool(payload.get("tools"))
+                for chunk in self.__class__.scenario_runner.next_turn_streaming(messages, has_tools):
+                    self.wfile.write(chunk.encode())
+                    self.wfile.flush()
+                    if delay > 0:
+                        time.sleep(delay)
+            else:
+                response = self._legacy_respond(payload, messages)
+                choices = response.get("choices", [])
+                if choices and choices[0].get("message", {}).get("tool_calls"):
+                    for chunk in sse_tool_call_chunks(choices[0]["message"]["tool_calls"]):
+                        self.wfile.write(chunk.encode())
+                        self.wfile.flush()
+                        if delay > 0:
+                            time.sleep(delay)
+                else:
+                    for chunk in sse_content_chunks("Tool executed successfully"):
+                        self.wfile.write(chunk.encode())
+                        self.wfile.flush()
+                        if delay > 0:
+                            time.sleep(delay)
+        except (BrokenPipeError, ConnectionError):
             pass
 
     def _respond_json(self, data):
@@ -293,6 +300,8 @@ def main():
     parser.add_argument("port", nargs="?", type=int, default=18080, help="Port to listen on")
     parser.add_argument("--scenario", type=str, help="Path to scenario JSON file")
     parser.add_argument("--stream", action="store_true", help="Simulate streaming SSE responses")
+    parser.add_argument("--chunk-delay", type=float, default=0.0,
+                        help="Seconds to sleep between SSE chunks (simulate latency)")
     args = parser.parse_args()
 
     if args.scenario:
@@ -302,6 +311,9 @@ def main():
     if args.stream:
         MockHandler.stream_mode = True
         print(f"[MOCK] Streaming SSE mode enabled", file=sys.stderr)
+    if args.chunk_delay > 0:
+        MockHandler.chunk_delay = args.chunk_delay
+        print(f"[MOCK] Chunk delay: {args.chunk_delay}s", file=sys.stderr)
 
     server = http.server.HTTPServer(("127.0.0.1", args.port), MockHandler)
     print(f"[MOCK] DeepSeek API on http://127.0.0.1:{args.port}", file=sys.stderr)

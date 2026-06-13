@@ -48,13 +48,11 @@ AppCoreThread::~AppCoreThread() {
 }
 
 void AppCoreThread::start(mpsc::Receiver<mpsc::Command> cmdRcvr,
-                           mpsc::Sender<mpsc::AppCoreEvent> evtSender,
-                           std::function<void()> wakeupFn) {
+                           mpsc::Sender<mpsc::AppCoreEvent> evtSender) {
     if (m_running.exchange(true)) return;
 
     m_cmdReceiver = std::move(cmdRcvr);
     m_evtSender = std::move(evtSender);
-    m_wakeupFn = std::move(wakeupFn);
 
     m_thread = std::thread(&AppCoreThread::xRun, this);
 }
@@ -146,6 +144,9 @@ void AppCoreThread::xRun() {
         ts.tv_sec = timeoutMs / 1000;
         ts.tv_nsec = (timeoutMs % 1000) * 1000000;
         int rc = ppoll(fds, nfds, &ts, &waitset);
+        if (rc == 0 && timeoutMs < 20) {
+            TRACE_LOG("CORE: ppoll timeout=" << timeoutMs << " rc=" << rc << " (tight poll!)");
+        }
 
         if (rc < 0) {
             if (errno == EINTR) continue;
@@ -232,13 +233,13 @@ void AppCoreThread::xRun() {
         // Tick the core
         if (!core.idle()) {
             auto events = core.tick();
+            if (!events.empty()) {
+                TRACE_LOG("CORE: tick produced " << events.size() << " events");
+            }
             for (auto& ev : events) {
                 m_evtSender.send(std::move(ev));
             }
-            // Wake up the UI after sending events
-            if (!events.empty() && m_wakeupFn) {
-                m_wakeupFn();
-            }
+            // (TUI polls its own MPSC channel at its own cadence — no wakeup needed)
         }
     }
 

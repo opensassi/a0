@@ -782,20 +782,15 @@ static int cmdTui(const std::string& a0Dir, const std::string& skillsDir,
     if (!mockUrl.empty())
         coreThread.setMockUrl(mockUrl);
 
-    // Start core thread (no wakeup yet — screen not created)
-    coreThread.start(std::move(cmdRcvr), std::move(evtSender), nullptr);
+    // Start core thread — TUI drives its own render loop
+    coreThread.start(std::move(cmdRcvr), std::move(evtSender));
 
     // Send session to core
     cmdSender.send(a0::mpsc::SetSession{sessionDbId, sid});
 
-    // Launch TUI (no core references)
+    // Launch TUI (no core references, no wakeup — self-timed at ~60fps)
     a0::tui::AgentTui tui(std::move(cmdSender), std::move(evtRcvr),
                            [&b1Fd]() { return b1Fd >= 0; }, tuiTestMode);
-
-    // Wire wakeup — screen is created inside tui.run(), capture pointer for later
-    coreThread.setWakeupFn([tuiPtr = &tui]() {
-        if (auto* s = tuiPtr->screenPtr()) s->Post(ftxui::Task{[] {}});
-    });
 
     // Resume session if requested (sends ResumeSession via MPSC)
     if (!tuiResumeUuid.empty())

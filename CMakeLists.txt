@@ -11,6 +11,11 @@ find_package(SQLite3 REQUIRED)
 list(APPEND CMAKE_PREFIX_PATH /home/pc)
 find_package(CapnProto QUIET)
 
+option(ENABLE_TRACE "Enable trace logging" OFF)
+if(ENABLE_TRACE)
+    add_definitions(-DTRACE)
+endif()
+
 # === TUI Dependencies ===
 include(FetchContent)
 FetchContent_Declare(ftxui
@@ -40,13 +45,6 @@ add_subdirectory(src/tui)
 add_executable(a0 src/main.cpp)
 target_include_directories(a0 PRIVATE thirdparty)
 target_link_libraries(a0 PRIVATE core_lib)
-
-option(ENABLE_TRACE "Enable trace logging" OFF)
-if(ENABLE_TRACE)
-    target_compile_definitions(b1_lib PRIVATE TRACE)
-    target_compile_definitions(c2_lib PRIVATE TRACE)
-    target_compile_definitions(tui_lib PRIVATE TRACE)
-endif()
 
 option(ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
 if(ENABLE_COVERAGE)

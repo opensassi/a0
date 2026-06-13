@@ -329,6 +329,15 @@ ftxui::Element MessagePanel::xRenderAssistant(int entryIdx) {
             elems.push_back(xRenderStreamingPlaceholder(entry));
         }
         // Then render children (tool calls + additional assistant text)
+        // Pre-allocate toolHits capacity so push_back doesn't reallocate the
+        // vector midway through the loop — ftxui::reflect stores a reference
+        // to the Box inside toolHits, and reallocation would dangle it.
+        {
+            size_t toolChildCount = 0;
+            for (const auto& c : entry.children)
+                if (c.role == MessageRole::Tool) toolChildCount++;
+            m_impl->toolHits.reserve(m_impl->toolHits.size() + toolChildCount);
+        }
         for (int ci = 0; ci < static_cast<int>(entry.children.size()); ++ci) {
             auto& child = entry.children[ci];
             if (child.role == MessageRole::Assistant && child.streaming) {

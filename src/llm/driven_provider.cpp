@@ -197,7 +197,13 @@ int DrivenProvider::timeoutMs() const {
     if (!m_active) return -1;
     xUpdatePollInfo();
     if (m_cachedTimeout < 0) return -1;
-    if (m_cachedTimeout == 0) return 1;
+    if (m_cachedTimeout == 0) {
+        TRACE_LOG("LLM: curl_multi_timeout=0 (wants immediate poll)");
+        return 1;
+    }
+    if (m_cachedTimeout < 10) {
+        TRACE_LOG("LLM: curl_multi_timeout=" << m_cachedTimeout << " (very short)");
+    }
     return (int)m_cachedTimeout;
 }
 

@@ -1,4 +1,5 @@
 #include "command_runner.h"
+#include "shared/trace.h"
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -203,7 +204,7 @@ StreamHandle CommandRunner::runStreaming(const std::string& cmd,
     state->childPid = pid;
     state->stdinFd = stdinPipe[1];
 
-    // Reader thread: reads stdout and stderr, calls callback
+    TRACE_LOG("CMD: stream reader thread created pid=" << pid);
     state->thread = std::thread([state, stdoutPipe0 = stdoutPipe[0],
                                   stderrPipe0 = stderrPipe[0],
                                   stdinPipe1 = stdinPipe[1],
@@ -272,6 +273,7 @@ StreamHandle CommandRunner::runStreaming(const std::string& cmd,
         }
         state->exitCode = ec;
         state->done = true;
+        TRACE_LOG("CMD: stream reader thread exiting pid=" << pid << " ec=" << ec);
     });
 
     return handle;

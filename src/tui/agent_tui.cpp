@@ -13,9 +13,13 @@
 #include "ftxui/component/loop.hpp"
 #include "ftxui/component/event.hpp"
 #include "ftxui/dom/elements.hpp"
+#include <chrono>
+#include <csignal>
 #include <ctime>
 #include <iostream>
+#include <termios.h>
 #include <thread>
+#include <unistd.h>
 #include <utility>
 
 namespace a0::tui {
@@ -65,9 +69,37 @@ int AgentTui::run() {
     m_inputPanel->component()->TakeFocus();
 
     auto loop = ftxui::Loop(m_screen, m_mainComponent);
+
+    // FTXUI installs an empty SIGSEGV handler for terminal cleanup, but
+    // returning from SIGSEGV re-executes the faulting instruction.  If the
+    // fault is permanent (e.g. a shared_ptr use-after-free in the DOM tree)
+    // this becomes an infinite SIGSEGV loop at 100% CPU.
+    //
+    // Override with a handler that restores the terminal, then re-raises
+    // with SIG_DFL so the kernel produces a core dump.
+    {
+        struct sigaction sa = {};
+        sa.sa_handler = [](int) {
+            // Show cursor, exit alt screen, disable bracketed paste
+            static const char restore[] = "\033[?25h\033[?1049l\033[?2004l";
+            write(STDOUT_FILENO, restore, sizeof(restore) - 1);
+            // Restore termios — ICANON+ECHO for line-editing, ISIG for Ctrl+C
+            struct termios term;
+            tcgetattr(STDIN_FILENO, &term);
+            term.c_lflag |= ECHO | ICANON | ISIG | IEXTEN;
+            term.c_iflag |= ICRNL | IXON;
+            tcsetattr(STDIN_FILENO, TCSANOW, &term);
+            signal(SIGSEGV, SIG_DFL);
+            raise(SIGSEGV);
+        };
+        sa.sa_flags = SA_RESETHAND;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGSEGV, &sa, nullptr);
+    }
+
     while (!loop.HasQuitted()) {
-        loop.RunOnce();
         drainEvents();
+        loop.RunOnce();
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
@@ -91,7 +123,11 @@ void AgentTui::drainEvents() {
             xHandleCoreEvent(ev);
         }
         if (m_screen) {
-            m_screen->RequestAnimationFrame();
+            // Invalidate the frame immediately so the next RunOnce renders with
+            // the new state. Post(Event::Custom) is used rather than
+            // RequestAnimationFrame() because the latter relies on the
+            // EventListener thread's 20ms timeout, causing stale display.
+            m_screen->Post(ftxui::Event::Custom);
         }
     }
 }

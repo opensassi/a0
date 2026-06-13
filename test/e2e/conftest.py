@@ -33,10 +33,11 @@ def find_free_port():
 class MockServer:
     """Manages the mock DeepSeek API server process."""
 
-    def __init__(self, scenario=None, port=None, stream=False):
+    def __init__(self, scenario=None, port=None, stream=False, chunk_delay=0.0):
         self.port = port or find_free_port()
         self.scenario = scenario
         self.stream = stream
+        self.chunk_delay = chunk_delay
         self.process = None
 
     def __enter__(self):
@@ -45,6 +46,8 @@ class MockServer:
             cmd += ["--scenario", self.scenario]
         if self.stream:
             cmd += ["--stream"]
+        if self.chunk_delay > 0:
+            cmd += ["--chunk-delay", str(self.chunk_delay)]
         self.process = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -87,10 +90,12 @@ class TuiDriver:
                 assert "Idle" in text
     """
 
-    def __init__(self, mock_server=None, a0_dir=None, extra_args=None):
+    def __init__(self, mock_server=None, a0_dir=None, extra_args=None,
+                 test_mode=True):
         self.mock_server = mock_server
         self.a0_dir = a0_dir
         self.extra_args = extra_args or []
+        self.test_mode = test_mode
         self.master_fd = None
         self.slave_fd = None
         self.pid = None
@@ -127,7 +132,10 @@ class TuiDriver:
         # polluting the PTY-captured TUI output.
         cmd += ["--log-file", f"{a0_dir}/a0.log"]
         cmd += self.extra_args
-        cmd += ["tui", "--test-mode", "--no-permissions"]
+        cmd += ["tui"]
+        if self.test_mode:
+            cmd += ["--test-mode"]
+        cmd += ["--no-permissions"]
 
         self.pid = os.fork()
         if self.pid == 0:

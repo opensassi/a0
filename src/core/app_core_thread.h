@@ -49,17 +49,11 @@ public:
     /// Start the background thread.
     /// \param cmdRcvr     Command receiver — the thread reads commands from this.
     /// \param evtSender   Event sender — the thread sends events through this.
-    /// \param wakeupFn    Optional callback called after events are sent, to wake the UI loop.
     /// Set mock URL for testing (DrivenProvider will connect here instead of real API).
     void setMockUrl(const std::string& url) { m_mockUrl = url; }
 
     void start(mpsc::Receiver<mpsc::Command> cmdRcvr,
-               mpsc::Sender<mpsc::AppCoreEvent> evtSender,
-               std::function<void()> wakeupFn = nullptr);
-
-    /// Set the wakeup callback called after events are sent (for UI thread wakeup).
-    /// Can be called before or after start(). Thread-safe.
-    void setWakeupFn(std::function<void()> fn) { m_wakeupFn = std::move(fn); }
+               mpsc::Sender<mpsc::AppCoreEvent> evtSender);
 
     /// Signal the thread to exit and join.
     void stop();
@@ -83,7 +77,6 @@ private:
 
     mpsc::Receiver<mpsc::Command> m_cmdReceiver;
     mpsc::Sender<mpsc::AppCoreEvent> m_evtSender;
-    std::function<void()> m_wakeupFn;
 
     int m_wakeupFd = -1;  // eventfd for waking the poll loop in stop()
     std::thread m_thread;
