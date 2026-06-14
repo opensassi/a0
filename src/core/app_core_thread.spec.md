@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Thread-safe application core that owns a `DrivenCore` and runs it in a dedicated thread with a `ppoll()`-based event loop. Commands arrive via an MPSC `Receiver<mpsc::Command>`, events are sent back via an MPSC `Sender<mpsc::AppCoreEvent>`. Uses an eventfd wakeup for graceful shutdown. Receives persona name, skills, tools, `ResourceProvider`, and flush-size parameters at construction, passing them to `DrivenCore` on startup.
+Thread-safe application core that owns a `DrivenCore` and runs it in a dedicated thread with a `ppoll()`-based event loop. Commands arrive via an MPSC `Receiver<mpsc::Command>`, events are sent back via an MPSC `Sender<mpsc::AppCoreEvent>`. The TUI polls its own MPSC channel at its own cadence — no cross-thread UI wakeup is needed. Uses an eventfd wakeup for graceful shutdown. Receives persona name, skills, tools, `ResourceProvider`, and flush-size parameters at construction, passing them to `DrivenCore` on startup.
 
 **Source files:** `src/core/app_core_thread.h/.cpp`
 
@@ -34,10 +34,7 @@ public:
     void setMockUrl(const std::string& url) { m_mockUrl = url; }
 
     void start(mpsc::Receiver<mpsc::Command> cmdRcvr,
-               mpsc::Sender<mpsc::AppCoreEvent> evtSender,
-               std::function<void()> wakeupFn = nullptr);
-
-    void setWakeupFn(std::function<void()> fn) { m_wakeupFn = std::move(fn); }
+               mpsc::Sender<mpsc::AppCoreEvent> evtSender);
 
     void stop();
 
@@ -56,7 +53,6 @@ private:
 
     mpsc::Receiver<mpsc::Command> m_cmdReceiver;
     mpsc::Sender<mpsc::AppCoreEvent> m_evtSender;
-    std::function<void()> m_wakeupFn;
 
     int m_wakeupFd = -1;
     std::thread m_thread;
@@ -175,7 +171,6 @@ sequenceDiagram
         PROV-->>CORE: events
         CORE-->>ACT: events
         ACT->>UI: evtSender.send(event)
-        ACT->>UI: wakeupFn() (if set)
     end
 
     UI->>ACT: stop()

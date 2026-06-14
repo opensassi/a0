@@ -10,9 +10,11 @@
 
 **Lifecycle:**
 1. Constructed with MPSC sender/receiver pair, optional b1 status function, and test mode flag
-2. `setScreen()` / `run()` — FTXUI event loop drains MPSC events each frame
-3. `shutdown()` — exits FTXUI screen
-4. Destruction cleans up sub-panels and MPSC handles
+2. `setScreen()` / `run()` — FTXUI event loop drains MPSC events each frame via `drainEvents()` then `loop.RunOnce()` (processed before render, not after)
+3. On `xOnLlmComplete`: calls `appendOrUpdateAssistantText` only when `m_streamingText` is non-empty, preventing phantom children from tool_calls-only responses
+4. On `xOnToolStart`: calls `finalizeAssistant` before `appendAssistantTool` to mark the current turn's streaming text as complete before the tool separator
+5. `shutdown()` — exits FTXUI screen
+6. Destruction cleans up sub-panels and MPSC handles
 
 ## §2. Component Specifications
 

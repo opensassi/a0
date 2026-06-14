@@ -11,9 +11,11 @@
 **Lifecycle:**
 1. Constructed — creates `CatchEvent`-wrapped `Renderer` that iterates over entries
 2. Entries added via `append()`, `beginAssistant()`, `appendAssistantTool()`, etc.
-3. Renderer draws each entry (user, assistant with tool children, tool blocks, streaming placeholders)
-4. `clear()` resets all state
-5. Destruction cleans up Impl
+3. `appendOrUpdateAssistantText` uses simplified logic: if last child is `Assistant && streaming` → update in place; if no children → set `entry.content` (pre-tool text, first turn); otherwise → push new child (post-tool, next turn). Returns early on empty text. No longer scans all children — only checks `children.back()` to prevent cross-turn text replacement.
+4. `finalizeAssistant` marks the last streaming child as non-streaming; guards `asst.streaming` assignment with a check (no unnecessary writes).
+5. Renderer draws each entry (user, assistant with tool children, tool blocks, streaming placeholders)
+6. `clear()` resets all state
+7. Destruction cleans up Impl
 
 ## §2. Component Specifications
 

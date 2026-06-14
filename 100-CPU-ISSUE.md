@@ -174,3 +174,79 @@ test/e2e/mock_deepseek_server.py| 21 +++++++++-
 4. **`perf record -g` for user-space, `strace -c` for system calls.** Perf captures CPU samples but may miss kernel-mode time without root. Strace catches syscall patterns but adds overhead. Use both.
 
 5. **TRACE_LOG instrumentation + steady_clock timing** is invaluable for distinguishing between "thread is actually busy" vs. "thread is stuck in a signal loop." The former shows high utime; the latter shows high stime.
+
+---
+
+## Subsequent Session: Text/Tool Rendering Order Regression
+
+After the 100-CPU fix was applied, a rendering order regression appeared: assistant messages were rendered in the wrong order relative to tool call blocks, and some messages appeared to be duplicated or missing entirely.
+
+### Root Cause 1: Cross-turn text replacement in `appendOrUpdateAssistantText`
+
+The original `appendOrUpdateAssistantText` scanned **all** children to find an existing assistant entry to update:
+
+```cpp
+for (int i = static_cast<int>(asst.children.size()) - 1; i >= 0; --i) {
+    if (asst.children[i].role == MessageRole::Assistant) {
+        asst.children[i].content = text;
+        asst.children[i].streaming = true;
+        return 0;
+    }
+}
+```
+
+This loop matched ANY assistant child regardless of its `streaming` state. When the TUI processed a multi-turn LLM conversation (tool_calls → execute → more tool_calls → execute → final text), text from Turn N+1 would **replace** the text from Turn N, because the loop found Turn N's assistant child (which had been finalized by `finalizeAssistant`) and overwrote its content. The earlier turn's text was silently lost.
+
+### Root Cause 2: Blanket `asst.streaming = true`
+
+The line `asst.streaming = true;` at the end of `appendOrUpdateAssistantText` was executed unconditionally, even when text was pushed as a child below tools (post-tool path). In `xRenderAssistant`, a non-empty `entry.streaming` combined with an empty `entry.content` caused a "⏳ thinking" streaming placeholder to appear ABOVE all tool blocks, making it look like the assistant was continuously thinking while tools executed beneath.
+
+### Root Cause 3: Empty-text phantom children
+
+`xOnLlmComplete` called `appendOrUpdateAssistantText` even when `m_streamingText` was empty (the LLM returned `finish_reason: "tool_calls"` with `content: null`). When children already existed from previous turns, this pushed an empty assistant child with `streaming=true`, which rendered as a phantom "⏳ thinking" line between tool batches.
+
+### Fix: Simplified `children.back()` logic
+
+The loop was replaced with a simple check against the last child only:
+
+```cpp
+// Same-stream update: last child is assistant and still streaming
+if (!asst.children.empty() &&
+    asst.children.back().role == MessageRole::Assistant &&
+    asst.children.back().streaming) {
+    asst.children.back().content = text;
+    return 0;
+}
+```
+
+This ensures only the *current* turn's streaming text is updated — once a turn ends (tool calls arrive), `finalizeAssistant` sets `streaming=false`, and the next turn's `children.back()` check sees the tool (not the assistant child), correctly creating a new child.
+
+### Supporting changes
+
+- **Empty-text guard in `xOnLlmComplete`**: Skip `appendOrUpdateAssistantText` when `m_streamingText` is empty, preventing phantom children from tool_calls-only responses.
+- **`finalizeAssistant` in `xOnToolStart`**: Called before `appendAssistantTool` to mark the current turn's streaming text as complete at the tool boundary. This is now safe because `appendOrUpdateAssistantText` only checks `children.back()`, not the full children vector.
+- **`asst.streaming = true` moved**: Only set when text goes to `entry.content` (pre-tool, first turn). No longer set unconditionally.
+
+### Additional Lesson: Mock server correctness is essential for E2E testing
+
+The TUI E2E tests were silently failing because the mock server had several issues that prevented the agent from executing a normal tool-call → result flow:
+
+1. **Empty tools array handling**: When the agent had no persona skills loaded, the JSON payload omitted the `"tools"` field entirely. The mock server checked `bool(payload.get("tools"))`, which was False when the field was absent. The scenario runner's `has_tools` gate should not depend on the payload — when a scenario is active, the defined turns should always be followed regardless of the incoming payload structure.
+
+2. **Legacy response fallthrough**: The `_legacy_respond` handler relied on `payload.get("tools")` to decide whether to return tool_calls. When the field was absent, it fell through to keyword-based content matching (e.g., matching "find" → returning `["file1.txt","file3.txt"]` instead of tool_calls).
+
+3. **Multi-goal state contamination**: The legacy handler accumulated `has_tool_role` across goals. A tool result from goal N would cause the mock to return `tool_result` immediately for goal N+1, short-circuiting the normal tool_call → execute → result flow.
+
+4. **Missing `--skills-dir` in headless tests**: The `test_stress_rapid_goals` test used `subprocess.run` without `--skills-dir`. When run from `test/e2e/`, the default `./skills` path didn't exist, causing every goal to fail with `rc=1`.
+
+**Diagnostic methodology**: Added `TRACE_LOG` instrumentation at every layer of the event pipeline (AppCoreThread command drain, event send, TUI event receive, message panel append). The trace immediately showed that events were flowing correctly through the MPSC channel — the actual rendering was correct, but the intermediary data model in `MessageEntry.children` had the wrong structure. Without the trace, this would have been attributed to an MPSC or threading issue.
+
+### Final state
+
+After all fixes, the rendering follows a strict chronological rule for each LLM turn:
+
+- **No children yet** → text goes to `entry.content` (pre-tool, first turn only)
+- **Last child is assistant + streaming** → update in place (same turn, streaming chunks)
+- **Otherwise** → push new child (post-tool, subsequent turn)
+
+This ensures every turn's text appears in its correct chronological position relative to the tool blocks, without duplication, phantom placeholders, or cross-turn replacement.

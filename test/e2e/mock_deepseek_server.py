@@ -162,7 +162,7 @@ class ScenarioRunner:
         if not self.analysis_response:
             self.analysis_response = LEGACY_RESPONSES["tools_for_prompt"]
 
-    def next_turn(self, messages, has_tools):
+    def next_turn(self, messages, has_tools=True):
         if not has_tools:
             return self.analysis_response
         tool_results = [m for m in messages if m.get("role") == "tool"]
@@ -180,7 +180,7 @@ class ScenarioRunner:
             return content_response(step["content"], self.turn)
         return content_response("Done.", self.turn)
 
-    def next_turn_streaming(self, messages, has_tools):
+    def next_turn_streaming(self, messages, has_tools=True):
         """Like next_turn but yields SSE chunk strings."""
         response = self.next_turn(messages, has_tools)
         choices = response.get("choices", [])
@@ -212,8 +212,7 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
             self._respond_streaming(messages, payload)
         else:
             if self.__class__.scenario_runner:
-                has_tools = bool(payload.get("tools"))
-                response = self.__class__.scenario_runner.next_turn(messages, has_tools)
+                response = self.__class__.scenario_runner.next_turn(messages)
             else:
                 response = self._legacy_respond(payload, messages)
             self._respond_json(response)
@@ -231,9 +230,32 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
             elif role == "tool":
                 has_tool_role = True
 
+        # If the last message is a user message, this is a new goal — tool messages
+        # in the conversation are from prior goals and should be ignored.
+        if messages and messages[-1].get("role") == "user":
+            has_tool_role = False
+        last_is_user = False
+        for i, msg in enumerate(messages):
+            role = msg.get("role", "")
+            if role == "user":
+                user_text = msg.get("content", "")
+                last_is_user = True
+            elif role == "system":
+                system_text = msg.get("content", "")
+            elif role == "tool":
+                if last_is_user:
+                    pass  # tool immediately following user — part of current goal
+                else:
+                    has_tool_role = True
+                last_is_user = False
+
+        # If the last message is a user message, treat it as a new goal
+        if last_is_user:
+            has_tool_role = False
+ 
         if "Analyze the user's request" in system_text:
             return LEGACY_RESPONSES["tools_for_prompt"]
-        elif not has_tool_role and payload.get("tools"):
+        elif not has_tool_role:
             return LEGACY_RESPONSES["tool_calls"]
         elif has_tool_role:
             return LEGACY_RESPONSES["tool_result"]
@@ -255,8 +277,7 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
         delay = self.__class__.chunk_delay
         try:
             if self.__class__.scenario_runner:
-                has_tools = bool(payload.get("tools"))
-                for chunk in self.__class__.scenario_runner.next_turn_streaming(messages, has_tools):
+                for chunk in self.__class__.scenario_runner.next_turn_streaming(messages):
                     self.wfile.write(chunk.encode())
                     self.wfile.flush()
                     if delay > 0:

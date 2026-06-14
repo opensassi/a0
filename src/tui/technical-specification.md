@@ -33,7 +33,7 @@ Any proposed change that introduces a direct reference from the TUI to any core 
 ### 1.2 Key Behaviors
 
 - **Split-panel layout** — scrollable message panel (top, flex-grow) + fixed input bar (bottom)
-- **Streaming responses** — LLM tokens arrive via MPSC `AppCoreEvent` channel, drained each frame by `drainEvents()`, posted to FTXUI's `Screen::Post(Task{})` for thread-safe re-render
+- **Streaming responses** — LLM tokens arrive via MPSC `AppCoreEvent` channel, drained each frame by `drainEvents()` for thread-safe re-render
 - **Color-coded messages** — user (cyan), assistant (green), system (yellow), tool (blue), error (red)
 - **Tool execution visibility** — collapsible blocks showing tool name, status spinner, stdout/stderr output, and diffs
 - **Markdown rendering** — assistant messages rendered through MD4C into FTXUI elements (headings, bold/italic, code blocks, lists)
@@ -789,7 +789,7 @@ sequenceDiagram
     MAIN->>MAIN: create cmdChan, evtChan
 
     Note over MAIN: Start core on background thread
-    MAIN->>ACT: start(cmdRcvr, evtSender, wakeupFn)
+    MAIN->>ACT: start(cmdRcvr, evtSender)
     ACT-->>ACT: (thread starts, ppoll loop begins)
 
     Note over MAIN: Send session to core
@@ -1000,8 +1000,8 @@ void cmdTui(...) {
 
     AppCoreThread coreThread(apiKey, model, &stack.skillMgr, &stack.persistence);
     if (!mockUrl.empty()) coreThread.setMockUrl(mockUrl);
-    coreThread.start(std::move(cmdRcvr), std::move(evtSender),
-                     /* wakeupFn */ [screen = ...]() { ... } );
+    // Start core thread — TUI drives its own render loop
+    coreThread.start(std::move(cmdRcvr), std::move(evtSender));
 
     cmdSender.send(mpsc::SetSession{sessionDbId, sid});
 
@@ -1064,7 +1064,7 @@ static int cmdRun(...) {
 
 - Constructed with `apiKey`, `model`, `SkillManager*`, `PersistenceStore*`
 - Creates `DeepSeekProvider` + `DrivenCore` as stack locals in `xRun()`
-- Main loop: `ppoll()` on wakeup eventfd + command MPSC fd
+- Main loop: `ppoll()` on wakeup eventfd + command MPSC fd. No cross-thread UI wakeup — TUI polls its own MPSC channel at its own cadence.
 - Drains commands: `SetSession` → `core.setSession()`, `SubmitGoal` → `core.submitGoal()`, etc.
 - Ticks `DrivenCore::tick()` each iteration, sends events via `evtSender`
 - Blocks SIGCHLD, drains via `waitpid(WNOHANG)` for tool subprocess reaping
@@ -1082,8 +1082,7 @@ public:
     ~AppCoreThread();
 
     void start(mpsc::Receiver<mpsc::Command> cmdRcvr,
-               mpsc::Sender<mpsc::AppCoreEvent> evtSender,
-               std::function<void()> wakeupFn = nullptr);
+               mpsc::Sender<mpsc::AppCoreEvent> evtSender);
     void stop();
     bool running() const;
 

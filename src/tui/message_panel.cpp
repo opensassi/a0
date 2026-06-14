@@ -121,30 +121,27 @@ int MessagePanel::appendOrUpdateAssistantText(int asstIdx, const std::string& te
     if (asstIdx < 0 || asstIdx >= static_cast<int>(m_impl->entries.size())) return -1;
     auto& asst = m_impl->entries[asstIdx];
     if (asst.role != MessageRole::Assistant) return -1;
+    if (text.empty()) return 0;
 
-    // Look for an existing streaming assistant child (from current or prior round)
-    for (int i = static_cast<int>(asst.children.size()) - 1; i >= 0; --i) {
-        if (asst.children[i].role == MessageRole::Assistant) {
-            asst.children[i].content = text;
-            asst.children[i].streaming = true;
-            return 0;
-        }
+    // Same-stream update: last child is assistant and still streaming
+    if (!asst.children.empty() &&
+        asst.children.back().role == MessageRole::Assistant &&
+        asst.children.back().streaming) {
+        asst.children.back().content = text;
+        return 0;
     }
-    // No existing assistant child — push as child only when tool children exist
-    // so the text renders BELOW the tools (chronologically correct: tools execute
-    // before the assistant speaks the result).
+
+    // No streaming child to extend — append as entry content (pre-tool)
+    // or as a new child (post-tool).
     if (asst.children.empty()) {
-        // Round 1 text (before any tools) — use entry content
         asst.content = text;
     } else {
-        // Round 2+ text (after tool execution) — push as child below tools
         MessageEntry child;
         child.role = MessageRole::Assistant;
         child.content = text;
         child.streaming = true;
         asst.children.push_back(std::move(child));
     }
-    asst.streaming = true;
     return 0;
 }
 
@@ -171,7 +168,9 @@ int MessagePanel::finalizeAssistant(int asstIdx) {
             break;
         }
     }
-    asst.streaming = false;
+    if (asst.streaming) {
+        asst.streaming = false;
+    }
     return 0;
 }
 

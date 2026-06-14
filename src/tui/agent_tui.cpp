@@ -204,7 +204,7 @@ void AgentTui::xOnLlmChunk(int64_t streamId, int seq, const std::string& text, b
 }
 
 void AgentTui::xOnLlmComplete(int64_t streamId, const std::string& finishReason) {
-    if (m_assistantEntryIndex >= 0) {
+    if (m_assistantEntryIndex >= 0 && !m_streamingText.empty()) {
         m_messagePanel->appendOrUpdateAssistantText(m_assistantEntryIndex, m_streamingText);
     }
     m_statusBar->setMessageCount(m_messagePanel->count());
@@ -216,6 +216,7 @@ void AgentTui::xOnToolStart(int64_t invocationId, const std::string& toolCallId,
     m_agentState = AgentState::Executing;
     m_statusBar->setAgentState(m_agentState);
     if (m_assistantEntryIndex >= 0) {
+        m_messagePanel->finalizeAssistant(m_assistantEntryIndex);
         m_messagePanel->appendAssistantTool(m_assistantEntryIndex, toolName, ToolState::Running, arguments);
     }
     m_inputPanel->setEnabled(false);

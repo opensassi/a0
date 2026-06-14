@@ -114,9 +114,7 @@ public:
 
     void setMockUrl(const std::string& url);
     void start(mpsc::Receiver<mpsc::Command> cmdRcvr,
-               mpsc::Sender<mpsc::AppCoreEvent> evtSender,
-               std::function<void()> wakeupFn = nullptr);
-    void setWakeupFn(std::function<void()> fn);
+               mpsc::Sender<mpsc::AppCoreEvent> evtSender);
     void stop();
     bool running() const;
 
@@ -130,7 +128,6 @@ private:
     int64_t m_tokenFlushSize, m_toolFlushSize, m_outputPreviewSize;
     mpsc::Receiver<mpsc::Command> m_cmdReceiver;
     mpsc::Sender<mpsc::AppCoreEvent> m_evtSender;
-    std::function<void()> m_wakeupFn;
     int m_wakeupFd = -1;
     std::thread m_thread;
     std::atomic<bool> m_running{false};

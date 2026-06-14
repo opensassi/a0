@@ -4,7 +4,15 @@
         "index": 0,
         "message": {
             "role": "assistant",
-            "content": "{\"intent\": \"list files in the current directory\",\"plan\": \"Use the bash tool to run ls -la in the current directory\",\"tools\": [{\"name\":\"bash\",\"schema\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The shell command to execute\"}},\"required\":[\"command\"]}}]}"
+            "content": null,
+            "tool_calls": [{
+                "id": "call_sys_bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\": \"ls -la\", \"description\": \"list files\"}"
+                }
+            }]
         }
     }]
 }

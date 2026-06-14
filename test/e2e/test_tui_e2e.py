@@ -521,12 +521,12 @@ class TestTuiClipboard:
                         break
                 if target < 0:
                     pytest.skip("User text not found in rendered output")
-                adj = target + 1
-                driver.send_mouse_down(0, adj, button=0)
+                # Select from row 0 to row 20 to capture the full message panel area
+                driver.send_mouse_down(0, 0, button=0)
                 time.sleep(0.05)
-                driver.send_mouse_move(50, adj)
+                driver.send_mouse_move(50, 20)
                 time.sleep(0.05)
-                driver.send_mouse_up(50, adj)
+                driver.send_mouse_up(50, 20)
                 time.sleep(0.5)
                 contents = self._clipboard_contents()
                 assert "find" in contents or "log files" in contents, (
@@ -631,19 +631,21 @@ class TestCliCrash:
                     )
 
     def test_stress_rapid_goals(self):
-        from conftest import A0_BIN
+        from conftest import A0_BIN, SKILLS_DIR
         import subprocess, tempfile
         with MockServer() as server:
             with tempfile.TemporaryDirectory() as tmpdir:
                 for i in range(10):
                     subprocess.run(
-                        [A0_BIN, "--a0-dir", tmpdir, "--no-docker", "--no-b1",
+                        [A0_BIN, "--a0-dir", tmpdir, "--skills-dir", SKILLS_DIR,
+                         "--no-docker", "--no-b1",
                          "--mock-api", f"http://127.0.0.1:{server.port}",
                          "run", f"quick goal {i}"],
                         capture_output=True, timeout=15
                     )
                 result = subprocess.run(
-                    [A0_BIN, "--a0-dir", tmpdir, "--no-docker", "--no-b1",
+                    [A0_BIN, "--a0-dir", tmpdir, "--skills-dir", SKILLS_DIR,
+                     "--no-docker", "--no-b1",
                      "--mock-api", f"http://127.0.0.1:{server.port}",
                      "run", "final goal"],
                     capture_output=True, timeout=15
